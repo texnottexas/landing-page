@@ -625,7 +625,7 @@ function openSheet(kind, arg) {
     if (!BT.m) { bst(function () { openSheet(kind, arg); }); return; }
     var rb = BT.m.sheet(kind, arg); if (!rb) return;
     title = rb[0]; body = rb[1]; isName = !!rb[2];
-  } else if (kind === 'decor' || kind === 'skin' || kind === 'skill' || kind === 'bseset' || kind === 'bsetotals' || kind === 'bsedfilter' || kind === 'bsesfilter' || kind === 'bsebfilter') {
+  } else if (kind === 'decor' || kind === 'skin' || kind === 'skill' || kind === 'bseset' || kind === 'bsetal' || kind === 'bsetotals' || kind === 'bsedfilter' || kind === 'bsesfilter' || kind === 'bsebfilter') {
     if (!BS.m) { bse(function () { openSheet(kind, arg); }); return; }
     var rs = BS.m.sheet(kind, arg); if (!rs) return;
     title = rs[0]; body = rs[1]; isName = !!rs[2];

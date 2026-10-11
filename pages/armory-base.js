@@ -471,6 +471,20 @@ function decodeTalent(infoId, tree) {
   if (node && Array.isArray(node.levels)) for (var i = 0; i < node.levels.length; i++) if (node.levels[i].id === infoId) return { g: g, level: num(node.levels[i].level) };
   return { g: g, level: (infoId % 1000) - 1 };
 }
+/* a side's nodes onto the tree's own grid: one row per distinct pos_y (the root first), three columns by pos_x (nearest of the side's three lanes).
+   Nodes without a position sit in a row of their own after the tree, so nothing is dropped. */
+function treeGrid(list) {
+  var ys = [], xs = [];
+  list.forEach(function (n) { if (n.y != null && ys.indexOf(n.y) < 0) ys.push(n.y); if (n.x != null) xs.push(n.x); });
+  ys.sort(function (a, b) { return b - a; });
+  var lo = xs.length ? Math.min.apply(null, xs) : 0, hi = xs.length ? Math.max.apply(null, xs) : 0, mid = (lo + hi) / 2;
+  var lanes = [lo, mid, hi], extra = ys.length;
+  list.forEach(function (n) {
+    if (n.y == null || n.x == null) { n.row = extra; n.col = 1; return; }
+    n.row = ys.indexOf(n.y);
+    n.col = 0; for (var i = 1; i < 3; i++) if (Math.abs(n.x - lanes[i]) < Math.abs(n.x - lanes[n.col])) n.col = i;
+  });
+}
 function talentModel(ref, supp) {
   var tree = ref && ref.talent_tree && typeof ref.talent_tree === 'object' ? ref.talent_tree : {}, ids = supp && Array.isArray(supp.talents) ? supp.talents : null;
   if (!ids || !ids.length) return null;
@@ -487,9 +501,10 @@ function talentModel(ref, supp) {
     var side = n.side === 'right' ? 'right' : 'left', needs = '';
     if (lv === 0) arr(n.parent_ids).some(function (pk) { var pn = tree[String(pk)]; if (pn && !num(levels[pk])) { needs = typeof pn.name === 'string' ? pn.name : ''; return true; } return false; });
     sides[side].push({ id: Number(k), name: typeof n.name === 'string' ? n.name : 'Talent', desc: typeof n.desc === 'string' ? n.desc : '', icon: typeof n.icon_name === 'string' ? n.icon_name : '', lv: lv, max: max, sw: !!n.is_switch, depth: dep(k), needs: needs,
-      val: lv > 0 && row && !n.is_switch && num(row.effect_value) > 0 ? fbuffVal(row.effect_value) : '', buff: row && row.effect_id ? fbuffName(Number(row.effect_id)) : '' });
+      val: lv > 0 && row && !n.is_switch && num(row.effect_value) > 0 ? fbuffVal(row.effect_value) : '', buff: row && row.effect_id ? fbuffName(Number(row.effect_id)) : '',
+      x: isFinite(+n.pos_x) ? +n.pos_x : null, y: isFinite(+n.pos_y) ? +n.pos_y : null, parents: arr(n.parent_ids).map(Number).filter(function (pk) { var pn = tree[String(pk)]; return pn && (pn.side === 'right' ? 'right' : 'left') === side; }) });
   });
-  ['left', 'right'].forEach(function (s) { sides[s].sort(function (a, b) { return (a.depth - b.depth) || (a.id - b.id); }); });
+  ['left', 'right'].forEach(function (s) { sides[s].sort(function (a, b) { return (a.depth - b.depth) || (a.id - b.id); }); treeGrid(sides[s]); });
   return { sides: sides, total: Object.keys(tree).length, trained: trained, maxed: maxed, power: power, maxPower: maxPower, spent: spent, held: supp && supp.currencies ? num(supp.currencies['2800000']) : null };
 }
 
@@ -499,7 +514,7 @@ var Logic = {
   bdRow: bdRow, bdSort: bdSort, bdNotOwned: bdNotOwned, skinTotals: skinTotals, haloTotals: haloTotals, addTotals: addTotals, baseDecorTotals: baseDecorTotals, stripRows: stripRows,
   dataFor: dataFor, buffRows: buffRows, placedModel: placedModel, storedList: storedList, ownedMap: ownedMap, alternates: alternates, notOwnedList: notOwnedList, decorSort: decorSort, decorFilter: decorFilter, sections: sections, setsModel: setsModel, iconFile: iconFile, statGroups: statGroups,
   STAT_TABS: STAT_TABS, PICK_ORDER: PICK_ORDER, MAIN_ID: MAIN_ID, statTabLabel: statTabLabel, spendModel: spendModel, mutexMap: mutexMap,
-  gainLines: gainLines, fitWalk: fitWalk, parseBuffGroup: parseBuffGroup, formationsMerged: formationsMerged, formationCard: formationCard, techModel: techModel, armyMastery: armyMastery, talentModel: talentModel, decodeTalent: decodeTalent, fbuffName: fbuffName, fbuffVal: fbuffVal
+  gainLines: gainLines, fitWalk: fitWalk, parseBuffGroup: parseBuffGroup, formationsMerged: formationsMerged, formationCard: formationCard, techModel: techModel, armyMastery: armyMastery, talentModel: talentModel, treeGrid: treeGrid, decodeTalent: decodeTalent, fbuffName: fbuffName, fbuffVal: fbuffVal
 };
 root.ArmoryBaseLogic = Logic;
 if (typeof module !== 'undefined' && module.exports) module.exports = Logic;
@@ -545,6 +560,11 @@ var CSS =
   '.bse-sr{display:flex;align-items:center;gap:8px;justify-content:space-between}.bse-sn{font-size:var(--fs-15);font-weight:600}.bse-comp{display:flex;flex-wrap:wrap;gap:4px}.bse-comp .ico,.bse-comp .fb{width:32px;height:32px}.bse-comp .gone{opacity:.35}' +
   '.bse-ft{display:grid;grid-template-columns:1fr;gap:12px}.bse-fc .bse-ch .ico,.bse-fc .bse-ch .fb{width:64px;height:80px}.bse-spec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:8px}.bse-th{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;margin-bottom:8px}' +
   '.bse-sl{min-height:44px;border:1px solid var(--border);border-radius:var(--r-chip);display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:0 8px;background:var(--bg);font-size:var(--fs-12);color:var(--muted)}.bse-sl b{font-size:var(--fs-17);color:var(--text)}' +
+  '.bse-tree{position:relative;max-width:560px;margin:12px auto 0}.bse-trl{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none}.bse-trl path{fill:none;stroke:var(--border);stroke-width:1.5;stroke-dasharray:4 3}.bse-trl path.on{stroke:var(--muted);stroke-dasharray:none;stroke-width:2}' +
+  '.bse-trw{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));height:' + TR_TILE + 'px;margin-bottom:' + TR_GAP + 'px}.bse-trw:last-child{margin-bottom:0}' +
+  '.bse-tn{grid-row:1;margin:0 4px;min-width:0;height:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--card-hi);color:var(--text);text-align:center}' +
+  '.bse-tn .ico,.bse-tn .fb{width:40px;height:40px;flex:none}.bse-tnn{font-size:var(--fs-12);font-weight:600;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}.bse-tns{font-size:var(--fs-12);color:var(--muted);margin-top:auto}' +
+  '.bse-tn.off{background:var(--surface);border-style:dashed}.bse-tn.off .ico,.bse-tn.off .fb{filter:grayscale(1);opacity:.5}.bse-tn.off .bse-tnn{font-weight:400}' +
       '.bse-tl{margin:0;padding:0;list-style:none}.bse-tl > li{display:flex;align-items:center;gap:12px;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule)}.bse-tl > li:first-child{border-top:0}.bse-tl .ico,.bse-tl .fb{width:40px;height:40px}' +
   '.bse-tt{flex:1;min-width:0}.bse-tv{white-space:nowrap;font-size:var(--fs-13);color:var(--muted);text-align:right}' +
   '.bse-line{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:var(--fs-14);color:var(--muted)}.bse-line span b{color:var(--text)}' +
@@ -788,6 +808,14 @@ function itemSheet(arg) {
   if (alt.length) o += '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">Same buffs, other look</h3><p class="t13 muted" style="margin:4px 0 8px">Only one of these can be placed at a time. Owning one counts as owning them all.</p><div class="bse-comp">' + alt.map(function (a) { return icon('decor-icons/' + Logic.iconFile(a.g, a.n), a.owned ? '' : 'gone', a.n.charAt(0), a.n); }).join('') + '</div><ul class="bse-bf" style="margin-top:8px">' + alt.map(function (a) { return '<li><span translate="no">' + esc(noHy(a.n)) + '</span><span>' + (a.owned ? 'Owned' : 'Not owned') + '</span></li>'; }).join('') + '</ul></section>';
   return [x.n, o, true];
 }
+function talSheet(arg) {
+  var f = supp().formation, tm = REF && f && !priv().formation ? Logic.talentModel(REF, f) : null, n = null;
+  if (tm) ['left', 'right'].forEach(function (k) { tm.sides[k].forEach(function (x) { if (String(x.id) === String(arg)) n = x; }); });
+  if (!n) return null;
+  var st = n.sw ? (n.lv ? 'Chosen' : 'Not chosen') : n.lv ? 'Lv.' + n.lv + ' of ' + n.max : 'Not trained';
+  var eff = n.lv > 0 ? (n.val ? n.buff + ' ' + n.val : n.desc) : n.desc;
+  return [n.name, '<p class="t13 muted">' + nd(st) + '</p>' + (eff ? '<p style="margin-top:8px">' + nd(eff) + '</p>' : '') + (n.lv === 0 && n.needs ? '<p class="t13 muted" style="margin-top:8px">Needs <span translate="no">' + esc(n.needs) + '</span> first.</p>' : ''), true];
+}
 function setSheet(arg) {
   var L = dl(); if (!L || !S.vm) return null;
   var dm = decorData(), sm = Logic.setsModel(L, S.res.merged, dm.placed, dm.om), s = sm.done.concat(sm.left).filter(function (z) { return String(z.id) === String(arg); })[0];
@@ -935,16 +963,41 @@ function techHtml(techs) {
     return '<li><span class="bse-tt"><span style="display:block;font-weight:600">' + esc(t.name) + '</span>' + (t.lv === 0 ? '<span class="t13 muted">Not researched yet.</span>' : buffList(t.chips, 6)) + '</span><span class="bse-tv">' + nd('Lv.' + t.lv + ' of ' + t.max) + '</span></li>';
   }).join('') + '</ul></section>';
 }
-function talentHtml(tm) {
-  function row(n) {
-    var line = n.lv > 0 ? (n.val ? n.buff + ' ' + n.val : n.desc) : (n.needs ? 'Needs ' + n.needs : n.desc);
-    return '<li>' + (n.icon ? icon('formation-icons/image_professionTalent_' + n.icon + '.png', '', n.name.charAt(0), n.name) : '<span class="ico fb" translate="no">' + esc(n.name.charAt(0)) + '</span>') + '<span class="bse-tt"><span style="display:block;font-weight:600" translate="no">' + esc(n.name) + '</span><span class="t13 muted">' + nd(line) + '</span></span><span class="bse-tv">' + nd(n.sw ? (n.lv ? 'Chosen' : 'Not chosen') : n.lv ? 'Lv.' + n.lv + ' of ' + n.max : 'Not trained') + '</span></li>';
+/* the tree itself: one row per tier (the root first), up to three talents a row, elbow lines from each talent to the ones it needs.
+   Trained talents are solid and show their level; the rest are dashed, greyed art, and say "Not trained". Lines between two trained talents are solid. */
+var TR_TILE = 104, TR_GAP = 20, TR_PITCH = TR_TILE + TR_GAP;
+function treeLines(list, rows) {
+  var by = {}, H = rows * TR_PITCH - TR_GAP, out = '';
+  list.forEach(function (n) { by[n.id] = n; });
+  list.forEach(function (n) {
+    n.parents.forEach(function (pid) {
+      var pn = by[pid]; if (!pn || pn.row >= n.row) return;
+      var x1 = pn.col * 100 + 50, y1 = pn.row * TR_PITCH + TR_TILE, x2 = n.col * 100 + 50, y2 = n.row * TR_PITCH, ym = y2 - TR_GAP / 2, on = pn.lv > 0 && n.lv > 0;
+      out += '<path class="' + (on ? 'on' : '') + '" d="M' + x1 + ' ' + y1 + 'V' + ym + 'H' + x2 + 'V' + y2 + '" vector-effect="non-scaling-stroke"/>';
+    });
+  });
+  return '<svg class="bse-trl" viewBox="0 0 300 ' + H + '" preserveAspectRatio="none" aria-hidden="true" focusable="false">' + out + '</svg>';
+}
+function treeHtml(list) {
+  var rows = 0, byRow = {};
+  list.forEach(function (n) { rows = Math.max(rows, n.row + 1); (byRow[n.row] = byRow[n.row] || []).push(n); });
+  var body = '';
+  for (var r = 0; r < rows; r++) {
+    body += '<div class="bse-trw" role="list">' + (byRow[r] || []).map(function (n) {
+      var st = n.sw ? (n.lv ? 'Chosen' : 'Not chosen') : n.lv ? 'Lv.' + n.lv + ' of ' + n.max : 'Not trained';
+      return '<button class="bse-tn' + (n.lv > 0 ? '' : ' off') + '" type="button" role="listitem" style="grid-column:' + (n.col + 1) + '" data-bsetal="' + n.id + '">' +
+        (n.icon ? icon('formation-icons/image_professionTalent_' + n.icon + '.png', '', n.name.charAt(0), '') : '<span class="ico fb" translate="no">' + esc(n.name.charAt(0)) + '</span>') +
+        '<span class="bse-tnn" translate="no">' + esc(n.name) + '</span><span class="bse-tns">' + nd(st) + '</span></button>';
+    }).join('') + '</div>';
   }
+  return '<div class="bse-tree">' + treeLines(list, rows) + body + '</div>';
+}
+function talentHtml(tm) {
   function side(key, title) {
     var list = tm.sides[key]; if (!list.length) return '';
-    var k = 'tal' + key, isOpen = open[k] != null ? open[k] : false, tr = list.filter(function (n) { return n.lv > 0; }), un = list.filter(function (n) { return !(n.lv > 0); });
+    var k = 'tal' + key, isOpen = open[k] != null ? open[k] : false, tr = list.filter(function (n) { return n.lv > 0; });
     return '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="' + k + '" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">' + esc(title) + '</span><span class="bse-hm">' + nd(tr.length + ' of ' + list.length + ' talents trained') + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
-      (isOpen ? '<div class="bse-body">' + (tr.length ? '<h3 class="bse-sub">' + nd('Trained (' + tr.length + ')') + '</h3><ul class="bse-tl two">' + tr.map(row).join('') + '</ul>' : '') + (un.length ? '<h3 class="bse-sub">' + nd('Not trained (' + un.length + ')') + '</h3><ul class="bse-tl two">' + un.map(row).join('') + '</ul>' : '') + '</div>' : '') + '</section>';
+      (isOpen ? '<div class="bse-body"><p class="t13 muted">Solid talents are trained. Dashed ones are not. A line joins a talent to the one it needs. Tap a talent for its effect.</p>' + treeHtml(list) + '</div>' : '') + '</section>';
   }
   var facts = [['Talents trained', tm.trained + ' of ' + tm.total], ['At top level', String(tm.maxed)], tm.power ? ['Talent power', fmtInt(tm.power) + (tm.maxPower ? ' of ' + fmtInt(tm.maxPower) : '')] : null, tm.held != null ? ['Formation 101 manuals held', fmtInt(tm.held)] : null, tm.spent ? ['Manuals spent on the tree', fmtInt(tm.spent)] : null].filter(Boolean);
   return '<section class="card"><div class="bse-th"><h2 class="sub">Talent tree</h2><a class="tb link" href="' + esc(classicUrl('formation')) + '">' + ic('ext', 'sm') + '<span>Plan talent changes on the classic page</span></a></div><dl class="bse-tot">' + facts.map(function (f) { return '<div><dt>' + nd(f[0]) + '</dt><dd translate="no">' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl></section>' + side('left', 'Shark and Scorpion talents') + side('right', 'Eagle talents');
@@ -973,6 +1026,7 @@ function sheet(kind, arg) {
   try {
     if (kind === 'decor') return itemSheet(arg);
     if (kind === 'bseset') return setSheet(arg);
+    if (kind === 'bsetal') return talSheet(arg);
     if (kind === 'bsetotals') return totalsSheet();
     if (kind === 'bsedfilter') return dSheet();
     if (kind === 'bsesfilter') return kSheet();
@@ -1013,6 +1067,7 @@ function wire() {
     if (ds.bsemore) { var m = ds.bsemore; if (m === 'skins') skinN += STEP; else if (m === 'bd') bdN += STEP; else if (m === 'skinLeft') bump(notN, 'skins', PAGE); else if (m === 'bdLeft') bump(notN, 'bd', PAGE); else bump(pageN, m, PAGE); reflow(m); return; }
     if (ds.bseitem) { H.openSheet('decor', ds.bseitem); return; }
     if (ds.bseset) { H.openSheet('bseset', ds.bseset); return; }
+    if (ds.bsetal) { H.openSheet('bsetal', ds.bsetal); return; }
     if (ds.bseskin) { H.openSheet('skin', ds.bseskin); return; }
     if (ds.bseskill) { e.stopPropagation(); H.openSheet('skill', ds.bseskill); return; }
     if ('bsespend' in ds) { spend.open = !spend.open; var sec = $('#bseSpend'); if (sec) sec.outerHTML = spendHtml(); if (spend.open) loadSpend(); return; }

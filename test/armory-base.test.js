@@ -466,3 +466,15 @@ test('owned, not placed: the source is the bag or the report, and a Universal-sh
   assert.equal(bagged.src, 'bag'); assert.equal(rep.src, 'report');
   assert.ok(bagged.nx && bagged.nx.raw > 0 && bagged.nx.to > lv, 'a bag decoration that upgrades with Universal shards says what the next level costs');
 });
+
+test('talent tree grid: one row per tier from the root, three lanes, every parent in an earlier row and on the same side', () => {
+  const tm = L.talentModel(REF, { talents: [1001006] });
+  ['left', 'right'].forEach((k) => {
+    const list = tm.sides[k], by = {}; list.forEach((n) => { by[n.id] = n; });
+    assert.ok(list.every((n) => n.row >= 0 && n.col >= 0 && n.col <= 2), k + ' grid');
+    list.forEach((n) => n.parents.forEach((p) => assert.ok(by[p] && by[p].row < n.row, n.name + ' parent row')));
+    const seen = {}; list.forEach((n) => { const key = n.row + ':' + n.col; assert.ok(!seen[key], 'two talents on one tile ' + key); seen[key] = 1; });
+  });
+  assert.equal(tm.sides.left.find((n) => n.id === 1001000).row, 0);
+  assert.equal(tm.sides.left.find((n) => n.id === 1007000).col, 1);
+});
