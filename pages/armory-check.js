@@ -475,7 +475,7 @@ var EXPECTED = [
     var aBad = targets().bad.filter(function (b) { return /awk|data-awk/.test(b); });
     log(aBad.length === 0, 'Awakening: the block and the card header are 40 px or larger to tap', aBad.join(' | ') || 'none');
     var aNx = $$('.awk-nx', aSl).map(function (x) { return x.textContent; }), aStones = aA.stones;
-    log(aNx.every(function (t) { return /^(Unlocks at Awakening Lv\.\d+ \(\d+ levels to go\)|Level not in game data yet|Next Lv\.\d+: up to [\d,]+ stones)$/.test(t); }) && !aNx.some(function (t) { return /in bag/.test(t); }), 'Awakening: the next-level line is a cost, or why it is locked (the bag count is in the block header once, a maxed skill has no line)', aNx.join(' | '));
+    log(aNx.every(function (t) { return /^(Unlocks at Awakening Lv\.\d+ \(\d+ levels to go\)|Level not in game data yet|Next Lv\.\d+: up to [\d,]+ stones(Next gain: [^{}\[\]]*\d[^{}\[\]]*)?)$/.test(t); }) && !aNx.some(function (t) { return /in bag/.test(t); }), 'Awakening: the next-level line is a cost (and what it adds), or why it is locked (the bag count is in the block header once, a maxed skill has no line)', aNx.join(' | '));
     aRow.click();
   } else log(null, 'Awakening: no awakened live hero with skill data to open', aIds.length + ' awakened');
   var aHd = $('#v-heroes [data-pane="roster"] .awk-hd');
