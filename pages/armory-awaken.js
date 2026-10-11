@@ -62,29 +62,41 @@ function levels(byId, ids) { var t = 0; ids.forEach(function (id) { var a = byId
 
 /* ctx: { byId (vm.awaken.byId), pw: {id: power}, marches: [{name, ids}], presets: [[ids]], reports: [[ids]], stones: n | null } */
 function pickSets(ctx) {
-  var A = ctx.byId, pw = ctx.pw || {};
-  function owned(id) { return has(pw, id) || !!(A[id] && (A[id].snap || A[id].aw > 0)); }
+  var A = ctx.byId;
   var srcs = [
     ['march', (ctx.marches || []).map(function (m, i) { return [cleanSet(m && m.ids), safeName(m && m.name, 'March ' + (i + 1))]; })],
     ['preset', (ctx.presets || []).map(function (ids, i) { return [cleanSet(ids), 'Preset ' + (i + 1)]; })],
     ['report', (ctx.reports || []).map(function (ids, i) { return [cleanSet(ids), 'Battle report march ' + (i + 1)]; })]
   ];
   function keyOf(ids) { return ids.slice().sort(function (a, b) { return a - b; }).join('-'); }
-  var sets = [];
-  for (var i = 0; i < srcs.length && !sets.length; i++) {
+  var lists = srcs.map(function (src) {
     var seen = {}, got = [];
-    srcs[i][1].forEach(function (p) {
+    src[1].forEach(function (p) {
       if (!p[0]) return;
       var key = keyOf(p[0]);
-      if (!seen[key]) { seen[key] = 1; got.push({ key: key, name: p[1], src: srcs[i][0], ids: p[0] }); }
+      if (!seen[key]) { seen[key] = 1; got.push({ key: key, name: p[1], src: src[0], ids: p[0] }); }
     });
-    if (got.some(function (s) { return s.ids.some(function (id) { return workable(A[id]); }); })) sets = got;
-  }
-  /* Core-march fallback: a hero who matters for awakening (awakened, or can be) and sits in none of the player's marches is assumed to be with
-     their core march (Shen Suyu with Sinope and Margaretha). Never for a hero already in a player march, never a copy of a player march.
-     Awakening planning only: the decor scope (armory-core.js decorScopeIds) reads the player's real marches and never these. */
+    return got;
+  });
+  var sets = [], first = -1;
+  for (var i = 0; i < lists.length && first < 0; i++) if (lists[i].some(function (s) { return s.ids.some(function (id) { return workable(A[id]); }); })) first = i;
+  if (first >= 0) sets = lists[first].slice();
+  /* A hero who matters for awakening (awakened, or can be) and is in none of the picked source's marches: look in the other sources in order
+     (saved marches, formation presets, battle-report marches) and take the first set that holds them, labelled by its real source. Only a hero
+     found in none of them is assumed to be with their core march (Shen Suyu with Sinope and Margaretha). A hero already in a set is never moved,
+     and no set is added twice. Awakening planning only: the decor scope (armory-core.js decorScopeIds) reads the player's real marches. */
   var inMarch = {}, have = {};
-  sets.forEach(function (s) { have[s.key] = 1; s.ids.forEach(function (id) { inMarch[id] = 1; }); });
+  function take(set) { have[set.key] = 1; set.ids.forEach(function (id) { inMarch[id] = 1; }); }
+  sets.forEach(take);
+  Object.keys(A).map(Number).sort(function (a, b) { return a - b; }).forEach(function (id) {
+    if (inMarch[id] || !workable(A[id])) return;
+    for (var k = 0; k < lists.length; k++) for (var n = 0; n < lists[k].length; n++) {
+      var c = lists[k][n];
+      if (c.ids.indexOf(id) >= 0 && !have[c.key]) { sets.push(c); take(c); return; }
+    }
+  });
+  /* A core march counts ALL THREE heroes for set power, even when the other two sit in another player march (the owner's rule: assume Shen Suyu is
+     with Margaretha and Sinope). Only an awakenable hero is planned once, under the player's own march that holds them (plan() home order). */
   CORE.forEach(function (c) {
     var key = keyOf(c.ids);
     if (have[key]) return;
