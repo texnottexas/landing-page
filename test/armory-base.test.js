@@ -273,6 +273,18 @@ test('the Overview decoration move counts the unit types the marches use: an Arm
     assert.ok(mv.text.indexOf(row.n) >= 0 && mv.meta.indexOf(String(row.cost)) === 0, 'marches ' + JSON.stringify(mg) + ': "' + mv.text + '" vs panel ' + tab + ' ' + row.n);
   }
 });
+test('an all-units buff counts once per marched unit type: for an Army + Air Force player Mega Bite (+1% All units Attack, 360 shards) beats Swing Bridge (+4% Army Attack, 864)', () => {
+  // Mega Bite 5604 and Swing Bridge 5612 at Lv.3 -> Lv.4: 100/360 = 0.28 per shard, 400/864 = 0.46 unweighted; the all-units buff counts twice for two unit types: 200/360 = 0.56
+  const { core, merged } = placedFor([[5604, 3], [5612, 3]]), inv = bag(100000);
+  const text = (mg) => dMove(vmOf(core, merged, inv, mg)).text;
+  assert.match(text([]), /^Upgrade Mega Bite/, 'no marches: Swing Bridge (Army Attack) does not count at all');
+  assert.match(text([{ heroIds: [101] }]), /^Upgrade Swing Bridge to Lv\.4: \+4% Army Attack/, 'one unit type: the all-units buff counts once, 0.28 against 0.46');
+  assert.match(text([{ heroIds: [101, 301] }]), /^Upgrade Mega Bite to Lv\.4: \+1% All units Attack/, 'two unit types: 0.56 against 0.46, and the text still prints the buff\'s own +1%');
+  const vm = vmOf(core, merged, inv, [{ heroIds: [101, 301] }]), m = L.spendModel(core, inv, merged, { levels: LEVELS, index: INDEX, mutex: MUTEX }, null, vm.movesInput.decor.branches);
+  assert.deepEqual(m.byStatMine.attack.map((r) => r.n).slice(0, 2), ['Mega Bite', 'Swing Bridge'], 'the panel ranks by the same weights');
+  assert.equal(m.byStatMine.attack[0].gain[0].v, '+1.0%', 'the printed gain is the buff\'s own, not the weighted one');
+  assert.deepEqual(core.decorScopeIds('930100', ['Army', 'Air Force']).map((x) => x[2]), [2, 1, 1, 1, 1]); assert.deepEqual(core.decorScopeIds('960012', ['Army']), [['960012', null, 1]]);
+});
 test('every-unit-type view is the classic advisor list: it can rank a decoration the Overview move does not count', () => {
   // Sandcastle Toolkit raises Army HP (930001), not All units HP (930000)
   const { core, merged } = placedFor([[5544, 5], [4200, 2], [4290, 2]]), inv = bag(40), vm = vmOf(core, merged, inv);

@@ -146,7 +146,7 @@ test('HT summary: count and chips match the Loadouts header; the Heavy Mothershi
   assert.ok(vm.ht.chips.every((c) => c.mecha !== 1008), 'Mothership chips are not in the HT chip totals');
 });
 
-test('decor totals: each placed piece counts its OWN base buff scaled to its level; sets, halos and the 93011xx family are never added', () => {
+test('decor totals: each placed piece counts its OWN base buff scaled to its level; sets and halos are never added; the second-system all-units ids (9301160 / 9301170 and the 93011xx pair) count as All units Attack / HP', () => {
   const core = newCore();
   // Christmas tree (group 4200): own buff All units Attack 350 bp at its extracted level 4 -> value / 4 * level
   const g = 4200, ext = LOOKUPS.DECOR_EXTRACTED_LVL[String(g)];
@@ -162,13 +162,14 @@ test('decor totals: each placed piece counts its OWN base buff scaled to its lev
   assert.equal(vm.decor.sets, 2, 'sets are counted, never added to the buff totals');
   assert.deepStrictEqual([vm.decor.totals.march, vm.decor.totals.hp, vm.decor.totals.dmgTaken, vm.decor.totals.dmgInc], [0, 0, 0, 0]);
   assert.deepStrictEqual(vm.decor.placed.map((d) => [d.g, d.lv, d.count]), [[4200, 3, 3]], 'one card per group at its highest placed level');
-  // March Size is a flat number, not a percent; a conditional-family buff (id 93011701, Thanksgiving Turkey 4180) is not in any total
+  // March Size is a flat number, not a percent; Thanksgiving Turkey 4180 carries id 93011701, which the battle report's decoration trace counts as All units HP
   const marchGroup = Object.keys(LOOKUPS.DECOR_DATA).find((k) => LOOKUPS.DECOR_DATA[k].b.length === 1 && LOOKUPS.DECOR_DATA[k].b[0].i === 960012 && LOOKUPS.DECOR_GROUP_BASE[k] && LOOKUPS.DECOR_EXTRACTED_LVL[k]);
   const mg = Number(marchGroup), mext = LOOKUPS.DECOR_EXTRACTED_LVL[marchGroup], mv = LOOKUPS.DECOR_DATA[marchGroup].b[0].v;
   merged.decorations = { ids: [decorId(core, mg, 2), decorId(core, 4180, 3)], suit: [] };
   const vm2 = build(merged, null, core);
   assert.equal(vm2.decor.totals.march, Math.round(mv / mext * 2));
-  assert.equal(vm2.decor.totals.atk, 0, 'the conditional 93011701 buff is not All units Attack');
+  assert.equal(vm2.decor.totals.atk, 0, '93011701 is HP, not Attack');
+  assert.ok(vm2.decor.totals.hp > 0, '93011701 counts as All units HP');
   assert.equal(vm2.summaries.base.march, vm2.decor.totals.march);
 });
 

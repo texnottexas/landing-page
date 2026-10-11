@@ -3,7 +3,7 @@
  * Same-origin script, no CSP change. Everything that comes from a table, the worker or a supplement is coerced to a number or goes
  * through esc / nd / nm. The data rules sit in ArmoryBaseLogic (no DOM, node-testable); ArmoryBase(H) is the view.
  * The big skin / base decor / halo tables live in tw-game-data-base.js (window.TWGameDataBase), loaded the first time a segment
- * that needs them opens; Decor alone never loads it. data/decoration-mutual-exclusive.json (Spend panel) and data/formation-v2.json
+ * that needs them opens (Decor lists its decorations at once and fills the strip when the table arrives). data/decoration-mutual-exclusive.json (Spend panel) and data/formation-v2.json
  * (Formation) are fetched when their part opens.
  */
 (function (root) {
@@ -316,10 +316,10 @@ function spendModel(core, inv, merged, data, statIds, branches) {
   }
   function bars(list) { var max = 0; list.forEach(function (r) { if (r.roi > max) max = r.roi; }); list.forEach(function (r) { r.bar = max > 0 && r.roi > 0 ? Math.min(100, Math.max(8, Math.round(r.roi / max * 100))) : 0; }); return list; }
   function scoped(rows, main, br) {
-    var counted = {}; core.decorScopeIds(main, br).forEach(function (x) { counted[x[0]] = 1; });
+    var counted = {}; core.decorScopeIds(main, br).forEach(function (x) { counted[x[0]] = x[2]; });
     return bars(rows.map(function (r) {
       var m = arr(r.buffRows).filter(function (b) { return counted[String(b.id)]; }); if (!m.length) return null;
-      return plain(r, m, m.reduce(function (a, b) { return a + b.rawDelta; }, 0) / Math.max(r.rawShardCost, 1));
+      return plain(r, m, m.reduce(function (a, b) { return a + b.rawDelta * counted[String(b.id)]; }, 0) / Math.max(r.rawShardCost, 1));
     }).filter(Boolean).sort(function (a, b) { return (b.roi - a.roi) || (a.cost - b.cost) || (a.n < b.n ? -1 : a.n > b.n ? 1 : 0); }));
   }
   ids.forEach(function (s) {
@@ -937,10 +937,12 @@ function render(r) {
     var seg = r && SEGS.some(function (s) { return s[0] === r.seg; }) ? r.seg : 'decor';
     cur = { seg: seg, q: (r && r.q) || {} };
     if (!S.vm || !S.res) return;
+    if (DMFor !== S.vm) { spend.model = null; spend.loading = false; spend.err = false; DM = null; DMFor = null; } /* the game data arrived (a second pass): rebuild from it */
     if (cur.q.item && seg === 'decor') { /* a link from Next moves: the section that holds the item opens, the item sheet follows */ var dm = dl() && decorData(), it = dm && dm.placed.filter(function (p) { return p.n === cur.q.item; })[0]; if (it) { open['c' + it.cat] = true; } }
     paint(); wire();
     if (seg === 'decor' || !T) tablesFor(seg);
     if (seg === 'formation' && !REF) loadRef(function () { var f = $('#v-base [data-pane="formation"]'); if (f && cur.seg === 'formation') f.innerHTML = formationPane(); });
+    if (spend.open && !spend.model && spendOwner()) loadSpend();
     if (seg === 'decor' && cur.q.spend) { spend.open = true; var sec = $('#bseSpend'); if (sec) sec.outerHTML = spendHtml(); loadSpend(); }
   } catch (e) { fail(e); }
 }

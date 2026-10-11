@@ -347,6 +347,7 @@ function renderAll() {
   if (M) M.renderSections();
   if (HT.m) { try { HT.m.render(S.cur); } catch (e) { console.error(e); } }
   if (BT.m) { try { BT.m.render(S.cur); } catch (e) { console.error(e); } }
+  if (BS.m) { try { BS.m.render(S.cur); } catch (e) { console.error(e); } }
   awkSync();
   watchName();
 }
@@ -638,7 +639,7 @@ document.addEventListener('keydown', function (e) {
 window.addEventListener('hashchange', function () { if (!shim()) applyRoute(false); });
 
 H = { awSkLine: awSkLine, portrait: portrait, awPor: awPor, awLevel: awLevel, awkSync: awkSync, awkOpenHero: awkOpenHero, setHeroOpen: setHeroOpen, renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
-window.__arm = { S: S, d: d, core: core, go: go, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
+window.__arm = { S: S, d: d, core: core, go: go, run: run, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
 boot();
 if (/[?&]check=1/.test(location.search)) { var cs = document.createElement('script'); cs.src = 'armory-check.js'; document.body.appendChild(cs); }
 })();

@@ -6,7 +6,7 @@
  *
  * Numbers are labelled with their source word (fable-redesign 2.4): "in battle reports", "in roster", "placed",
  * "in bag", "deployed", "collected", "equipped". Decor buff totals count each placed decoration's OWN base buff
- * only (never set bonuses, halos, or the 93011xx conditional family), in the game's own words.
+ * only (never set bonuses or halos), in the game's own words.
  */
 (function (window) {
   var isNode = typeof module === 'object' && module.exports;
@@ -18,7 +18,10 @@
   var STALE_DAYS = 30;
   var GEAR_MAX = 6000; // 400 refine + 600 rune per slot, 6 slots
   // Buff ids the decor totals are made of, in the game's own words (ids not listed are never totalled).
-  var TOTAL_IDS = { '960012': 'march', '930100': 'atk', '930000': 'hp', '980204': 'dmgTaken', '1001001': 'dmgInc' };
+  var TOTAL_IDS = { '960012': 'march', '930100': 'atk', '9301160': 'atk', '93011601': 'atk', '930000': 'hp', '9301170': 'hp', '93011701': 'hp', '980204': 'dmgTaken', '1001001': 'dmgInc' };
+  // 9301160 / 93011601 / 9301170 / 93011701 are the all-units Attack and HP buffs of the game's second buff system. The battle report's own buff trace
+  // (source 7, Decoration) attributes them to the decorations: summed per placed decoration they are within 3-5% of the trace (930100 and 930000 alone
+  // are off by 60%), so they belong in the total (checked on 4 reports, see docs v2-phase3-base-parity).
 
   // one portrait URL rule for every hero (v1 heroBaseIconUrl): a few starter heroes use another icon id
   function heroIcon(id) { return 'https://h5.topwargame.com/DynRes/images/headpic/hero_icon' + (G.HERO_ICON_OVERRIDE[id] || id) + '_global.png?t=22.jpg'; }

@@ -1935,10 +1935,13 @@
     '930000': { 'Army': [['930001', 'Army HP'], ['9301171', 'Army HP']], 'Navy': [['930002', 'Navy HP'], ['9301172', 'Navy HP']], 'Air Force': [['930003', 'Air Force HP'], ['9301173', 'Air Force HP']] },
     '1001001': { 'Army': [['29801011', 'Army DMG increase']], 'Navy': [['29801021', 'Navy DMG increase']], 'Air Force': [] }
   };
-  /* the ids a stat counts for the branches the player marches with: [[id, label|null]] (null = the stat's own all-units label). No branches: all units only. */
+  /* the ids a stat counts for the branches the player marches with: [[id, label|null, weight]] (label null = the stat's own all-units label).
+     An all-units buff helps every unit type the player marches, so it counts once per marched type (weight = the number of types); a unit-type buff
+     counts once (weight 1). A stat with no unit-type buffs (March Size) always weighs 1. No marches: the all-units buff alone, weight 1. */
   function decorScopeIds(mainId, branches) {
-    var out = [[String(mainId), null]], t = DECOR_UNIT_IDS[String(mainId)];
-    (branches || []).forEach(function (b) { if (t && t[b]) t[b].forEach(function (x) { out.push([x[0], x[1]]); }); });
+    var t = DECOR_UNIT_IDS[String(mainId)], br = (branches || []).filter(function (b) { return t && t[b]; });
+    var out = [[String(mainId), null, t && br.length ? br.length : 1]];
+    br.forEach(function (b) { t[b].forEach(function (x) { out.push([x[0], x[1], 1]); }); });
     return out;
   }
   /* HT chip tables (Mecha_chip, same numbers as the live HT Chips page): value = base + per * level. */
@@ -2031,12 +2034,12 @@
       var rows = [], seen = {};
       D.decor.placed.forEach(function (d) {
         if (!d.nx || seen[d.g]) return;
-        var delta = 0, top = 0, label = null;
-        decorScopeIds(st[0], D.decor.branches).forEach(function (x) { var v = d.nx.dl[x[0]] || 0; delta += v; if (v > top) { top = v; label = x[1]; } });
+        var delta = 0, top = 0, topRaw = 0, label = null;
+        decorScopeIds(st[0], D.decor.branches).forEach(function (x) { var v = d.nx.dl[x[0]] || 0, w = v * x[2]; delta += w; if (w > top) { top = w; topRaw = v; label = x[1]; } });
         if (delta <= 0) return;
         seen[d.g] = 1;
         var net = Math.max(0, d.nx.raw - d.nx.credit);
-        rows.push({ d: d, delta: delta, raw: d.nx.raw, net: net, roi: delta / Math.max(d.nx.raw, 1), stat: st, label: label || st[1] });
+        rows.push({ d: d, delta: delta, shown: topRaw, raw: d.nx.raw, net: net, roi: delta / Math.max(d.nx.raw, 1), stat: st, label: label || st[1] });
       });
       rows.sort(function (a, b) { return (b.roi - a.roi) || (a.net - b.net) || (a.d.n < b.d.n ? -1 : 1); });
       rows.forEach(function (r) { r.afford = have >= r.net; });
@@ -2047,7 +2050,7 @@
     });
     if (dChosen) {
       var r = dChosen.r;
-      var vtxt = r.stat[2] ? '+' + r.delta : '+' + (r.delta / 100) + '%';
+      var vtxt = r.stat[2] ? '+' + r.shown : '+' + (r.shown / 100) + '%';
       cand.push({
         sig: 'd', cls: 2, gain: r.roi / dChosen.best, weight: 0, key: 'd' + r.d.n,
         parts: [{ s: 'Upgrade ' }, { s: r.d.n, n: 1 }, { s: ' to ' }, { s: 'Lv.' + r.d.nx.to, n: 1 }, { s: ': ' }, { s: vtxt, n: 1 }, { s: ' ' + r.label }],
