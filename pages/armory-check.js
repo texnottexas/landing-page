@@ -66,9 +66,10 @@ function cyrb53(str) {
    merge: a rune at star 0 of 2 gains 1/2 x weight, one of 0 of 6 only 1/6, so the Carna slot 1 Tactical Awareness (0 of 2, costs 1 piece from the
           schedule [1,2], bag 4) and the Carna slot 2 Stealth Hologram (0 of 2, costs 1, bag 1) tie at 0.5; the key (slot 1 before slot 2) picks slot 1.
           Heid's Magnetic Field (0.4) is behind both. "Uses 1 \u00B7 4 in bag".
-   decor: March Size needs at least 1,440 shards on every placed item that can raise it (the bag has 507), so the next stat is All units Attack;
-          Coastal Defence Lv.2 to 3 is +150 (1.5%) for 180 raw, 120 credited from spare pieces, 60 net. It ties Celebratory Firework (+200 for 240 raw) on ROI
-          (150/180 = 200/240) and wins on cost (60 against 80). Decor is class 2, so it follows the merge.
+   decor: March Size needs at least 1,440 shards on every placed item that can raise it (the bag has 507), so the next stat is All units Attack. Its all-units
+          buffs are ids 930100 and the second system's 9301160 / 93011601 (no marches in this fixture, so weight 1). Meowjesty Lv.2 to 3 raises 9301160 by +300 (3%)
+          for 240 raw and no credit: 300/240 = 1.25 per shard, ahead of Coastal Defence (+150 for 180 raw, 120 credited, 60 net: 0.83) and Celebratory Firework
+          (+200 for 240 raw: 0.83). It costs 240 of the 507. Decor is class 2, so it follows the merge.
    refine: Carna is the strongest hero, so every refine pick is hers (a weaker hero's piece never beats hers). All six of her pieces have stats under 70%.
           The piece whose lowest stat is closest to 70% goes first: Portable GPS (slot 5, stats 54/52, lowest 52) and Power Boots (slot 6, one stat 52) tie
           at 52, the Optical Add-on is 30, the Raysor Headset 40, the Pistol 28, the Backarmor 32; the key (slot 5 before slot 6) puts the Portable GPS first.
@@ -81,7 +82,7 @@ function cyrb53(str) {
 var REX = 'c3c6f3200a4ec1fb';
 var EXPECTED = [
   ['Uses what you have', 'Merge Tactical Awareness on Carna slot 1 to 1 star', 'Uses 1 \u00B7 4 in bag'],
-  ['Uses what you have', 'Upgrade Coastal Defence to Lv.3: +1.5% All units Attack', '60 shards'],
+  ['Uses what you have', 'Upgrade Meowjesty to Lv.3: +3% All units Attack', '240 shards'],
   ['Costs resources', 'Refine Portable GPS on Carna', '2 stats under 70% (52-54%)']
 ];
 
@@ -156,7 +157,7 @@ var EXPECTED = [
     var base = core.nextMoves(S.vm.movesInput, { max: 3 }).picks.map(function (m) { return m.text; });
     var mut = JSON.parse(JSON.stringify(S.vm.movesInput)); mut.decor.shards = 0;
     var mt = core.nextMoves(mut, { max: 3 }).picks.map(function (m) { return m.text; });
-    log(mt.length > 0 && !mt.some(function (x) { return /Coastal Defence/.test(x); }) && mt.join('|') !== base.join('|'), 'mutation 1: with 0 shards the Coastal Defence move goes away', mt.join(' | '));
+    log(mt.length > 0 && !mt.some(function (x) { return /Meowjesty/.test(x); }) && mt.join('|') !== base.join('|'), 'mutation 1: with 0 shards the Meowjesty move goes away', mt.join(' | '));
     var m2 = JSON.parse(JSON.stringify(S.vm.movesInput));
     m2.heroes.forEach(function (h) { if (h.name === 'Carna') h.gear.forEach(function (g) { if (g.slot === 5) g.stats.forEach(function (x) { x.v = x.m; }); }); });
     var mt2 = core.nextMoves(m2, { max: 3 }).picks.map(function (x) { return x.text; });
