@@ -355,14 +355,14 @@ test('formationsMerged: the formation upload wins per formation and keeps report
 test('techModel: level of max, the buffs at the current level (buff_show, else the front row), nothing before level 1', () => {
   const t = L.techModel(REF, { 1001: { sciences: { 1: 3, 2: 0, 3: 30, 4: 21, 5: 24 } } });
   assert.deepEqual(t.map((x) => [x.name, x.lv, x.max]), [['Assault', 3, 15], ['Fortified Formation', 0, 15], ['Defense', 30, 30], ['Full Defense', 21, 60], ['Swept Wing Formation', 24, 55 >= 0 ? t[4].max : 0]]);
-  assert.deepEqual(t[0].chips, [{ n: 'Unit Attack', v: '+80%' }]); assert.equal(t[0].front, true);
+  assert.deepEqual(t[0].chips, [{ n: 'Attack', v: '+80%' }]); assert.equal(t[0].front, true);
   assert.deepEqual(t[1].chips, []); assert.equal(t[2].pct, 100); assert.equal(t[0].pct, 20);
   assert.equal(L.techModel(REF, {}).every((x) => x.lv === 0 && !x.seen), true);
 });
 test('parseBuffGroup and the formation buff names', () => {
   assert.deepEqual(L.parseBuffGroup('1=1000022,4000|1000023,500;2=1000022,4000'), { 1: [{ id: 1000022, value: 4000 }, { id: 1000023, value: 500 }], 2: [{ id: 1000022, value: 4000 }] });
   assert.deepEqual(L.parseBuffGroup(''), {}); assert.deepEqual(L.parseBuffGroup(null), {});
-  assert.equal(L.fbuffName(1000022), 'Unit Attack'); assert.equal(L.fbuffName(123), 'Other effect'); assert.equal(L.fbuffVal(1050), '+10.5%');
+  assert.equal(L.fbuffName(1000022), 'Attack'); assert.equal(L.fbuffName(123), 'Other effect'); assert.equal(L.fbuffVal(1050), '+10.5%');
 });
 test('armyMastery decodes the unit code out of the value; talentModel decodes levels, counts, power and splits the sides', () => {
   assert.deepEqual(L.armyMastery({ 101: 118, 201: 213, 301: 318 }), [{ type: 'Army', lv: 17 }, { type: 'Navy', lv: 12 }, { type: 'Air Force', lv: 17 }]);
@@ -381,6 +381,18 @@ test('armyMastery decodes the unit code out of the value; talentModel decodes le
 });
 
 // ---- safety ----
+test('formation and talents: the talent that gives Tier +1 / Spec +1 is named, talents run by tree depth with what an untrained one needs, bdSort puts the equipped base decoration first, ages and skill levels read plainly', () => {
+  const c = L.formationCard('1001', { id: 1001, lv: 50, quality: 9, formationQualityUp: 1, formationMasteryUp: 1, masterys: { 1: 5 } }, REF);
+  assert.deepEqual([c.tierTalent, c.specTalent], ['Evolved Shark', 'Shark Impact']); assert.equal(L.formationCard('1003', { id: 1003, masterys: {} }, REF).tierTalent, 'Eagle Evolution');
+  const tm = L.talentModel(REF, { talents: [1001006] }), left = tm.sides.left;
+  assert.equal(left[0].id, 1001000); assert.equal(left[0].depth, 0);
+  assert.ok(left.every((n, i) => i === 0 || n.depth >= left[i - 1].depth), 'ordered by depth');
+  const army = left.find((n) => n.id === 1002000); assert.equal(army.lv, 0); assert.equal(army.needs, '', 'its parent Full Rest is trained: nothing is needed');
+  const next = left.find((n) => n.id === 1003000); assert.ok(next.lv === 0 && typeof next.needs === 'string');
+  assert.deepEqual(L.bdSort([{ id: 1, name: 'B' }, { id: 2, name: 'A' }, { id: 3, name: 'C' }], 'equipped', 3).map((b) => b.id), [3, 2, 1]);
+  assert.equal(L.ageOld('2026-10-09T00:00:00Z', Date.parse('2026-10-11T12:00:00Z')), '2 days old'); assert.equal(L.ageOld(null), '');
+  assert.equal(L.skinRow(T, 1759000, 0).skill.indexOf('Lv. '), -1);
+});
 test('hostile names reach the model as plain strings only (the view escapes them; see armory-xss.test and the xss harness)', () => {
   const evil = '<img src=x onerror=alert(1)>';
   const t = { SKIN_SD: { 5: [evil, evil, [[evil, '+1%']], [[evil, '<b>']], evil, 0] }, SKIN_GROUP_LOOKUP: {}, SKIN_ALT_LOOKUP: {}, NEW_SKIN_IDS: {}, CITY_SKILL_DB: { 5: [evil, 0, evil, evil] }, SKILL_TYPES: {}, BASE_DECOR_DATA: { 6: { n: evil, i: evil, e: [[evil, 5]], o: [] } } };

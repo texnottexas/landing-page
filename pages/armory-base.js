@@ -68,6 +68,20 @@ function statKey(name) {
 function emptyTotals() { return { march: 0, atk: 0, hp: 0, dmgTaken: 0, dmgInc: 0 }; }
 function roundTotals(t) { Object.keys(t).forEach(function (k) { t[k] = k === 'march' ? Math.round(t[k]) : round1(t[k]); }); return t; }
 
+/* "4 months old" (ts: ISO string or ms); '' for nothing, the future or garbage */
+function ageOld(ts, now) {
+  if (!ts) return '';
+  var ms = (now == null ? Date.now() : now) - (typeof ts === 'string' ? new Date(ts) : new Date(+ts)).getTime();
+  if (isNaN(ms) || ms < 0) return '';
+  var sec = Math.floor(ms / 1000);
+  if (sec < 60) return 'just now';
+  function u(n, w) { return n + ' ' + w + (n === 1 ? '' : 's') + ' old'; }
+  var m = Math.floor(sec / 60); if (m < 60) return u(m, 'minute');
+  var h = Math.floor(m / 60); if (h < 24) return u(h, 'hour');
+  var d = Math.floor(h / 24); if (d < 30) return u(d, 'day');
+  var mo = Math.floor(d / 30); if (mo < 12) return u(mo, 'month');
+  return u(Math.floor(mo / 12), 'year');
+}
 /* ---- skins ---- */
 /* The player's skins in one shape, from either source: a battle report (effectIds / useIds / ownCastleEffects / useCastleEffects /
    ownHaloSkins / useHaloSkins) or the game-data upload (ownedSkins / activeSkin). The classic page reads the report shape only, so a
@@ -89,7 +103,7 @@ function skinRow(T, id, active) {
   return {
     id: id, name: ok && typeof sd[0] === 'string' && sd[0] ? sd[0] : 'Unknown skin', known: ok,
     icon: ok && typeof sd[1] === 'string' ? sd[1] : '', equip: ok ? fix(sd[2]) : [], ownB: ok ? fix(sd[3]) : [],
-    skill: ok && typeof sd[4] === 'string' ? sd[4] : '', power: ok ? num(sd[5]) : 0,
+    skill: ok && typeof sd[4] === 'string' ? sd[4].replace(/\bLv\. +(\d+)/g, 'Lv.$1') : '', power: ok ? num(sd[5]) : 0,
     active: id === active, isNew: !!own(T.NEW_SKIN_IDS, key), chain: own(T.SKIN_GROUP_LOOKUP, key) ? true : false, alt: own(T.SKIN_ALT_LOOKUP, key) ? true : false
   };
 }
@@ -149,8 +163,9 @@ function bdRow(T, id, table) {
   var fix = function (l) { return arr(l).map(function (b) { var nm = b && b[0]; return { n: statName(nm), v: baseVal(b && b[1], nm) }; }); };
   return { id: id, name: ok && typeof d.n === 'string' && d.n ? d.n : 'Unknown', known: !!ok, icon: ok && typeof d.i === 'string' ? d.i : '', equip: ok ? fix(d.e) : [], hold: ok ? fix(d.o) : [], buffs: ok ? fix(d.b) : [] };
 }
-function bdSort(list, mode) {
+function bdSort(list, mode, active) {
   return list.slice().sort(function (a, b) {
+    if (mode === 'equipped' && (a.id === active) !== (b.id === active)) return a.id === active ? -1 : 1;
     if (mode === 'newest') return b.id - a.id;
     if (mode === 'oldest') return a.id - b.id;
     var c = a.name < b.name ? -1 : a.name > b.name ? 1 : a.id - b.id;
@@ -390,7 +405,7 @@ var SLOT_DISPLAY = { 1: 1, 2: 2, 3: 3, 11: 4, 12: 5, 13: 6, 21: 7, 22: 8, 23: 9 
 var ARMY_LABELS = { '101': 'Army', '201': 'Navy', '301': 'Air Force' };
 var TECH_NAMES = { '3': 'Defense', '4': 'Full Defense', '5': 'Swept Wing Formation' };
 var FBUFF = {
-  1000021: 'Unit HP', 1000022: 'Unit Attack', 1000023: 'DMG increase', 1000024: 'Decreased DMG Taken', 990202: 'All units Defense', 990208: 'Defense (attacking buildings)', 990209: 'Defense (defending buildings)',
+  1000021: 'HP', 1000022: 'Attack', 1000023: 'DMG increase', 1000024: 'Decreased DMG Taken', 990202: 'All units Defense', 990208: 'Defense (attacking buildings)', 990209: 'Defense (defending buildings)',
   1001001: 'All units DMG increase', 1101040: 'All units Decreased DMG Taken', 9301160: 'All units Attack', 9301161: 'Army Attack', 9301162: 'Navy Attack', 9301163: 'Air Force Attack', 9301170: 'All units HP',
   9301201: 'Navy to Army DMG bonus', 9301202: 'Air Force to Navy DMG bonus', 9301203: 'Army to Air Force DMG bonus', 100017: 'Shark tier +1', 100018: 'Scorpion tier +1',
   100019: 'Shark specialization +1 (all slots)', 100020: 'Scorpion specialization +1 (all slots)', 100021: 'Shark deploys in an extra march', 100022: 'Scorpion deploys in an extra march', 100023: 'Eagle tier +1', 100024: 'Eagle specialization +1 (all slots)'
@@ -420,6 +435,8 @@ function formationCard(fid, f, ref) {
   var o = { id: fid, name: fm && typeof fm.name === 'string' ? fm.name.replace(/^Formation:\s*/, '') : 'Formation ' + fid, icon: fm && typeof fm.icon === 'string' ? fm.icon.replace(/^assets\//, '') : '', skill: sk && typeof sk.name === 'string' ? sk.name : '', seen: !!f };
   if (!f) return o;
   var m = f.masterys && typeof f.masterys === 'object' ? f.masterys : {}, up = !!f.formationMasteryUp, total = 0, boost = 0;
+  var tt = ref && ref.talent_tree, side = fid === '1003' ? 2000000 : 1000000, nmOf = function (g) { var n = tt && own(tt, String(g)); return n && typeof n.name === 'string' ? n.name : ''; };
+  o.tierTalent = nmOf(side + 7000); o.specTalent = nmOf(side + 14000);
   o.lv = num(f.lv); o.lvUp = !!f.formationLvUp; o.tier = num(f.quality); o.tierUp = !!f.formationQualityUp; o.specUp = up;
   o.slots = SLOT_ORDER.map(function (s) {
     var raw = m[s]; if (raw == null) return { n: SLOT_DISPLAY[s], lv: null, eff: null, plus: false };
@@ -456,23 +473,25 @@ function talentModel(ref, supp) {
   if (!ids || !ids.length) return null;
   var levels = {};
   ids.forEach(function (id) { var x = decodeTalent(Math.floor(num(id)), tree); if (x.g && x.level > 0) levels[x.g] = x.level; });
-  var sides = { left: [], right: [] }, power = 0, trained = 0, maxed = 0, maxPower = 0, spent = 0;
+  var sides = { left: [], right: [] }, power = 0, trained = 0, maxed = 0, maxPower = 0, spent = 0, depth = {};
+  function dep(k, seen) { k = String(k); if (depth[k] != null) return depth[k]; var n = tree[k]; if (!n || (seen && seen[k])) return 0; var ps = arr(n.parent_ids), d = 0; seen = seen || {}; seen[k] = 1; ps.forEach(function (pk) { d = Math.max(d, dep(pk, seen) + 1); }); return (depth[k] = d); }
   Object.keys(tree).forEach(function (k) {
     var n = tree[k]; if (!n || typeof n !== 'object') return;
     var lv = num(levels[k]), max = num(n.max_lv), row = Array.isArray(n.levels) ? n.levels[lv] : null;
     var top = Array.isArray(n.levels) ? n.levels[max] : null; if (top && typeof top.power === 'number') maxPower += top.power;
     if (lv > 0 && Array.isArray(n.levels)) for (var ci = 0; ci <= lv && ci < n.levels.length; ci++) spent += num(n.levels[ci] && n.levels[ci].cost);
     if (lv > 0) { trained++; if (lv >= max) maxed++; if (row && typeof row.power === 'number') power += row.power; }
-    var side = n.side === 'right' ? 'right' : 'left';
-    sides[side].push({ id: Number(k), name: typeof n.name === 'string' ? n.name : 'Talent', desc: typeof n.desc === 'string' ? n.desc : '', icon: typeof n.icon_name === 'string' ? n.icon_name : '', lv: lv, max: max, sw: !!n.is_switch,
+    var side = n.side === 'right' ? 'right' : 'left', needs = '';
+    if (lv === 0) arr(n.parent_ids).some(function (pk) { var pn = tree[String(pk)]; if (pn && !num(levels[pk])) { needs = typeof pn.name === 'string' ? pn.name : ''; return true; } return false; });
+    sides[side].push({ id: Number(k), name: typeof n.name === 'string' ? n.name : 'Talent', desc: typeof n.desc === 'string' ? n.desc : '', icon: typeof n.icon_name === 'string' ? n.icon_name : '', lv: lv, max: max, sw: !!n.is_switch, depth: dep(k), needs: needs,
       val: lv > 0 && row && !n.is_switch && num(row.effect_value) > 0 ? fbuffVal(row.effect_value) : '', buff: row && row.effect_id ? fbuffName(Number(row.effect_id)) : '' });
   });
-  ['left', 'right'].forEach(function (s) { sides[s].sort(function (a, b) { return a.id - b.id; }); });
+  ['left', 'right'].forEach(function (s) { sides[s].sort(function (a, b) { return (a.depth - b.depth) || (a.id - b.id); }); });
   return { sides: sides, total: Object.keys(tree).length, trained: trained, maxed: maxed, power: power, maxPower: maxPower, spent: spent, held: supp && supp.currencies ? num(supp.currencies['2800000']) : null };
 }
 
 var Logic = {
-  num: num, fmtInt: fmtInt, pctText: pctText, statName: statName, skinVal: skinVal, skinNum: skinNum, baseVal: baseVal, statKey: statKey, KEY_STATS: KEY_STATS,
+  ageOld: ageOld, num: num, fmtInt: fmtInt, pctText: pctText, statName: statName, skinVal: skinVal, skinNum: skinNum, baseVal: baseVal, statKey: statKey, KEY_STATS: KEY_STATS,
   skinState: skinState, skinRow: skinRow, skinList: skinList, skinSort: skinSort, skinFilter: skinFilter, skinNotOwned: skinNotOwned, skinChain: skinChain, citySkill: citySkill, skinFilterOptions: skinFilterOptions,
   bdRow: bdRow, bdSort: bdSort, bdNotOwned: bdNotOwned, skinTotals: skinTotals, haloTotals: haloTotals, addTotals: addTotals, baseDecorTotals: baseDecorTotals, stripRows: stripRows,
   dataFor: dataFor, buffRows: buffRows, placedModel: placedModel, ownedMap: ownedMap, alternates: alternates, notOwnedList: notOwnedList, decorSort: decorSort, decorFilter: decorFilter, sections: sections, setsModel: setsModel, iconFile: iconFile, statGroups: statGroups,
@@ -490,7 +509,7 @@ var PAGE = 24, STEP = 48, TOP = 5, OPEN_MAX = 12;
 var cur = { seg: 'decor', q: {} }, wired = false;
 var DF = { q: '', stat: '', up: false, sort: 'name' }, D = Object.assign({}, DF), open = {}, pageN = {};
 var SF = { q: '', buff: '', skill: '', sort: 'equipped' }, K = Object.assign({}, SF), skinN = PAGE, notN = {};
-var BF = { q: '', sort: 'name' }, B = Object.assign({}, BF), bdN = PAGE;
+var BF = { q: '', sort: 'equipped' }, B = Object.assign({}, BF), bdN = PAGE;
 var T = null, TFail = false, TQ = null, MUT = null, REF = null, REFFail = false, spend = { open: false, tab: 'march_size', all: false, units: 'mine', err: false };
 
 var CSS =
@@ -510,7 +529,7 @@ var CSS =
   '.bse-bf{margin:0;padding:0;list-style:none}.bse-bf li{display:flex;justify-content:space-between;font-size:var(--fs-13);color:var(--muted)}.bse-bf li > span:last-child{margin-left:8px;color:var(--text);white-space:nowrap;font-weight:600}' +
   '.bse-bl{font-size:var(--fs-12);color:var(--muted);font-weight:700;margin-top:2px}' +
   '.bse-skin .ico,.bse-skin .fb{width:56px;height:56px}.bse-pills{display:flex;flex-wrap:wrap;gap:4px}' +
-  '.bse-sk{display:flex;align-items:center;gap:4px;font-size:var(--fs-13);color:var(--accent);font-weight:600;min-height:40px;text-align:left}' +
+  '.bse-sk{justify-content:flex-start;gap:6px;padding:0;min-height:40px;font-size:var(--fs-13)}.bse-dim{color:var(--muted)}.bse-dim .bse-bf li > span:last-child{color:var(--muted)}.bse-eq{margin:0}.bse-eqg{display:grid;grid-template-columns:1fr;gap:16px}.bse-big .ico,.bse-big .fb{width:96px;height:96px}.bse-eh{border-top:1px solid var(--rule);padding-top:12px}@media (min-width:768px){.bse-eqg{grid-template-columns:repeat(2,minmax(0,1fr))}.bse-eh{border-top:0;padding-top:0}}' +
   '.bse-f{display:flex;flex-direction:column;gap:4px;font-size:var(--fs-12);color:var(--muted);min-width:0}.bse-f .sel,.bse-f .fld{min-width:0;width:100%}' +
   '.bse-fs{display:none}.bse-cb{min-height:40px;padding:0 14px;border:1px solid var(--border);border-radius:var(--r-chip);background:var(--surface);font-size:var(--fs-14);font-weight:600;color:var(--muted)}.bse-cb[aria-pressed="true"]{color:var(--text);background:var(--card-hi);border-color:var(--muted)}' +
   '.bse-tab{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}' +
@@ -521,12 +540,10 @@ var CSS =
   '.bse-dot{color:var(--muted)}.bse-ok{color:var(--text);font-weight:600;display:inline-flex;align-items:center;gap:6px}.bse-okd{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}.bse-rh{min-height:40px;width:100%;text-align:left;color:inherit}.bse-me{font-size:var(--fs-12);color:var(--muted)}' +
   '.bse-set{display:flex;flex-direction:column;gap:8px;width:100%;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule);text-align:left;color:inherit}.bse-set:first-child{border-top:0}' +
   '.bse-sr{display:flex;align-items:center;gap:8px;justify-content:space-between}.bse-sn{font-size:var(--fs-15);font-weight:600}.bse-comp{display:flex;flex-wrap:wrap;gap:4px}.bse-comp .ico,.bse-comp .fb{width:32px;height:32px}.bse-comp .gone{opacity:.35}' +
-  '.bse-ft{display:grid;grid-template-columns:1fr;gap:12px}.bse-fc .bse-ch .ico,.bse-fc .bse-ch .fb{width:64px;height:80px}.bse-spec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:8px}' +
-  '.bse-sl{aspect-ratio:1/1;border:1px solid var(--border);border-radius:var(--r-chip);display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);font-size:var(--fs-12);color:var(--muted)}.bse-sl b{font-size:var(--fs-17);color:var(--text)}' +
-  '.bse-sl.s5{border-color:var(--ok);color:var(--ok)}.bse-sl.s5 b{color:var(--ok)}.bse-sl.s4{border-color:var(--rule)}.bse-sl.s0{opacity:.6}' +
-  '.bse-tch{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.bse-tch > span{font-size:var(--fs-12);border:1px solid var(--border);border-radius:var(--r-chip);padding:2px 6px;background:var(--bg)}' +
-  '.bse-tl{margin:0;padding:0;list-style:none}.bse-tl li{display:flex;align-items:center;gap:12px;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule)}.bse-tl li:first-child{border-top:0}.bse-tl .ico,.bse-tl .fb{width:40px;height:40px}' +
-  '.bse-tl .off{opacity:.55}.bse-tt{flex:1;min-width:0}.bse-tv{white-space:nowrap;font-size:var(--fs-13);color:var(--muted);text-align:right}' +
+  '.bse-ft{display:grid;grid-template-columns:1fr;gap:12px}.bse-fc .bse-ch .ico,.bse-fc .bse-ch .fb{width:64px;height:80px}.bse-spec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:8px}.bse-th{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:4px 12px;margin-bottom:8px}' +
+  '.bse-sl{min-height:44px;border:1px solid var(--border);border-radius:var(--r-chip);display:flex;flex-direction:row;align-items:center;justify-content:space-between;padding:0 8px;background:var(--bg);font-size:var(--fs-12);color:var(--muted)}.bse-sl b{font-size:var(--fs-17);color:var(--text)}' +
+      '.bse-tl{margin:0;padding:0;list-style:none}.bse-tl li{display:flex;align-items:center;gap:12px;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule)}.bse-tl li:first-child{border-top:0}.bse-tl .ico,.bse-tl .fb{width:40px;height:40px}' +
+  '.bse-tt{flex:1;min-width:0}.bse-tv{white-space:nowrap;font-size:var(--fs-13);color:var(--muted);text-align:right}' +
   '.bse-line{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:var(--fs-14);color:var(--muted)}.bse-line span b{color:var(--text)}' +
   '@media (min-width:768px){.bse-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.bse-fbtn{display:none}.bse-fs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}.bse-ft{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
   '@media (min-width:1024px){.bse-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.bse-rk{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.bse-tl.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}.bse-tl.two li:nth-child(2){border-top:0}}' +
@@ -548,6 +565,7 @@ function priv() { return (S.res && S.res.privacy) || {}; }
 function dl() { return S.res && S.res.statics && S.res.statics.decorLookups; }
 function bump(map, k, base) { map[k] = (map[k] || base) + STEP; }
 
+function sourceFoot(src, ts) { var a = ts ? Logic.ageOld(ts) : ''; return '<p class="foot" style="margin-top:12px">' + nd('Source: ' + src + (a ? ', ' + a : '')) + '</p>'; }
 /* ---- the big tables ---- */
 function tables(cb) {
   if (T) return cb(T);
@@ -581,7 +599,7 @@ function stripHtml() {
     var parts = [['Decor', r.decor], ['Skins and halo', r.skin], ['Base decor', r.bdecor]].filter(function (x) { return x[1] !== '–'; }).map(function (x) { return x[0] + ' ' + x[1]; });
     return '<div><dt>' + esc(r.label) + '</dt><dd translate="no">' + esc(r.total) + '</dd><dd class="bse-src">' + nd(parts.join(' · ')) + '</dd></div>'; }).join('') + '</dl>';
   var meta = rows.filter(function (r) { return SHORT[r.key]; }).map(function (r) { return '<span class="bse-nw">' + esc(SHORT[r.key]) + ' <span translate="no">' + esc(r.total) + '</span></span>'; });
-  var note = '<p class="bse-note">' + esc('Sum of the figures on the cards. Collections are not included.') + ' <button class="info" type="button" data-open="bsetotals" aria-label="How these totals are added">' + ic('info', 'sm') + '</button></p>' + (TFail ? '<p class="bse-note">' + esc('Skin and base decoration figures could not load.') + '</p>' : '');
+  var note = '<p class="bse-note">' + esc('Sum of the figures on the cards.') + ' <button class="info" type="button" data-open="bsetotals" aria-label="How these totals are added">' + ic('info', 'sm') + '</button></p>' + (TFail ? '<p class="bse-note">' + esc('Skin and base decoration figures could not load.') + '</p>' : '');
   return '<section class="card bse-sum" aria-label="What your base adds"><div class="bse-dsk"><h2 class="sub" style="margin-bottom:8px">What your base adds</h2>' + table + '</div>' +
     '<div class="bse-mob"><button class="bse-hd" type="button" data-bseopen="strip" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">What your base adds</span><span class="bse-hm bse-meta">' + meta.join(' · ') + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (isOpen ? '<div class="bse-body">' + list + '</div>' : '') + '</div>' +
     '<div class="bse-nt">' + note + '</div></section>';
@@ -768,11 +786,23 @@ function setSheet(arg) {
 }
 
 /* ---- Skins ---- */
+/* Owned bonus is live for every owned skin and is what the totals count; "If equipped" is hypothetical for all but the equipped one, so it is muted there */
+function skinBuffs(s, n) {
+  var ow = s.ownB.length ? '<div class="bse-bl">Owned bonus</div>' + buffList(s.ownB, n) : '', eq = s.equip.length ? '<div class="bse-bl' + (s.active ? '' : ' bse-dim') + '">' + (s.active ? 'When equipped' : 'If equipped') + '</div><div' + (s.active ? '' : ' class="bse-dim"') + '>' + buffList(s.equip, n) + '</div>' : '';
+  return ow + eq;
+}
+function skillBtn(s) { return s.skill ? '<button class="bse-sk tb link" type="button" data-bseskill="' + s.id + '">' + ic('bolt', 'sm') + '<span translate="no">' + esc(s.skill) + '</span></button>' : ''; }
 function skinCard(s, off) {
-  var eq = s.equip.length ? '<div class="bse-bl">When equipped</div>' + buffList(s.equip, 4) : '', ow = s.ownB.length ? '<div class="bse-bl">Owned bonus</div>' + buffList(s.ownB, 4) : '';
   var pills = (s.active ? '<span class="pill p-eff">Equipped</span>' : '') + (s.isNew ? '<span class="pill p-eff">New</span>' : '');
-  var skill = s.skill ? '<span class="bse-sk" data-bseskill="' + s.id + '">' + ic('bolt', 'sm') + '<span translate="no">' + esc(s.skill) + '</span></span>' : '';
-  return '<div class="bse-c bse-skin' + (s.isNew ? ' q5' : '') + (off ? ' off' : '') + '"><button class="bse-ch" type="button" data-bseskin="' + s.id + '" style="text-align:left;color:inherit;width:100%">' + (s.icon ? icon('base-icons/' + s.icon, s.isNew ? 'q5' : '', s.name.charAt(0), s.name) : '<span class="ico fb" translate="no">' + esc(s.name.charAt(0)) + '</span>') + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(s.name)) + '</span>' + (pills ? '<span class="bse-pills">' + pills + '</span>' : '') + '</span></button>' + eq + ow + skill + '</div>';
+  return '<div class="bse-c bse-skin' + (off ? ' off' : '') + '"><button class="bse-ch" type="button" data-bseskin="' + s.id + '" style="text-align:left;color:inherit;width:100%">' + (s.icon ? icon('base-icons/' + s.icon, '', s.name.charAt(0), s.name) : '<span class="ico fb" translate="no">' + esc(s.name.charAt(0)) + '</span>') + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(s.name)) + '</span>' + (pills ? '<span class="bse-pills">' + pills + '</span>' : '') + '</span></button>' + skinBuffs(s, 4) + skillBtn(s) + '</div>';
+}
+/* the equipped skin and halo in one card above the list (the grid below leaves the equipped skin out) */
+function equippedHtml(list, st) {
+  var act = list.filter(function (s) { return s.active; })[0], halo = st.haloActive && T ? Logic.bdRow(T, st.haloActive, T.BASE_HALO_DATA || {}) : null;
+  if (!act && !halo) return '';
+  var skin = act ? '<div class="bse-ch bse-big">' + (act.icon ? icon('base-icons/' + act.icon, '', act.name.charAt(0), act.name) : '') + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block;font-size:var(--fs-17)">' + esc(noHy(act.name)) + '</span><span class="bse-pills"><span class="pill p-eff">Equipped skin</span></span></span></div>' + skinBuffs(act, 8) + skillBtn(act) : '';
+  var hl = halo && halo.known ? '<div class="bse-eh"><div class="bse-ch">' + (halo.icon ? icon('base-halo-icons/' + halo.icon, '', halo.name.charAt(0), halo.name) : '') + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(halo.name)) + '</span><span class="bse-pills"><span class="pill p-eff">Equipped halo</span></span></span></div>' + buffList(halo.buffs, 8) + '</div>' : '';
+  return '<section class="card bse-eq"><h2 class="sub" style="margin-bottom:8px">Equipped now</h2><div class="bse-eqg">' + (skin ? '<div>' + skin + '</div>' : '') + hl + '</div></section>';
 }
 var S_SORT = [['equipped', 'Equipped first'], ['name', 'Name A to Z'], ['za', 'Name Z to A'], ['power', 'Power, high to low']];
 function skinsData() {
@@ -786,7 +816,7 @@ function skinControls(opt) {
     '<div class="bse-fs">' + sel('sort', 'Sort', S_SORT, K.sort, 'data-bsek') + sel('buff', 'Stat', buffs, K.buff, 'data-bsek') + (opt.skills.length ? sel('skill', 'City skill', skills, K.skill, 'data-bsek') : '') + '</div>';
 }
 function skinGridHtml(list) {
-  var f = Logic.skinSort(Logic.skinFilter(list, K), K.sort), shown = f.slice(0, skinN);
+  var f = Logic.skinSort(Logic.skinFilter(list.filter(function (s) { return !s.active; }), K), K.sort), shown = f.slice(0, skinN);
   return (shown.length ? '<div class="bse-grid">' + shown.map(function (s) { return skinCard(s, false); }).join('') + '</div>' : '<div class="empty">No skins match. <button class="tb link" type="button" data-bseclear="k">Clear filters</button></div>') + more(shown.length, f.length, 'skins');
 }
 function haloHtml(st) {
@@ -796,7 +826,7 @@ function haloHtml(st) {
   var left = have.map(function (k) { return Logic.bdRow(T, +k, tbl); });
   var o = '<h2 class="sub" style="margin-top:8px">Halos</h2>';
   o += owned.length ? '<div class="bse-grid">' + owned.map(function (h) { return card(h, false); }).join('') + '</div>' : '<p class="t13 muted">No halos owned.</p>';
-  if (left.length) o += '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="haloLeft" aria-expanded="' + !!open.haloLeft + '"><span class="bse-ht"><span class="bse-hn">Halos not owned</span><span class="bse-hm">' + nd(String(left.length)) + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (open.haloLeft ? '<div class="bse-body"><div class="bse-grid">' + left.map(function (h) { return card(h, true); }).join('') + '</div></div>' : '') + '</section>';
+  if (left.length) o += '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="haloLeft" aria-expanded="' + !!open.haloLeft + '"><span class="bse-ht"><span class="bse-hn">Halos not owned</span><span class="bse-hm">' + nd(left.length + (left.length === 1 ? ' halo' : ' halos')) + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (open.haloLeft ? '<div class="bse-body"><div class="bse-grid">' + left.map(function (h) { return card(h, true); }).join('') + '</div></div>' : '') + '</section>';
   return o;
 }
 function skinsPane() {
@@ -805,24 +835,25 @@ function skinsPane() {
   if (TFail) return partFail('the skin list');
   if (!T) return '<p class="muted t13" role="status">Loading the skin list…</p>';
   var list = Logic.skinList(T, st), opt = Logic.skinFilterOptions(list), act = list.filter(function (s) { return s.active; })[0];
-  var head = '<p class="t13 muted">' + nd(list.length + ' skins owned' + (act ? ' · equipped: ' : '')) + (act ? nm(act.name) : '') + (st.source ? nd(' · from ' + st.source) : '') + '</p>';
+  var head = '<p class="t13 muted">' + nd(list.length + ' skins owned') + '</p>';
   var left = Logic.skinNotOwned(T, st), isOpen = !!open.skinLeft, sn = notN.skins || PAGE;
-  var notOwned = left.length ? '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="skinLeft" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Skins not owned</span><span class="bse-hm">' + nd(String(left.length)) + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (isOpen ? '<div class="bse-body"><div class="bse-grid">' + left.slice(0, sn).map(function (s) { return skinCard(s, true); }).join('') + '</div>' + more(Math.min(sn, left.length), left.length, 'skinLeft') + '</div>' : '') + '</section>' : '';
-  return head + (list.length ? skinControls(opt) + '<div id="bseSkins">' + skinGridHtml(list) + '</div>' : '<div class="empty">No skins owned yet.</div>') + haloHtml(st) + notOwned + classicLink('bases', 'See skins and halos on the classic page');
+  var notOwned = left.length ? '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="skinLeft" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Skins not owned</span><span class="bse-hm">' + nd(left.length + ' skins') + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (isOpen ? '<div class="bse-body"><div class="bse-grid">' + left.slice(0, sn).map(function (s) { return skinCard(s, true); }).join('') + '</div>' + more(Math.min(sn, left.length), left.length, 'skinLeft') + '</div>' : '') + '</section>' : '';
+  return head + equippedHtml(list, st) + (list.length ? skinControls(opt) + '<div id="bseSkins">' + skinGridHtml(list) + '</div>' : '<div class="empty">No skins owned yet.</div>') + haloHtml(st) + notOwned + sourceFoot(st.source === 'reports' ? 'battle reports' : 'game data', st.source === 'reports' ? null : (supp().skin || {}).ts);
 }
 function skinRefresh() { var g = $('#bseSkins'); if (!g) return; g.innerHTML = skinGridHtml(skinsData().list); var n = (K.buff ? 1 : 0) + (K.skill ? 1 : 0) + (K.sort !== 'equipped' ? 1 : 0); $$('.bse-fbtn span').forEach(function (b) { if (b.closest('[data-pane="skins"]')) b.textContent = 'Filter · Sort' + (n ? ' (' + n + ')' : ''); }); $$('[data-bsek]').forEach(function (x) { if (x.value !== String(K[x.dataset.bsek])) x.value = String(K[x.dataset.bsek]); }); }
 function skinSheet(arg) {
   if (!T) return null;
   var id = +arg, s = Logic.skinRow(T, id, 0); if (!s.known) return null;
   var st = Logic.skinState(S.res.merged && S.res.merged.skins); s.active = id === st.active;
-  var ch = Logic.skinChain(T, id), o = '<div class="sh-hero">' + (s.icon ? icon('base-icons/' + s.icon, s.isNew ? 'q5' : '', s.name.charAt(0), s.name) : '') + '<div>' + (s.active ? '<span class="pill p-eff">Equipped</span> ' : '') + (s.isNew ? '<span class="pill p-eff">New</span>' : '') + (s.power > 0 ? '<div class="t13 muted" style="margin-top:4px">' + nd('Power ' + fmtInt(s.power)) + '</div>' : '') + '</div></div>';
-  function block(t, list) { return list.length ? '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">' + esc(t) + '</h3>' + buffList(list, 12) + '</section>' : ''; }
+  var ch = Logic.skinChain(T, id), o = '<div class="sh-hero">' + (s.icon ? icon('base-icons/' + s.icon, '', s.name.charAt(0), s.name) : '') + '<div>' + (s.active ? '<span class="pill p-eff">Equipped</span> ' : '') + (s.isNew ? '<span class="pill p-eff">New</span>' : '') + (s.power > 0 ? '<div class="t13 muted" style="margin-top:4px">' + nd('Power ' + fmtInt(s.power)) + '</div>' : '') + '</div></div>';
+  function block(row) { var h = skinBuffs(row, 12); return h ? '<section class="card">' + h + '</section>' : ''; }
   if (ch) {
     o += '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">' + esc(ch.kind === 'alt' ? 'Alternate forms' : 'Level progression') + '</h3>' + (ch.kind === 'alt' ? '<p class="t13 muted" style="margin:4px 0 8px">Only one form is equipped at a time. Transform to switch.</p>' : '') + ch.rows.map(function (r) {
-      return '<div style="padding:8px 0;border-top:1px solid var(--rule)"><div class="bse-ch">' + (r.icon ? icon('base-icons/' + r.icon, '', r.name.charAt(0), r.name) : '') + '<span class="bse-ct"><span class="bse-cn" translate="no">' + esc(noHy(r.name)) + '</span><span class="bse-cs" style="display:block">' + nd(r.label) + '</span></span></div>' + (r.equip.length ? '<div class="bse-bl">When equipped</div>' + buffList(r.equip, 8) : '') + (r.ownB.length ? '<div class="bse-bl">Owned bonus</div>' + buffList(r.ownB, 8) : '') + '</div>';
+      var mine = st.owned.indexOf(r.id) >= 0; r.active = r.id === st.active;
+      return '<div style="padding:8px 0;border-top:1px solid var(--rule)"><div class="bse-ch">' + (r.icon ? icon('base-icons/' + r.icon, '', r.name.charAt(0), r.name) : '') + '<span class="bse-ct"><span class="bse-cn" translate="no">' + esc(noHy(r.name)) + '</span><span class="bse-cs" style="display:block">' + nd(r.label) + '</span></span>' + (mine ? '<span class="pill p-eff">Yours</span>' : '') + '</div>' + skinBuffs(r, 8) + '</div>';
     }).join('') + '</section>';
-  } else o += block('When equipped', s.equip) + block('Owned bonus', s.ownB);
-  if (s.skill) o += '<button class="btn" type="button" data-bseskill="' + s.id + '" style="margin-top:12px">' + ic('bolt', 'sm') + '<span translate="no">' + esc(s.skill) + '</span></button>';
+  } else o += block(s);
+  if (s.skill) o += skillBtn(s).replace('class="bse-sk tb link"', 'class="btn" style="margin-top:12px"');
   return [s.name, o, true];
 }
 function skillSheet(arg) {
@@ -836,14 +867,14 @@ function skillSheet(arg) {
 }
 
 /* ---- Base decor ---- */
-var BD_SORT = [['name', 'Name A to Z'], ['za', 'Name Z to A'], ['newest', 'Newest first'], ['oldest', 'Oldest first']];
+var BD_SORT = [['equipped', 'Equipped first'], ['name', 'Name A to Z'], ['za', 'Name Z to A'], ['newest', 'Newest first'], ['oldest', 'Oldest first']];
 function bdCard(b, off, active) {
-  var eq = b.equip.length ? '<div class="bse-bl">Equipping</div>' + buffList(b.equip, 6) : '', ho = b.hold.length ? '<div class="bse-bl">Holding in stock</div>' + buffList(b.hold, 6) : '';
-  return '<div class="bse-c' + (off ? ' off' : '') + '"><div class="bse-ch">' + (b.icon ? icon('base-decor-icons/' + b.icon, '', b.name.charAt(0), b.name) : '<span class="ico fb" translate="no">' + esc(b.name.charAt(0)) + '</span>') + '<span class="bse-ct"><span class="bse-cn" translate="no">' + esc(noHy(b.name)) + '</span>' + (active ? '<span class="bse-pills"><span class="pill p-eff">Equipped</span></span>' : '') + '</span></div>' + eq + ho + '</div>';
+  var ow = b.hold.length ? '<div class="bse-bl">Owned bonus</div>' + buffList(b.hold, 6) : '', eq = b.equip.length ? '<div class="bse-bl' + (active ? '' : ' bse-dim') + '">' + (active ? 'When equipped' : 'If equipped') + '</div><div' + (active ? '' : ' class="bse-dim"') + '>' + buffList(b.equip, 6) + '</div>' : '';
+  return '<div class="bse-c' + (off ? ' off' : '') + '"><div class="bse-ch">' + (b.icon ? icon('base-decor-icons/' + b.icon, '', b.name.charAt(0), b.name) : '<span class="ico fb" translate="no">' + esc(b.name.charAt(0)) + '</span>') + '<span class="bse-ct"><span class="bse-cn" translate="no">' + esc(noHy(b.name)) + '</span>' + (active ? '<span class="bse-pills"><span class="pill p-eff">Equipped</span></span>' : '') + '</span></div>' + ow + eq + '</div>';
 }
 function bdList() {
   var st = Logic.skinState(S.res.merged && S.res.merged.skins), tbl = T.BASE_DECOR_DATA || {};
-  var rows = Logic.bdSort(st.castle.map(function (id) { return Logic.bdRow(T, id, tbl); }), B.sort), q = B.q.toLowerCase().trim();
+  var rows = Logic.bdSort(st.castle.map(function (id) { return Logic.bdRow(T, id, tbl); }), B.sort, st.castleActive), q = B.q.toLowerCase().trim();
   if (q) rows = rows.filter(function (r) { return r.name.toLowerCase().indexOf(q) >= 0; });
   return { st: st, rows: rows, tbl: tbl };
 }
@@ -851,19 +882,20 @@ function bdGrid() {
   var x = bdList(), shown = x.rows.slice(0, bdN);
   return (shown.length ? '<div class="bse-grid">' + shown.map(function (b) { return bdCard(b, false, b.id === x.st.castleActive); }).join('') + '</div>' : '<div class="empty">No base decorations match. <button class="tb link" type="button" data-bseclear="b">Clear search</button></div>') + more(shown.length, x.rows.length, 'bd');
 }
+function bdBtn() { return 'Filter · Sort' + (B.sort !== 'equipped' ? ' (1)' : ''); }
 function bdPane() {
   var st = Logic.skinState(S.res.merged && S.res.merged.skins);
   if (!st.castle.length) return needData('No base decoration data yet. It comes from your battle reports.');
   if (TFail) return partFail('the base decoration list');
   if (!T) return '<p class="muted t13" role="status">Loading the base decoration list…</p>';
   var tbl = T.BASE_DECOR_DATA || {}, left = Logic.bdNotOwned(tbl, st.castle).map(function (k) { return Logic.bdRow(T, +k, tbl); }).sort(function (a, b) { return a.name < b.name ? -1 : 1; }), isOpen = !!open.bdLeft, sn = notN.bd || PAGE;
-  var act = st.castleActive ? Logic.bdRow(T, st.castleActive, tbl) : null;
-  return '<p class="t13 muted">' + nd(st.castle.length + ' base decorations owned') + (act ? ' · equipped: ' + nm(act.name) : '') + '</p>' +
-    '<div class="fbar"><div class="grow"><input class="fld" type="search" data-bsebq placeholder="Search base decorations" aria-label="Search base decorations" value="' + esc(B.q) + '"></div><label class="bse-f" style="flex-direction:row;align-items:center;gap:8px"><span>Sort</span><select class="sel" data-bseb="sort">' + BD_SORT.map(function (o) { return '<option value="' + o[0] + '"' + (B.sort === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label></div>' +
+  return '<p class="t13 muted">' + nd(st.castle.length + ' base decorations owned') + '</p>' +
+    '<div class="fbar"><div class="grow"><input class="fld" type="search" data-bsebq placeholder="Search base decorations" aria-label="Search base decorations" value="' + esc(B.q) + '"></div><button class="btn bse-fbtn" type="button" data-open="bsebfilter">' + ic('sliders', 'sm') + '<span>' + esc(bdBtn()) + '</span></button></div>' +
+    '<div class="bse-fs">' + sel('sort', 'Sort', BD_SORT, B.sort, 'data-bseb') + '</div>' +
     '<div id="bseBd">' + bdGrid() + '</div>' +
-    (left.length ? '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="bdLeft" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Not owned</span><span class="bse-hm">' + nd(String(left.length)) + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (isOpen ? '<div class="bse-body"><div class="bse-grid">' + left.slice(0, sn).map(function (b) { return bdCard(b, true, false); }).join('') + '</div>' + more(Math.min(sn, left.length), left.length, 'bdLeft') + '</div>' : '') + '</section>' : '') + classicLink('bases', 'See base decorations on the classic page');
+    (left.length ? '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="bdLeft" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Not owned</span><span class="bse-hm">' + nd(left.length + ' base decorations') + '</span></span>' + ic('down', 'bse-chev') + '</button>' + (isOpen ? '<div class="bse-body"><div class="bse-grid">' + left.slice(0, sn).map(function (b) { return bdCard(b, true, false); }).join('') + '</div>' + more(Math.min(sn, left.length), left.length, 'bdLeft') + '</div>' : '') + '</section>' : '') + sourceFoot('battle reports');
 }
-function bdRefresh() { var g = $('#bseBd'); if (g) g.innerHTML = bdGrid(); }
+function bdRefresh() { var g = $('#bseBd'); if (g) g.innerHTML = bdGrid(); $$('[data-pane="base-decor"] .bse-fbtn span').forEach(function (b) { b.textContent = bdBtn(); }); }
 
 /* ---- Formation ---- */
 function formationPane() {
@@ -875,31 +907,34 @@ function formationPane() {
   var techs = Logic.techModel(REF, fs), tech = (techs.some(function (t) { return t.seen; }) || (s && s.formations)) ? techHtml(techs) : '';
   var mast = am ? '<section class="card"><h2 class="sub">Component mastery</h2><div class="bse-line" style="margin-top:8px">' + dots(am.map(function (a) { return '<span>' + esc(a.type) + ' <b>' + nd('Lv.' + a.lv + ' of 20') + '</b></span>'; })) + '</div></section>' : '';
   var tm = tal ? Logic.talentModel(REF, s) : null;
-  var age = s && s.ts ? '<p class="t13 muted">' + nd('Game data from ' + new Date(s.ts).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })) + '</p>' : '';
-  return age + '<div class="bse-ft">' + cards + '</div>' + tech + mast + (tm ? talentHtml(tm) : '<div class="empty">The talent tree is not in your game data yet. Send game data from the game to see it here.</div>') + classicLink('formation', 'Plan talent changes in the classic page');
+  return '<div class="bse-ft">' + cards + '</div>' + tech + mast + (tm ? talentHtml(tm) : '<div class="empty">The talent tree is not in your game data yet. Send game data from the game to see it here.</div>') + sourceFoot('game data', s && s.ts);
 }
 function formationCard(c) {
+  var tierTxt = c.tier + (c.tierUp ? 1 : 0), tier = 'Tier ' + tierTxt + ' of 10' + (c.tierUp ? ' (' + c.tier + ' + 1' + (c.tierTalent ? ' from ' + c.tierTalent : '') + ')' : '');
   var head = '<div class="bse-ch">' + (c.icon ? icon(c.icon, '', c.name.charAt(0), c.name) : '<span class="ico fb" translate="no">' + esc(c.name.charAt(0)) + '</span>') + '<span class="bse-ct"><span class="bse-cn" translate="no" style="font-size:var(--fs-17)">' + esc(c.name) + '</span>' +
-    (c.seen ? '<span class="bse-cs" style="display:block">' + nd('Level ' + c.lv + (c.lvUp ? ' +1' : '') + ' · Tier ' + c.tier + (c.tierUp ? ' +1' : '') + ' of 10') + '</span>' : '<span class="bse-cs" style="display:block">No battle seen with this formation yet.</span>') + '</span></div>';
+    (c.seen ? '<span class="bse-cs" style="display:block">' + nd('Level ' + c.lv + (c.lvUp ? ' + 1' : '') + ' · ' + tier) + '</span>' : '<span class="bse-cs" style="display:block">No battle seen with this formation yet.</span>') + '</span></div>';
   if (!c.seen) return '<section class="card bse-fc">' + head + '</section>';
-  var cells = c.slots.map(function (s) { return '<div class="bse-sl s' + (s.eff == null ? 0 : s.eff >= 5 ? 5 : s.eff >= 4 ? 4 : 3) + '"><span>' + nd('Slot ' + s.n) + '</span><b translate="no">' + (s.lv == null ? '–' : s.lv + (s.plus ? '+1' : '')) + '</b>' + (s.lv == null ? '<span class="sr">locked</span>' : '') + '</div>'; }).join('');
-  return '<section class="card bse-fc">' + head + '<p class="t13 muted" style="margin-top:12px">' + nd('Specialization' + (c.skill ? ' (' + c.skill + ')' : '') + ' · ' + c.total + ' of 45') + '</p><div class="bse-spec">' + cells + '</div></section>';
+  var cells = c.slots.map(function (s) { return '<div class="bse-sl"><span>' + nd('Slot ' + s.n) + '</span><b translate="no">' + (s.lv == null ? '–' : s.lv + (s.plus ? ' + 1' : '')) + '</b>' + (s.lv == null ? '<span class="sr">locked</span>' : '') + '</div>'; }).join('');
+  return '<section class="card bse-fc">' + head + '<p class="t13 muted" style="margin-top:12px">' + nd('Specialization' + (c.skill ? ' (' + c.skill + ')' : '') + ' · ' + c.total + ' of 45') + '</p><div class="bse-spec">' + cells + '</div>' + (c.specUp ? '<p class="t12 muted" style="margin-top:8px">' + esc('+ 1 on every open slot' + (c.specTalent ? ' from ' + c.specTalent : '')) + '</p>' : '') + '</section>';
 }
 function techHtml(techs) {
-  return '<section class="card"><h2 class="sub">Formation tech</h2><p class="t13 muted" style="margin:4px 0 8px">Shared by all three formations.</p><ul class="bse-tl two">' + techs.map(function (t) {
-    return '<li><span class="bse-tt"><span style="display:block;font-weight:600">' + esc(t.name) + '</span>' + (t.lv === 0 ? '<span class="t13 muted">Not researched yet.</span>' : '<span class="bse-tch">' + t.chips.map(function (c) { return '<span>' + nd(c.v + ' ' + c.n) + '</span>'; }).join('') + '</span>' + (t.front ? '<span class="t12 muted" style="display:block;margin-top:4px">Front row shown.</span>' : '')) + '<span class="meter" style="margin-top:8px" role="img" aria-label="' + t.pct + ' percent researched"><i style="width:' + Math.max(t.lv ? 2 : 0, t.pct) + '%"></i></span></span><span class="bse-tv">' + nd('Lv.' + t.lv + ' of ' + t.max) + '</span></li>';
+  return '<section class="card"><h2 class="sub">Formation tech</h2><p class="t13 muted" style="margin:4px 0 8px">Shared by all three formations. Figures are for the front row.</p><ul class="bse-tl two">' + techs.map(function (t) {
+    return '<li><span class="bse-tt"><span style="display:block;font-weight:600">' + esc(t.name) + '</span>' + (t.lv === 0 ? '<span class="t13 muted">Not researched yet.</span>' : buffList(t.chips, 6)) + '</span><span class="bse-tv">' + nd('Lv.' + t.lv + ' of ' + t.max) + '</span></li>';
   }).join('') + '</ul></section>';
 }
 function talentHtml(tm) {
+  function row(n) {
+    var line = n.lv > 0 ? (n.val ? n.buff + ' ' + n.val : n.desc) : (n.needs ? 'Needs ' + n.needs : n.desc);
+    return '<li>' + (n.icon ? icon('formation-icons/image_professionTalent_' + n.icon + '.png', '', n.name.charAt(0), n.name) : '<span class="ico fb" translate="no">' + esc(n.name.charAt(0)) + '</span>') + '<span class="bse-tt"><span style="display:block;font-weight:600" translate="no">' + esc(n.name) + '</span><span class="t13 muted">' + nd(line) + '</span></span><span class="bse-tv">' + nd(n.sw ? (n.lv ? 'Chosen' : 'Not chosen') : n.lv ? 'Lv.' + n.lv + ' of ' + n.max : 'Not trained') + '</span></li>';
+  }
   function side(key, title) {
     var list = tm.sides[key]; if (!list.length) return '';
-    var k = 'tal' + key, isOpen = open[k] != null ? open[k] : false, tr = list.filter(function (n) { return n.lv > 0; }).length;
-    return '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="' + k + '" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">' + esc(title) + '</span><span class="bse-hm">' + nd(tr + ' of ' + list.length + ' talents trained') + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
-      (isOpen ? '<div class="bse-body"><ul class="bse-tl two">' + list.map(function (n) {
-        return '<li class="' + (n.lv ? '' : 'off') + '">' + (n.icon ? icon('formation-icons/image_professionTalent_' + n.icon + '.png', n.lv >= n.max ? 'q5' : '', n.name.charAt(0), n.name) : '<span class="ico fb" translate="no">' + esc(n.name.charAt(0)) + '</span>') + '<span class="bse-tt"><span style="display:block;font-weight:600" translate="no">' + esc(n.name) + '</span><span class="t13 muted">' + esc(n.desc) + '</span></span><span class="bse-tv"><span style="display:block">' + nd(n.sw ? (n.lv ? 'Chosen' : 'Not chosen') : 'Lv.' + n.lv + ' of ' + n.max) + '</span>' + (n.val ? '<span style="display:block;color:var(--text)" translate="no">' + esc(n.val) + '</span>' : '') + '</span></li>';
-      }).join('') + '</ul></div>' : '') + '</section>';
+    var k = 'tal' + key, isOpen = open[k] != null ? open[k] : false, tr = list.filter(function (n) { return n.lv > 0; }), un = list.filter(function (n) { return !(n.lv > 0); });
+    return '<section class="card bse-sec"><button class="bse-hd" type="button" data-bseopen="' + k + '" aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">' + esc(title) + '</span><span class="bse-hm">' + nd(tr.length + ' of ' + list.length + ' talents trained') + '</span></span>' + ic('down', 'bse-chev') + '</button>' +
+      (isOpen ? '<div class="bse-body">' + (tr.length ? '<h3 class="bse-sub">' + nd('Trained (' + tr.length + ')') + '</h3><ul class="bse-tl two">' + tr.map(row).join('') + '</ul>' : '') + (un.length ? '<h3 class="bse-sub">' + nd('Not trained (' + un.length + ')') + '</h3><ul class="bse-tl two">' + un.map(row).join('') + '</ul>' : '') + '</div>' : '') + '</section>';
   }
-  return '<section class="card"><h2 class="sub">Talent tree</h2><p class="bse-line" style="margin-top:8px">' + dots([sp(tm.trained + ' of ' + tm.total + ' talents trained'), sp(tm.maxed + ' at top level'), tm.power ? sp(fmtInt(tm.power) + (tm.maxPower ? ' of ' + fmtInt(tm.maxPower) : '') + ' talent power') : '', tm.held != null ? sp(fmtInt(tm.held) + ' Formation 101 manuals held') : '', tm.spent ? sp(fmtInt(tm.spent) + ' manuals spent on the tree') : '']) + '</p></section>' + side('left', 'Shark and Scorpion talents') + side('right', 'Eagle talents');
+  var facts = [['Talents trained', tm.trained + ' of ' + tm.total], ['At top level', String(tm.maxed)], tm.power ? ['Talent power', fmtInt(tm.power) + (tm.maxPower ? ' of ' + fmtInt(tm.maxPower) : '')] : null, tm.held != null ? ['Formation 101 manuals held', fmtInt(tm.held)] : null, tm.spent ? ['Manuals spent on the tree', fmtInt(tm.spent)] : null].filter(Boolean);
+  return '<section class="card"><div class="bse-th"><h2 class="sub">Talent tree</h2><a class="tb link" href="' + esc(classicUrl('formation')) + '">' + ic('ext', 'sm') + '<span>Plan talent changes on the classic page</span></a></div><dl class="bse-tot">' + facts.map(function (f) { return '<div><dt>' + esc(f[0]) + '</dt><dd translate="no">' + esc(f[1]) + '</dd></div>'; }).join('') + '</dl></section>' + side('left', 'Shark and Scorpion talents') + side('right', 'Eagle talents');
 }
 function loadRef(cb) {
   if (REF || REFFail) return cb();
@@ -920,6 +955,7 @@ function kSheet() {
   var opt = Logic.skinFilterOptions(skinsData().list);
   return ['Filter and sort', '<div class="ctrls">' + chipGroup('sort', 'Sort by', S_SORT, K.sort, 'data-bsekc') + sel('buff', 'Stat', [['', 'All stats']].concat(opt.buffs.map(function (b) { return [b, b]; })), K.buff, 'data-bsek') + (opt.skills.length ? sel('skill', 'City skill', [['', 'All skills']].concat(opt.skills.map(function (b) { return [b, b]; })), K.skill, 'data-bsek') : '') + '</div><button class="btn" type="button" data-close style="width:100%;margin-top:12px">Done</button>'];
 }
+function bSheet() { return ['Sort', '<div class="ctrls">' + chipGroup('sort', 'Sort by', BD_SORT, B.sort, 'data-bsebc') + '</div><button class="btn" type="button" data-close style="width:100%;margin-top:12px">Done</button>']; }
 function sheet(kind, arg) {
   try {
     if (kind === 'decor') return itemSheet(arg);
@@ -927,6 +963,7 @@ function sheet(kind, arg) {
     if (kind === 'bsetotals') return totalsSheet();
     if (kind === 'bsedfilter') return dSheet();
     if (kind === 'bsesfilter') return kSheet();
+    if (kind === 'bsebfilter') return bSheet();
     if (kind === 'skin') return skinSheet(arg);
     if (kind === 'skill') return skillSheet(arg);
   } catch (e) { if (window.console) console.error(e); }
@@ -982,8 +1019,8 @@ function wire() {
   document.addEventListener('click', function (e) {
     var sk = e.target.closest ? e.target.closest('#sheetB [data-bseskill]') : null;
     if (sk) { H.openSheet('skill', sk.dataset.bseskill); return; }
-    var t = e.target.closest ? e.target.closest('#sheetB [data-bsedc], #sheetB [data-bsekc]') : null; if (!t) return;
-    var raw = t.dataset.bsedc || t.dataset.bsekc, i = raw.indexOf(':'), k = raw.slice(0, i), val = raw.slice(i + 1);
+    var t = e.target.closest ? e.target.closest('#sheetB [data-bsedc], #sheetB [data-bsekc], #sheetB [data-bsebc]') : null; if (!t) return;
+    var raw = t.dataset.bsedc || t.dataset.bsekc || t.dataset.bsebc, i = raw.indexOf(':'), k = raw.slice(0, i), val = raw.slice(i + 1);
     if (t.dataset.bsedc) { if (k === 'up') D.up = val === '1'; else D[k] = val; pageN = {}; dRefresh(); var h = dSheet(); $('#sheetB').innerHTML = h[1]; }
     else { K[k] = val; skinN = PAGE; skinRefresh(); var h2 = kSheet(); if (h2) $('#sheetB').innerHTML = h2[1]; }
     var again = $('#sheetB [data-' + (t.dataset.bsedc ? 'bsedc' : 'bsekc') + '="' + raw.replace(/"/g, '\\"') + '"]'); if (again) again.focus({ preventScroll: true });
