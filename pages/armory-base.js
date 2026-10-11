@@ -42,9 +42,9 @@ var KEY_STATS = [['march', 'March Size'], ['atk', 'All units Attack'], ['hp', 'A
 function statKey(name) {
   var n = statName(name);
   if (n === 'March Size') return 'march';
-  if (n === 'All units Attack') return 'atk';
-  if (n === 'All units HP') return 'hp';
-  if (n === 'All units Decreased DMG Taken') return 'dmgTaken';
+  if (n === 'All units Attack' || n === 'All Attack') return 'atk'; /* the skin table's "All ATK" / "All HP" are the all-units buffs: the game's own buff trace sums them with the rest (checked on a battle report) */
+  if (n === 'All units HP' || n === 'All HP') return 'hp';
+  if (n === 'All units Decreased DMG Taken' || n === 'Decreased DMG Taken (all)') return 'dmgTaken';
   if (n === 'All units DMG increase') return 'dmgInc';
   return null;
 }
@@ -526,7 +526,7 @@ function stripHtml() {
     return '<tr><td>' + esc(r.label) + '</td>' + c(r.decor) + c(r.skin) + c(r.bdecor) + '</tr>';
   }).join('');
   return '<section class="card bse-sum" aria-label="What your base adds" style="padding:12px"><h2 class="sub" style="margin-bottom:8px">What your base adds</h2><table class="bse-t"><thead><tr><th scope="col"><span class="sr">Stat</span></th><th scope="col">Decor</th><th scope="col">Skins</th><th scope="col">Base decor</th></tr></thead><tbody>' + body + '</tbody></table>' +
-    '<p class="bse-note">' + esc('Adds up the figures on the cards: placed decorations; the Owned bonus of every owned skin (the highest level of each chain) plus the When equipped buffs of the equipped skin; the same for base decorations. The game applies its own limits, so a battle report can show a different total.') + '</p>' + (TFail ? '<p class="bse-note">' + esc('Skin and base decoration figures could not load.') + '</p>' : '') + '</section>';
+    '<p class="bse-note">' + esc('Adds up the figures on the cards: placed decorations; the Owned bonus of every owned skin (the highest level of each chain) plus the When equipped buffs of the equipped skin; the same for base decorations. Halos and the other collections are not included, so a battle report that lists them can show more.') + '</p>' + (TFail ? '<p class="bse-note">' + esc('Skin and base decoration figures could not load.') + '</p>' : '') + '</section>';
 }
 
 /* ---- Decor ---- */

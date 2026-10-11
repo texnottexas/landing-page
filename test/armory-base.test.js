@@ -118,6 +118,29 @@ test('skinTotals counts a level chain once (its highest owned level) and one alt
   assert.equal(L.skinTotals(t, { owned: [2, 3], active: 2 }).atk, 20 + 5 + 20);
   assert.equal(L.skinTotals(t, { owned: [1], active: 0 }).atk, 12, 'a lone lower level counts when the higher one is not owned');
 });
+test('statKey: the skin table\'s "All ATK" and "All HP" are all-units Attack and HP (the game\'s buff trace sums them), unit-type and conditional buffs are not', () => {
+  assert.deepEqual(['All ATK', 'All HP', 'All units Attack', 'All units HP', 'Air Force ATK', 'Army Attack', 'Attack of all units (on the offensive)', 'All units DMG Increase', 'Decreased DMG Taken (all)', 'Decreased DMG Taken (defending base)'].map(L.statKey), ['atk', 'hp', 'atk', 'hp', null, null, null, 'dmgInc', 'dmgTaken', null]);
+});
+test('against the game: base decoration Attack and HP equal the battle report\'s own buff trace (source 75) for every player in the fixtures; the skin sum never exceeds the trace\'s Base Effect (source 25) and trails it only by halos and collections', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const dir = path.join(__dirname, 'fixtures');
+  let n = 0;
+  fs.readdirSync(dir).filter((f) => /^\d+\.json$/.test(f)).forEach((f) => {
+    const d = JSON.parse(fs.readFileSync(path.join(dir, f)));
+    ['attacker', 'defender'].forEach((side) => {
+      const p = d.battle && d.battle[side] && d.battle[side].players && d.battle[side].players[0];
+      if (!p || !p.effectSkins || !Array.isArray(p.traceEffectBuffs)) return;
+      const sum = (s, ids) => p.traceEffectBuffs.filter((x) => x.s === s && ids.includes(x.id)).reduce((a, x) => a + x.val, 0) / 100;
+      const st = L.skinState(p.effectSkins), sk = L.skinTotals(T, st), bd = L.baseDecorTotals(T, st);
+      assert.equal(bd.atk, sum(75, [930100, 9301160]), f + ' ' + side + ' base decor Attack'); assert.equal(bd.hp, sum(75, [930000, 9301170]), f + ' ' + side + ' base decor HP');
+      const ta = sum(25, [930100, 9301160]), th = sum(25, [930000, 9301170]);
+      assert.ok(sk.atk <= ta && sk.hp <= th, f + ' ' + side + ' skins ' + sk.atk + '/' + sk.hp + ' vs trace ' + ta + '/' + th);
+      if (!p.effectSkins.ownHaloSkins.length) assert.ok(ta - sk.atk <= 0.06 * ta && th - sk.hp <= 0.06 * th, f + ' ' + side + ' gap without a halo');
+      n++;
+    });
+  });
+  assert.ok(n >= 8, 'players checked: ' + n);
+});
 test('baseDecorTotals: holding buffs of every owned base decoration plus the equipping buffs of the equipped one', () => {
   const t = { BASE_DECOR_DATA: { 7: { n: 'X', e: [['All units ATK', 300], ['All units HP', 100]], o: [['All units HP', 250], ['March Size', 2]] }, 8: { n: 'Y', e: [['All units HP', 900]], o: [['All units HP', 50]] } } };
   assert.deepEqual(L.baseDecorTotals(t, { castle: [7, 8], castleActive: 7 }), { march: 2, atk: 3, hp: 4, dmgTaken: 0, dmgInc: 0 });
