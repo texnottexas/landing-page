@@ -86,7 +86,7 @@ test('resources: what the player holds first (account + packs), the best case in
 });
 
 test('untranslated keys and ids never reach players: names and descriptions', () => {
-  for (const k of ['item_name41104', 'building_name_4190', 'itemName10000031', 'item_name_68000', '#123', 'Decor #5', 'Hero #9', '']) assert.equal(L.displayName({ name: k }, 'item'), 'Unknown item', k);
+  for (const k of ['item_name41104', 'building_name_4190', 'itemName10000031', 'item_name_68000', '107027', '#123', 'Decor #5', 'Hero #9', '']) assert.equal(L.displayName({ name: k }, 'item'), 'Unknown item', k);
   assert.equal(L.displayName({ name: 'Lv 5', type: 201 }, 'unit'), 'Navy unit'); assert.equal(L.displayName({ name: 'Lv 5', type: 301 }, 'unit'), 'Air Force unit'); assert.equal(L.displayName({ name: 'Lv 5' }, 'unit'), 'Unit');
   assert.equal(L.displayName({ name: 'Magnetize Rune' }, 'item'), 'Magnetize Rune');
   assert.equal(L.cleanDesc('item_desc41104'), ''); assert.equal(L.cleanDesc('building_desc_4190'), '');

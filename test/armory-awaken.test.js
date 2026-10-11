@@ -523,7 +523,7 @@ test('locked skills show their Lv.1 effect: cleaned, Lv.6 line apart, no placeho
     const r = L.lockedLv1(sk);
     assert.ok(r.now.length > 0, 'hero ' + h.id + ' slot ' + sk.slot + ' has a Lv.1 effect');
     [r.now, r.six].forEach((t) => assert.ok(!/[{}]|\[|\]|Unlocks at Lv/.test(t), 'clean: ' + t.slice(0, 100)));
-    if (/Unlocks at Lv\. ?6:/.test(sk.levels[0].effect)) assert.ok(r.six.length > 0 || /More effect at Lv\.6/.test(sk.levels[0].effect) === false);
+    if (/Unlocks at Lv\. ?6:/.test(sk.levels[0].effect)) assert.ok(r.six.length > 0, 'hero ' + h.id + ' slot ' + sk.slot + ' keeps its Lv.6 line apart');
     n++;
   }));
   assert.ok(n >= 20);

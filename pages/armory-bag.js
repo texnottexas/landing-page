@@ -646,7 +646,7 @@ function rarityName(q) { return RARITY[q] || ('Rarity ' + q); }
 var AGG = { gem: { name: 'Gems', file: 'inventory-icons/image__item__item_1000000.png', q: 0 }, odinium: { name: 'Odinium', file: 'treasury-icons/odinium.png', q: 0 }, food: { name: 'Food', file: 'treasury-icons/food.png', q: 0 }, oil: { name: 'Oil', file: 'treasury-icons/oil.png', q: 0 } };
 var DECOR_CAT_ORDER = ['March Size', 'Defense', 'Damage Boost', 'Others', 'Uncategorized'];
 var STONE_ID = 44301001, EXCL_SHARD_ID = 20213231, UNIVERSAL_DECOR_ID = 20213232, DECOR_BOX_ID = 10000196;
-function isKey(t) { return KEY_NAME.test(t) || (/^\S+$/.test(t) && t.indexOf('_') >= 0); } /* one token with an underscore is an untranslated key, with or without digits */
+function isKey(t) { return KEY_NAME.test(t) || /^\d+$/.test(t) || (/^\S+$/.test(t) && t.indexOf('_') >= 0); } /* one token with an underscore is an untranslated key, with or without digits */
 var KEY_NAME = /^[a-z]+(_[a-z]+)*_?\d+$/i; /* the game's untranslated keys: item_name41104, building_name_4190, itemName10000031 */
 var BRANCH = { 1: 'Army', 2: 'Navy', 3: 'Air Force' };
 

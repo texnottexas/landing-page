@@ -318,7 +318,7 @@ var CSS =
   '.awk-c .ico,.awk-c .fb{width:40px;height:40px;flex:none}.awk-cb{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;align-self:stretch}' +
   '.awk-cn{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 8px;font-size:var(--fs-15);font-weight:600}.awk-lv{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-13);color:var(--muted);font-weight:400}' +
   '.awk-m{position:relative}.awk-m::after{content:"";position:absolute;left:60%;top:0;bottom:0;width:1px;background:var(--muted)}' +
-  '.awk-eff{margin:0;font-size:var(--fs-13);color:var(--muted)}.awk-six{margin:0;display:flex;gap:6px;align-items:flex-start;font-size:var(--fs-13);color:var(--text)}.awk-six .i{width:14px;height:14px;flex:none;margin-top:2px;color:var(--muted)}' +
+  '.awk-eff{margin:0;font-size:var(--fs-13);color:var(--muted)}.awk-six{margin:0;display:flex;gap:6px;align-items:flex-start;font-size:var(--fs-13);color:var(--text)}.awk-six .i{width:14px;height:14px;flex:none;margin-top:2px;color:var(--muted)}.awk-six.awk-l1{color:var(--muted)}' +
   '.awk-ng{display:block;color:var(--text);margin-top:2px}.awk-more{align-self:flex-start;padding:0}.awk-nx{font-size:var(--fs-13);margin-top:auto}.awk-nx.dim{color:var(--muted)}.awk-tag{font-size:var(--fs-12);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-chip);padding:0 6px;align-self:flex-start}' +
   '.awk-fold .awk-eff,.awk-fold .awk-six,.awk-fold .awk-more{display:none}.awk-fold.awk-effopen .awk-eff,.awk-fold.awk-effopen .awk-six{display:block}.awk-fold.awk-effopen .awk-six{display:flex}' +
   '.awk-req{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:var(--fs-14)}.awk-req li{display:flex;align-items:center;gap:8px;color:var(--muted)}.awk-req li.ok{color:var(--text)}' +
@@ -376,7 +376,8 @@ function skillCard(a, id, slot, hl) {
   var sp = lv > 0 && cs && cs.levels && cs.levels[lv - 1] ? splitEffect(cs.levels[lv - 1].effect, lv) : { now: '', six: '' }, eff = sp.now, six = sp.six;
   var nx, l1 = '', l1six = '';
   /* a locked skill (gated by awakening level, or the hero is not awakened yet) shows what Lv.1 would give, cleaned like an unlocked effect */
-  if (!lv) { var s1 = lockedLv1(cs); l1 = s1.now; l1six = s1.six; }
+  /* only a skill that is really locked (hero not awakened, or below the skill's awakening gate); an unknown level is not a lock */
+  if (!lv && (a.mode === 'none' || (a.mode === 'full' && a.aw < gate))) { var s1 = lockedLv1(cs); l1 = s1.now; l1six = s1.six; }
   if (a.mode === 'none') nx = 'Unlocks at ' + nd('Awakening Lv.' + gate);
   else if (a.mode !== 'full') nx = '';
   else if (!lv) nx = a.aw >= gate ? 'Level not in game data yet' : 'Unlocks at ' + nd('Awakening Lv.' + gate + ' (' + (gate - a.aw) + ' levels to go)');
