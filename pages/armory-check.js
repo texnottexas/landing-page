@@ -49,8 +49,8 @@ function overflow() {
   });
   return bad;
 }
-var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base/decor', 'base/skins', 'base/base-decor', 'base/formation', 'beasts/field', 'beasts/collection', 'beasts/optimizer', 'ht/loadouts', 'ht/pool'];
-function visit(r) { A.go(r); A.applyRoute(false); return sleep(/advice/.test(r) ? 700 : /^(ht|beasts)/.test(r) ? 500 : 70); }
+var ROUTES = ['overview', 'heroes/battle', 'heroes/roster', 'heroes/gear', 'heroes/gear?view=runes', 'heroes/advice', 'base/decor', 'base/skins', 'base/base-decor', 'base/formation', 'beasts/field', 'beasts/collection', 'beasts/optimizer', 'ht/loadouts', 'ht/pool', 'bag', 'bag?tab=decor'];
+function visit(r) { A.go(r); A.applyRoute(false); return sleep(/advice/.test(r) ? 700 : /^bag/.test(r) ? 1200 : /^(ht|beasts)/.test(r) ? 500 : 70); }
 function cyrb53(str) {
   var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (var i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
@@ -123,7 +123,8 @@ var EXPECTED = [
     sheets++; A.closeSheet(true);
   }
   await visit('overview');
-  await sheetTest('status', null, 'status'); await sheetTest('settings', null, 'settings'); await sheetTest('explain', 'gear', 'explain'); await sheetTest('bag', null, 'bag');
+  await sheetTest('status', null, 'status'); await sheetTest('settings', null, 'settings'); await sheetTest('explain', 'gear', 'explain');
+  await visit('bag'); await sheetTest('bagfilter', null, 'bag filter'); var bc = $('#v-bag [data-bagi]'); if (bc) await sheetTest('bagitem', bc.dataset.bagi, 'bag item'); var ba = $('#v-bag [data-bagagg]'); if (ba) await sheetTest('bagagg', ba.dataset.bagagg, 'bag totals');
   await visit('heroes/battle'); await sheetTest('filter', null, 'filter');
   var dd = S.vm.decor.placed.filter(function (x) { return x.nx; })[0]; if (dd) await sheetTest('decor', dd.n, 'decor item');
   await visit('overview'); $('#pagesBtn').click(); await sleep(60);
@@ -139,6 +140,12 @@ var EXPECTED = [
   var nums = $$('#v-overview [data-num]'), badNum = [], SRC = /(battle reports?|in roster|placed|in bag|deployed|collected|equipped|in game data|alliance list)/;
   nums.forEach(function (n) { var w = n.closest('[data-numwrap]'), l = w && $('.lbl', w), s = w && $('.src', w); if (!w || !l || !s || !l.textContent.trim() || !SRC.test(s.textContent)) badNum.push(n.textContent.trim().slice(0, 12)); });
   log(nums.length > 0 && badNum.length === 0, 'every Overview number has a label and a source word', nums.length + ' numbers' + (badNum.length ? ', missing: ' + badNum.join(', ') : ''));
+
+  await visit('bag');
+  var bn = $$('#v-bag [data-num]'), badB = [], SRCB = /in bag/;
+  bn.forEach(function (n) { var w = n.closest('[data-numwrap]'), l = w && $('.lbl', w), s = w && $('.src', w); if (!w || !l || !s || !l.textContent.trim() || !SRCB.test(s.textContent)) badB.push(n.textContent.trim().slice(0, 12)); });
+  var dev = $$('#v-bag, #sheet').map(function (e) { return e.textContent; }).join(' ').match(/\b(type \d+|group \d+|icon looks wrong|<missing>)/i);
+  log((bn.length > 0 || !S.vm.decor.known) && badB.length === 0 && !dev, 'Bag: every resource number has a label and an "in bag" source; no developer fields', bn.length + ' numbers' + (badB.length ? ', missing: ' + badB.join(', ') : '') + (dev ? ', dev text: ' + dev[0] : ''));
 
   /* 5. Next moves */
   var rows = $$('#v-overview .move'), VERBS = /^(Place|Merge|Refine|Upgrade|Swap|Fill|Raise|Save|Awaken)\b/, mm = [], okMoves = rows.length > 0 && rows.length <= 3;

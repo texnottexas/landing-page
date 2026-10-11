@@ -15,7 +15,8 @@ var S = { res: null, vm: null, code: null, cur: null, open: {}, f: { q: '', br: 
 var VIEWS = {
   overview: { label: 'Overview', icon: 'overview' },
   heroes: { label: 'Heroes', icon: 'heroes', segs: [['battle', 'Battle'], ['roster', 'Roster'], ['gear', 'Gear'], ['advice', 'Advice']] },
-  base: { label: 'Base', icon: 'base', segs: [['decor', 'Decor'], ['skins', 'Skins'], ['base-decor', 'Base decor'], ['formation', 'Formation']] }, beasts: { label: 'Beasts', icon: 'beasts', segs: [['field', 'Field'], ['collection', 'Collection'], ['optimizer', 'Optimizer']] }, ht: { label: 'HT', icon: 'ht', segs: [['loadouts', 'Loadouts'], ['pool', 'Chip pool']] }
+  base: { label: 'Base', icon: 'base', segs: [['decor', 'Decor'], ['skins', 'Skins'], ['base-decor', 'Base decor'], ['formation', 'Formation']] }, beasts: { label: 'Beasts', icon: 'beasts', segs: [['field', 'Field'], ['collection', 'Collection'], ['optimizer', 'Optimizer']] }, ht: { label: 'HT', icon: 'ht', segs: [['loadouts', 'Loadouts'], ['pool', 'Chip pool']] },
+  bag: { label: 'Bag', icon: 'bag' } /* a utility screen: no tab, reached from the header icon and the Overview row */
 };
 var TABS = ['overview', 'heroes', 'base', 'beasts', 'ht'];
 var PAGES = [['armory-report.html', 'Armory Report'], ['bases.html', 'Bases'], ['battle-report.html', 'Battle Reports'], ['chaos-crafting.html', 'Chaos Crafting'], ['decor-index.html', 'Decor Index'], ['enigma-viewer.html', 'Enigma Beasts'], ['eternal-land-calendar.html', 'Eternal Land'], ['heroes.html', 'Heroes'], ['heroes-awakening.html', 'Heroes Awakening'], ['ht-chips.html', 'HT Chips'], ['roadmap.html', 'Roadmap'], ['rockfield-optimizer.html', 'Rockfield Optimizer'], ['titan.html', 'Titan Canyon']];
@@ -56,7 +57,7 @@ var toastT;
 function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 3000); }
 
 /* ---------- the lazy half ---------- */
-var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = {}, BS = {};
+var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = {}, BS = {}, BG = {};
 function more(cb) {
   if (M) return cb(M);
   if (moreQ) { moreQ.push(cb); return; }
@@ -84,6 +85,7 @@ function lz(o, src, make, view, cb, soft) {   /* soft: a failed load calls it in
 }
 function ht(cb) { lz(HT, 'armory-ht.js', function () { return window.ArmoryHt(H); }, 'ht', cb); }
 function bse(cb) { lz(BS, 'armory-base.js', function () { return window.ArmoryBase(H); }, 'base', cb); }
+function bag(cb) { lz(BG, 'armory-bag.js', function () { return window.ArmoryBag(H); }, 'bag', cb); }
 function bst(cb) { lz(BT, 'armory-beasts.js', function () { return window.ArmoryBeasts(H); }, 'beasts', cb); }
 /* the awakening module (skill names, the order, the Raise move): a failed load never blanks a screen, the blocks say so */
 function awk(cb) { lz(AWK, 'armory-awaken.js', function () { return window.ArmoryAwaken(H); }, 'heroes', cb, awkFail); }
@@ -115,16 +117,16 @@ function parseHash() {
   if (i >= 0) { path = h.slice(0, i); h.slice(i + 1).split('&').forEach(function (kv) { var p = kv.split('='); if (p[0]) { try { q[decodeURIComponent(p[0])] = decodeURIComponent((p[1] || '').replace(/\+/g, ' ')); } catch (e) {} } }); }
   var parts = path.split('/');
   if (parts[0] === 'heroes' && parts[1] === 'runes') { parts[1] = 'gear'; q.view = 'runes'; } /* #heroes/runes is the Runes view of the Gear pane */
-  var bag = parts[0] === 'bag', v = VIEWS[parts[0]] ? parts[0] : 'overview';
+  var v = VIEWS[parts[0]] ? parts[0] : 'overview';
   var seg = parts[1] || (VIEWS[v].segs ? VIEWS[v].segs[0][0] : '');
   if (VIEWS[v].segs && !VIEWS[v].segs.some(function (s) { return s[0] === seg; })) seg = VIEWS[v].segs[0][0];
-  return { view: v, seg: seg, q: q, bag: bag };
+  return { view: v, seg: seg, q: q };
 }
 function go(p) { location.hash = '#' + p; }
 function applyRoute(first, soft) {
   if (!S.vm) return;
   var r = parseHash(), changed = !S.cur || S.cur.view !== r.view;
-  if (!M && (r.bag || (r.view === 'heroes' && r.seg !== 'battle' && r.seg !== 'advice'))) { more(function () { applyRoute(first, soft); }); return; }
+  if (!M && r.view === 'heroes' && r.seg !== 'battle' && r.seg !== 'advice') { more(function () { applyRoute(first, soft); }); return; }
   if (!soft) closeSheet(true);
   S.cur = r;
   $$('.view').forEach(function (s) {
@@ -132,6 +134,7 @@ function applyRoute(first, soft) {
     s.hidden = !on;
     if (on && changed && !first && !soft) { s.classList.remove('in'); void s.offsetWidth; s.classList.add('in'); }
   });
+  $$('.ib[data-open="bag"]').forEach(function (a) { if (r.view === 'bag') a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   $$('#tabsIn .tab, #bar a').forEach(function (a) { if (a.dataset.v === r.view) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   var view = $('#v-' + r.view);
   $$('.segs button', view).forEach(function (b) { b.setAttribute('aria-selected', b.dataset.seg === r.seg ? 'true' : 'false'); });
@@ -142,6 +145,7 @@ function applyRoute(first, soft) {
   if (r.view === 'base' && !soft) bse(function (b) { b.render(r); });
   if (r.view === 'ht' && !soft) ht(function (h) { h.render(r); });
   if (r.view === 'beasts' && !soft) bst(function (b) { b.render(r); });
+  if (r.view === 'bag' && !soft) bag(function (b) { b.render(r); });
   if (soft) { if (S.deep && M.deepRoster(S.deep)) S.deep = null; return; } /* a link that names a roster hero waits for the game data that arrives on the second pass */
   if (r.view === 'heroes' && r.seg === 'battle' && r.q.hero) {
     var h = S.vm.heroes.list.filter(function (x) { return x.name === r.q.hero; })[0];
@@ -155,7 +159,6 @@ function applyRoute(first, soft) {
   if (r.view === 'heroes' && (r.seg === 'battle' || r.seg === 'roster')) { if (r.q.awk) awk(function (m) { m.focus(r.q); }); else if (S.vm.awaken.n) awk(function (m) { m.refresh(); }); }
   if (r.view === 'heroes' && r.seg === 'gear' && r.q.view === 'runes' && S.gview !== 'runes') { S.gview = 'runes'; M.renderGear(); }
   if (r.view === 'base' && r.q.item) openSheet('decor', r.q.item);
-  if (r.bag) openSheet('bag');
 }
 
 /* ---------- loading ---------- */
@@ -346,6 +349,7 @@ function renderAll() {
   renderChrome(); renderOverview(); renderHeroes();
   if (M) M.renderSections();
   if (HT.m) { try { HT.m.render(S.cur); } catch (e) { console.error(e); } }
+  if (BG.m) { try { BG.m.render(S.cur); } catch (e) { console.error(e); } }
   if (BT.m) { try { BT.m.render(S.cur); } catch (e) { console.error(e); } }
   if (BS.m) { try { BS.m.render(S.cur); } catch (e) { console.error(e); } }
   awkSync();
@@ -533,6 +537,10 @@ function openSheet(kind, arg) {
     if (!AWK.m) { awk(function () { openSheet(kind, arg); }); return; }
     var rk = AWK.m.sheet(kind); if (!rk) return;
     title = rk[0]; body = rk[1];
+  } else if (kind === 'bagfilter' || kind === 'bagitem' || kind === 'bagagg') {
+    if (!BG.m) { bag(function () { openSheet(kind, arg); }); return; }
+    var rg = BG.m.sheet(kind, arg); if (!rg) return;
+    title = rg[0]; body = rg[1]; isName = !!rg[2];
   } else if (kind === 'bstfilter' || kind === 'beast' || kind === 'bstscore') {
     if (!BT.m) { bst(function () { openSheet(kind, arg); }); return; }
     var rb = BT.m.sheet(kind, arg); if (!rb) return;
@@ -600,7 +608,7 @@ document.addEventListener('click', function (e) {
   if (t.hasAttribute('data-close')) { closeSheet(); return; }
   if (t.hasAttribute('data-share')) { share(); return; }
   if (t.hasAttribute('data-fb')) { var fb = document.getElementById('fw-hdr-btn'); if (fb) { closeSheet(true); fb.click(); } else toast('Feedback is not available right now'); return; }
-  if (ds.open) { e.preventDefault(); if (ds.open === 'bag' && t.tagName === 'A') { go('bag'); return; } openSheet(ds.open); return; }
+  if (ds.open) { e.preventDefault(); if (ds.open === 'bag') { go('bag'); return; } openSheet(ds.open); return; }
   if (ds.explain) { openSheet('explain', ds.explain); return; }
   if (ds.go) { go(ds.go); return; }
   if (ds.hero) { var id = +ds.hero, on = !S.open[id]; S.open[id] = on; setHeroOpen(id, on); if (on) awkOpenHero(id); return; }

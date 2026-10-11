@@ -154,15 +154,6 @@ function renderGear() {
 }
 function classicLink(tab, text) { return '<div class="lnkrow" style="margin-top:12px"><a class="tb link" href="' + esc(classicUrl(tab)) + '">' + ic('ext', 'sm') + '<span>' + nd(text) + '</span></a></div>'; }
 function needData(what) { return '<div class="empty">' + esc(what) + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; }
-function bagBody() {
-  var D = S.vm.decor, R = S.vm.runes;
-  if (!D.known) return '<p class="muted">The bag is not available. It comes from the owner’s game data, and the owner can keep it private.</p>' + classicLink('inventory', 'Open the bag in classic');
-  var runes = Object.keys(R.runeBag).filter(function (n) { return R.runeBag[n] > 0; }).sort().map(function (n) {
-    return '<li style="display:flex;flex-direction:column;align-items:center;gap:4px;width:72px">' + art(BASE + 'rune-icons/' + (G.RUNE_ICON[n] || slug(n)) + '.png', 'ico q5', n.charAt(0), '').replace('class="ico q5"', 'class="ico q5" style="width:40px;height:40px"') + '<span class="t12" translate="no" style="text-align:center;line-height:1.25">' + esc(n).replace(/-/g, '\u2011') + '</span><span class="t12 muted">' + nd(R.runeBag[n] + ' in bag') + '</span></li>';
-  }).join('');
-  return '<section class="card"><div class="strip">' + lbl('Universal Decor Shards', fmtInt(D.shards), 'in bag') + lbl('Decoration kinds', D.bag.kinds, 'in bag') + '</div></section>' +
-    '<section class="card"><h3 class="disp" style="font-size:var(--fs-17)">Runes in bag</h3>' + (runes ? '<ul style="display:flex;flex-wrap:wrap;gap:12px;margin-top:12px">' + runes + '</ul>' : '<p class="muted" style="margin-top:8px">No runes in the bag.</p>') + '</section>' + classicLink('inventory', 'Open the full bag in classic');
-}
 function priv(k) { return S.res.privacy && S.res.privacy[k] ? 'Private' : 'Visible to people with the link'; }
 function repLabel(id) { return '…' + String(id).slice(-6); }
 function statusBody() {
@@ -286,7 +277,6 @@ function sheet(kind, arg) {
   if (kind === 'explain') return [EXPLAIN[arg][0], '<p>' + nd(EXPLAIN[arg][1]) + '</p>'];
   if (kind === 'status') return ['Status', statusBody()];
   if (kind === 'settings') return ['Settings', settingsBody()];
-  if (kind === 'bag') return ['Bag', bagBody()];
   return null;
 }
 var KEYS = ['load', 'pick', 'code', 'verify', 'addrep', 'rm', 'rmno', 'rmyes', 'sw', 'swno', 'swyes', 'mine', 'reload'];
