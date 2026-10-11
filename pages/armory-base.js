@@ -448,7 +448,7 @@ var CSS =
   '.bse-ft{display:grid;grid-template-columns:1fr;gap:12px}.bse-fc .bse-ch .ico,.bse-fc .bse-ch .fb{width:64px;height:80px}.bse-spec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:8px}' +
   '.bse-sl{aspect-ratio:1/1;border:1px solid var(--border);border-radius:var(--r-chip);display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);font-size:var(--fs-12);color:var(--muted)}.bse-sl b{font-size:var(--fs-17);color:var(--text)}' +
   '.bse-sl.s5{border-color:var(--ok);color:var(--ok)}.bse-sl.s5 b{color:var(--ok)}.bse-sl.s4{border-color:var(--rule)}.bse-sl.s0{opacity:.6}' +
-  '.bse-tch{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.bse-tch span{font-size:var(--fs-12);border:1px solid var(--border);border-radius:var(--r-chip);padding:2px 6px;background:var(--bg)}' +
+  '.bse-tch{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.bse-tch > span{font-size:var(--fs-12);border:1px solid var(--border);border-radius:var(--r-chip);padding:2px 6px;background:var(--bg)}' +
   '.bse-tl{margin:0;padding:0;list-style:none}.bse-tl li{display:flex;align-items:center;gap:12px;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule)}.bse-tl li:first-child{border-top:0}.bse-tl .ico,.bse-tl .fb{width:40px;height:40px}' +
   '.bse-tl .off{opacity:.55}.bse-tt{flex:1;min-width:0}.bse-tv{white-space:nowrap;font-size:var(--fs-13);color:var(--muted);text-align:right}' +
   '.bse-line{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:var(--fs-14);color:var(--muted)}.bse-line span b{color:var(--text)}' +
@@ -876,6 +876,8 @@ function wire() {
   v.addEventListener('change', function (e) { onChange(e.target); });
   document.addEventListener('change', function (e) { var t = e.target; if (t.closest && t.closest('#sheetB')) onChange(t); });
   document.addEventListener('click', function (e) {
+    var sk = e.target.closest ? e.target.closest('#sheetB [data-bseskill]') : null;
+    if (sk) { H.openSheet('skill', sk.dataset.bseskill); return; }
     var t = e.target.closest ? e.target.closest('#sheetB [data-bsedc], #sheetB [data-bsekc]') : null; if (!t) return;
     var raw = t.dataset.bsedc || t.dataset.bsekc, i = raw.indexOf(':'), k = raw.slice(0, i), val = raw.slice(i + 1);
     if (t.dataset.bsedc) { if (k === 'up') D.up = val === '1'; else D[k] = val; pageN = {}; dRefresh(); var h = dSheet(); $('#sheetB').innerHTML = h[1]; }
