@@ -395,17 +395,19 @@ function talentModel(ref, supp) {
   if (!ids || !ids.length) return null;
   var levels = {};
   ids.forEach(function (id) { var x = decodeTalent(Math.floor(num(id)), tree); if (x.g && x.level > 0) levels[x.g] = x.level; });
-  var sides = { left: [], right: [] }, power = 0, trained = 0, maxed = 0;
+  var sides = { left: [], right: [] }, power = 0, trained = 0, maxed = 0, maxPower = 0, spent = 0;
   Object.keys(tree).forEach(function (k) {
     var n = tree[k]; if (!n || typeof n !== 'object') return;
     var lv = num(levels[k]), max = num(n.max_lv), row = Array.isArray(n.levels) ? n.levels[lv] : null;
+    var top = Array.isArray(n.levels) ? n.levels[max] : null; if (top && typeof top.power === 'number') maxPower += top.power;
+    if (lv > 0 && Array.isArray(n.levels)) for (var ci = 0; ci <= lv && ci < n.levels.length; ci++) spent += num(n.levels[ci] && n.levels[ci].cost);
     if (lv > 0) { trained++; if (lv >= max) maxed++; if (row && typeof row.power === 'number') power += row.power; }
     var side = n.side === 'right' ? 'right' : 'left';
     sides[side].push({ id: Number(k), name: typeof n.name === 'string' ? n.name : 'Talent', desc: typeof n.desc === 'string' ? n.desc : '', icon: typeof n.icon_name === 'string' ? n.icon_name : '', lv: lv, max: max, sw: !!n.is_switch,
       val: lv > 0 && row && !n.is_switch && num(row.effect_value) > 0 ? fbuffVal(row.effect_value) : '', buff: row && row.effect_id ? fbuffName(Number(row.effect_id)) : '' });
   });
   ['left', 'right'].forEach(function (s) { sides[s].sort(function (a, b) { return a.id - b.id; }); });
-  return { sides: sides, total: Object.keys(tree).length, trained: trained, maxed: maxed, power: power, held: supp && supp.currencies ? num(supp.currencies['2800000']) : null };
+  return { sides: sides, total: Object.keys(tree).length, trained: trained, maxed: maxed, power: power, maxPower: maxPower, spent: spent, held: supp && supp.currencies ? num(supp.currencies['2800000']) : null };
 }
 
 var Logic = {
@@ -444,7 +446,7 @@ var CSS =
   '.bse-c{background:var(--card);border:1px solid var(--border);border-radius:var(--r-card);padding:8px;display:flex;flex-direction:column;gap:6px;min-width:0;text-align:left;color:inherit;width:100%}button.bse-c:active{background:var(--card-hi)}' +
   '.bse-c.q3{border-color:var(--q3)}.bse-c.q4{border-color:var(--q4)}.bse-c.q5{border-color:var(--q5)}.bse-c.q6{border-color:var(--q6)}.bse-c.off{opacity:.7;border-style:dashed}' +
   '.bse-ch{display:flex;align-items:center;gap:8px}.bse-ch .ico,.bse-ch .fb{width:40px;height:40px}.bse-ct{flex:1;min-width:0}.bse-cn{font-size:var(--fs-14);font-weight:600;line-height:1.25;overflow-wrap:anywhere}.bse-cs{font-size:var(--fs-12);color:var(--muted)}' +
-  '.bse-bf{margin:0;padding:0;list-style:none}.bse-bf li{display:flex;justify-content:space-between;gap:8px;font-size:var(--fs-13);color:var(--muted)}.bse-bf li > span:last-child{color:var(--text);white-space:nowrap;font-weight:600}' +
+  '.bse-bf{margin:0;padding:0;list-style:none}.bse-bf li{display:flex;justify-content:space-between;font-size:var(--fs-13);color:var(--muted)}.bse-bf li > span:last-child{margin-left:8px;color:var(--text);white-space:nowrap;font-weight:600}' +
   '.bse-bl{font-size:var(--fs-12);color:var(--muted);font-weight:700;margin-top:2px}' +
   '.bse-skin .ico,.bse-skin .fb{width:56px;height:56px}.bse-pills{display:flex;flex-wrap:wrap;gap:4px}' +
   '.bse-sk{display:flex;align-items:center;gap:4px;font-size:var(--fs-13);color:var(--accent);font-weight:600;min-height:40px;text-align:left}' +
@@ -453,9 +455,9 @@ var CSS =
   '.bse-tab{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}' +
   '.bse-rk{display:flex;flex-direction:column;gap:8px}.bse-r{border:1px solid var(--border);border-radius:var(--r-card);padding:12px;background:var(--surface);display:flex;flex-direction:column;gap:8px}' +
   '.bse-r .bse-ch .ico,.bse-r .bse-ch .fb{width:40px;height:40px}.bse-n{font:700 var(--fs-15)/1 var(--display);color:var(--muted);min-width:24px}' +
-  '.bse-gl{display:flex;justify-content:space-between;gap:12px;font-size:var(--fs-14)}.bse-gl > span:last-child{font-weight:700;white-space:nowrap}.bse-rate{font-size:var(--fs-12);color:var(--muted)}' +
-  '.bse-cost{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;font-size:var(--fs-13);color:var(--muted)}.bse-cost b{color:var(--text)}' +
-  '.bse-ok{color:var(--ok);font-weight:700}.bse-me{font-size:var(--fs-12);color:var(--muted)}' +
+  '.bse-gl{display:flex;justify-content:space-between;font-size:var(--fs-14)}.bse-gl > span:last-child{margin-left:12px;font-weight:700;white-space:nowrap}.bse-rate{font-size:var(--fs-12);color:var(--muted)}' +
+  '.bse-cost{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;font-size:var(--fs-13);color:var(--muted)}.bse-cost b{color:var(--text)}' +
+  '.bse-dot{color:var(--muted)}.bse-ok{color:var(--ok);font-weight:700}.bse-me{font-size:var(--fs-12);color:var(--muted)}' +
   '.bse-set{display:flex;flex-direction:column;gap:8px;width:100%;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule);text-align:left;color:inherit}.bse-set:first-child{border-top:0}' +
   '.bse-sr{display:flex;align-items:center;gap:8px;justify-content:space-between}.bse-sn{font-size:var(--fs-15);font-weight:600}.bse-comp{display:flex;flex-wrap:wrap;gap:4px}.bse-comp .ico,.bse-comp .fb{width:32px;height:32px}.bse-comp .gone{opacity:.35}' +
   '.bse-ft{display:grid;grid-template-columns:1fr;gap:12px}.bse-fc .bse-ch .ico,.bse-fc .bse-ch .fb{width:64px;height:80px}.bse-spec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-top:8px}' +
@@ -464,7 +466,7 @@ var CSS =
   '.bse-tch{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.bse-tch > span{font-size:var(--fs-12);border:1px solid var(--border);border-radius:var(--r-chip);padding:2px 6px;background:var(--bg)}' +
   '.bse-tl{margin:0;padding:0;list-style:none}.bse-tl li{display:flex;align-items:center;gap:12px;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule)}.bse-tl li:first-child{border-top:0}.bse-tl .ico,.bse-tl .fb{width:40px;height:40px}' +
   '.bse-tl .off{opacity:.55}.bse-tt{flex:1;min-width:0}.bse-tv{white-space:nowrap;font-size:var(--fs-13);color:var(--muted);text-align:right}' +
-  '.bse-line{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:var(--fs-14);color:var(--muted)}.bse-line span b{color:var(--text)}' +
+  '.bse-line{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:var(--fs-14);color:var(--muted)}.bse-line span b{color:var(--text)}' +
   '@media (min-width:768px){.bse-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.bse-fbtn{display:none}.bse-fs{display:grid;grid-template-columns:repeat(4,1fr);gap:8px 12px}.bse-ft{grid-template-columns:repeat(3,minmax(0,1fr))}}' +
   '@media (min-width:1024px){.bse-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.bse-rk{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.bse-tl.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}.bse-tl.two li:nth-child(2){border-top:0}}' +
   '@media (min-width:1200px){.bse-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}';
@@ -474,6 +476,7 @@ function injectCss() {
   var s = document.createElement('style'); s.id = 'bse-style'; s.textContent = CSS; document.head.appendChild(s);
 }
 function sp(t, cls) { return '<span' + (cls ? ' class="' + cls + '"' : '') + '>' + nd(t) + '</span>'; }
+function dots(a) { return a.filter(Boolean).join('<span class="bse-dot" aria-hidden="true">\u00B7</span>'); }
 function icon(file, cls, fb, alt) { return art(BASE + file, 'ico ' + cls, fb, alt || ''); }
 function needData(what) { return '<div class="empty">' + esc(what) + (readOnly() ? '' : ' <button class="tb link" type="button" data-open="status">Send game data</button>') + '</div>'; }
 function classicLink(tab, text) { return '<div class="lnkrow"><a class="tb link" href="' + esc(classicUrl(tab)) + '">' + ic('ext', 'sm') + '<span>' + esc(text) + '</span></a></div>'; }
@@ -518,7 +521,7 @@ function stripHtml() {
 }
 
 /* ---- Decor ---- */
-function buffList(b, max) { return b.length ? '<ul class="bse-bf">' + b.slice(0, max || 6).map(function (x) { return '<li><span>' + esc(x.n) + '</span><span translate="no">' + esc(x.v) + '</span></li>'; }).join('') + '</ul>' : ''; }
+function buffList(b, max) { return b.length ? '<ul class="bse-bf">' + b.slice(0, max || 6).map(function (x) { return '<li><span>' + nd(x.n) + '</span><span translate="no">' + esc(x.v) + '</span></li>'; }).join('') + '</ul>' : ''; }
 function decorCard(x, off) {
   var sub = off ? '' : sp('Lv.' + x.lv + ' · ' + x.count + (x.count === 1 ? ' piece' : ' pieces'));
   var inner = '<span class="bse-ch">' + icon('decor-icons/' + x.ic, qCls(x.q), x.n.charAt(0)) + '<span class="bse-ct"><span class="bse-cn" translate="no" style="display:block">' + esc(noHy(x.n)) + '</span>' + (sub ? '<span class="bse-cs" style="display:block">' + sub + '</span>' : '') + '</span></span>' + buffList(x.buffs);
@@ -576,7 +579,7 @@ function dDirty() { return (D.stat ? 1 : 0) + (D.up ? 1 : 0) + (D.sort !== 'name
 function dBtn() { var n = dDirty(); return 'Filter · Sort' + (n ? ' (' + n + ')' : ''); }
 var D_STATS = [['', 'All stats']].concat(Logic.STAT_TABS.map(function (t) { return [t[0], t[1]]; }));
 var D_SORT = [['name', 'Name A to Z'], ['za', 'Name Z to A'], ['lvhigh', 'Level, high to low'], ['lvlow', 'Level, low to high'], ['quality', 'Quality']];
-function sel(id, lab, list, val, attr) { return '<label class="bse-f"><span>' + esc(lab) + '</span><select class="sel" ' + attr + '="' + id + '">' + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>'; }
+function sel(id, lab, list, val, attr) { return '<label class="bse-f"><span>' + esc(lab) + '</span><select class="sel" ' + attr + '="' + id + '">' + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (/\d/.test(o[1]) ? ' translate="no"' : '') + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select></label>'; }
 function decorControls() {
   return '<div class="fbar"><div class="grow"><input class="fld" type="search" data-bsedq placeholder="Search name or stat" aria-label="Search decorations" value="' + esc(D.q) + '"></div><button class="btn bse-fbtn" type="button" data-open="bsedfilter">' + ic('sliders', 'sm') + '<span>' + esc(dBtn()) + '</span></button></div>' +
     '<div class="bse-fs">' + sel('stat', 'Stat', D_STATS, D.stat, 'data-bsed') + sel('sort', 'Sort', D_SORT, D.sort, 'data-bsed') + '<label class="bse-f"><span>Shards</span><select class="sel" data-bsed="up"><option value=""' + (D.up ? '' : ' selected') + '>All</option><option value="1"' + (D.up ? ' selected' : '') + '>Can upgrade with shards</option></select></label></div>';
@@ -611,7 +614,7 @@ function spendHtml() {
     else {
       var m = spend.model, main = !!Logic.MAIN_ID[spend.tab], rows = (main && spend.units ? m.byStatAll : m.byStat)[spend.tab] || [], shown = spend.all ? rows : rows.slice(0, TOP), s = m.shards;
       var tabs = '<div class="bse-tab" role="group" aria-label="Stat to raise">' + Logic.STAT_TABS.map(function (t) { return '<button class="bse-cb" type="button" data-bsetab="' + t[0] + '" aria-pressed="' + (spend.tab === t[0]) + '">' + esc(t[1]) + '</button>'; }).join('') + '</div>';
-      body = '<div class="bse-body"><p class="bse-line">' + sp(fmtInt(s.universal) + ' shards in bag') + sp('direct ' + fmtInt(s.directShards) + ' · from boxes ' + fmtInt(s.boxShards)) + '</p>' +
+      body = '<div class="bse-body"><p class="bse-line">' + dots([sp(fmtInt(s.universal) + ' shards in bag'), sp(fmtInt(s.directShards) + ' as shards and ' + fmtInt(s.boxShards) + ' from boxes')]) + '</p>' +
         (s.luckyChests > 0 ? '<p class="bse-note">' + nd(s.luckyChests + ' Lucky Decor Shard Chests in the bag are not counted: each opens for 10 to 1,000 shards.') + '</p>' : '') + tabs +
         (main && spend.tab !== 'march_size' ? '<div class="bse-tab" role="group" aria-label="Which buffs count">' + [[true, 'All units only'], [false, 'Every unit type']].map(function (o) { return '<button class="bse-cb" type="button" data-bseunits="' + o[0] + '" aria-pressed="' + (spend.units === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div>' : '') +
         '<p class="t13 muted" style="margin-bottom:8px">' + esc('Best first: the most ' + Logic.statTabLabel(spend.tab).toLowerCase() + ' for each shard spent.' + (main && spend.tab !== 'march_size' ? (spend.units ? ' Only the buff that applies to all units counts, the way the Overview move does.' : ' Army, Navy and Air Force buffs count too.') : '')) + '</p>' +
@@ -621,8 +624,8 @@ function spendHtml() {
   return '<section class="card bse-sec" id="bseSpend">' + head + body + '</section>';
 }
 function spendRow(r, rank) {
-  var gain = r.gain.map(function (g) { return '<div><div class="bse-gl"><span>' + esc(g.n) + '</span><span translate="no">' + esc(g.v) + '</span></div>' + (g.rate ? '<div class="bse-rate">' + esc(g.rate) + '</div>' : '') + '</div>'; }).join('');
-  var cost = '<div class="bse-cost">' + sp(fmtInt(r.cost) + ' shards') + (r.credit > 0 && r.cost < r.raw ? sp('after ' + fmtInt(r.credit) + ' from spare pieces') : '') + (r.ready ? '<span class="bse-ok">Ready to upgrade</span>' : sp(fmtInt(r.short) + ' more needed')) + '</div>';
+  var gain = r.gain.map(function (g) { return '<div><div class="bse-gl"><span>' + nd(g.n) + '</span><span translate="no">' + esc(g.v) + '</span></div>' + (g.rate ? '<div class="bse-rate">' + esc(g.rate) + '</div>' : '') + '</div>'; }).join('');
+  var cost = '<div class="bse-cost">' + dots([sp(fmtInt(r.cost) + ' shards'), r.credit > 0 && r.cost < r.raw ? sp('after ' + fmtInt(r.credit) + ' from spare pieces') : '', r.ready ? '<span class="bse-ok">Ready to upgrade</span>' : sp(fmtInt(r.short) + ' more needed')]) + '</div>';
   var me = r.mutex.length ? '<p class="bse-me">' + esc('Only one of this and ' + r.mutex.slice(0, 2).join(', ') + (r.mutex.length > 2 ? ' and ' + (r.mutex.length - 2) + ' more' : '') + ' can be placed.') + '</p>' : '';
   var also = r.also.length ? '<p class="bse-me">' + esc('Also gives ' + r.also.map(function (a) { return a.n + ' ' + a.v; }).join(', ')) + '</p>' : '';
   return '<div class="bse-r"><div class="bse-ch"><span class="bse-n" translate="no">' + rank + '</span>' + icon('decor-icons/' + r.ic, '', r.n.charAt(0)) + '<span class="bse-ct"><button class="bse-cn tb link" type="button" data-bseitem="' + esc(r.n) + '" translate="no" style="justify-content:flex-start;min-height:24px;padding:0;font-size:var(--fs-15)">' + esc(noHy(r.n)) + '</button><span class="bse-cs" style="display:block">' + sp('Lv.' + r.from + ' to Lv.' + r.to) + '</span></span></div>' +
@@ -785,7 +788,7 @@ function formationPane() {
   if (!REF) return '<p class="muted t13" role="status">Loading the formation list…</p>';
   var cards = ['1001', '1002', '1003'].map(function (id) { return formationCard(Logic.formationCard(id, fs[id], REF)); }).join('');
   var techs = Logic.techModel(REF, fs), tech = (techs.some(function (t) { return t.seen; }) || (s && s.formations)) ? techHtml(techs) : '';
-  var mast = am ? '<section class="card"><h2 class="sub">Component mastery</h2><div class="bse-line" style="margin-top:8px">' + am.map(function (a) { return '<span>' + esc(a.type) + ' <b>' + nd('Lv.' + a.lv + ' of 20') + '</b></span>'; }).join('') + '</div></section>' : '';
+  var mast = am ? '<section class="card"><h2 class="sub">Component mastery</h2><div class="bse-line" style="margin-top:8px">' + dots(am.map(function (a) { return '<span>' + esc(a.type) + ' <b>' + nd('Lv.' + a.lv + ' of 20') + '</b></span>'; })) + '</div></section>' : '';
   var tm = tal ? Logic.talentModel(REF, s) : null;
   var age = s && s.ts ? '<p class="t13 muted">' + nd('Game data from ' + new Date(s.ts).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })) + '</p>' : '';
   return age + '<div class="bse-ft">' + cards + '</div>' + tech + mast + (tm ? talentHtml(tm) : '<div class="empty">The talent tree is not in your game data yet. Send game data from the game to see it here.</div>') + classicLink('formation', 'Plan talent changes in the classic page');
@@ -811,7 +814,7 @@ function talentHtml(tm) {
         return '<li class="' + (n.lv ? '' : 'off') + '">' + (n.icon ? icon('formation-icons/image_professionTalent_' + n.icon + '.png', n.lv >= n.max ? 'q5' : '', n.name.charAt(0), n.name) : '<span class="ico fb" translate="no">' + esc(n.name.charAt(0)) + '</span>') + '<span class="bse-tt"><span style="display:block;font-weight:600" translate="no">' + esc(n.name) + '</span><span class="t13 muted">' + esc(n.desc) + '</span></span><span class="bse-tv"><span style="display:block">' + nd(n.sw ? (n.lv ? 'Chosen' : 'Not chosen') : 'Lv.' + n.lv + ' of ' + n.max) + '</span>' + (n.val ? '<span style="display:block;color:var(--text)" translate="no">' + esc(n.val) + '</span>' : '') + '</span></li>';
       }).join('') + '</ul></div>' : '') + '</section>';
   }
-  return '<section class="card"><h2 class="sub">Talent tree</h2><p class="bse-line" style="margin-top:8px">' + sp(tm.trained + ' of ' + tm.total + ' talents trained') + sp(tm.maxed + ' at top level') + (tm.power ? sp(fmtInt(tm.power) + ' power from talents') : '') + (tm.held != null ? sp(fmtInt(tm.held) + ' Formation 101 manuals held') : '') + '</p></section>' + side('left', 'Left side talents') + side('right', 'Right side talents');
+  return '<section class="card"><h2 class="sub">Talent tree</h2><p class="bse-line" style="margin-top:8px">' + dots([sp(tm.trained + ' of ' + tm.total + ' talents trained'), sp(tm.maxed + ' at top level'), tm.power ? sp(fmtInt(tm.power) + (tm.maxPower ? ' of ' + fmtInt(tm.maxPower) : '') + ' talent power') : '', tm.held != null ? sp(fmtInt(tm.held) + ' Formation 101 manuals held') : '', tm.spent ? sp(fmtInt(tm.spent) + ' manuals spent on the tree') : '']) + '</p></section>' + side('left', 'Shark and Scorpion talents') + side('right', 'Eagle talents');
 }
 function loadRef(cb) {
   if (REF || REFFail) return cb();

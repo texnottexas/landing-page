@@ -273,6 +273,8 @@ test('armyMastery decodes the unit code out of the value; talentModel decodes le
   assert.ok(tm.sides.right.some((n) => n.id === 2015000 && n.lv > 0));
   const sw = tm.sides.left.find((n) => n.id === 1007000); assert.equal(sw.sw, true); assert.equal(sw.val, '');
   assert.ok(tm.power >= 15000);
+  assert.ok(tm.maxPower > tm.power && tm.maxPower > 800000, 'maximum tree power: ' + tm.maxPower);
+  assert.ok(tm.spent > 0, 'manuals spent: ' + tm.spent);
   assert.equal(L.talentModel(REF, { talents: [] }), null); assert.equal(L.talentModel(REF, null), null);
   assert.equal(L.talentModel({ talent_tree: null }, { talents: [1001006] }).trained, 0, 'a missing tree never throws');
 });
