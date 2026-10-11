@@ -255,6 +255,12 @@
     CARD: { 172: 44300001, 239: 44300002, 334: 44300003, 333: 44300004, 234: 44300005, 169: 44300006 },
     STONE: 44301001
   };
+  // {slot: level} from the supplement's {skillId: level}: only this hero's own four ids count, whole numbers 1-10, a missing id is a locked skill
+  function awSkills(id, aws) {
+    var f = AW.FIRST[id], o = null, s, v;
+    if (f && aws && typeof aws === 'object') for (s = 1; s <= 4; s++) { v = Math.floor(+aws[f + s - 1]); if (v >= 1) (o = o || {})[s] = Math.min(v, 10); }
+    return o;
+  }
   // 5 stars, Lv.120 and Exclusive Skill Lv.5 (the game's rule); the card is a separate question
   function canAwaken(a) { return !!(a && a.live && !a.aw && a.snap && a.star >= 5 && a.lv >= 120 && a.ex >= 5); }
   function buildAwaken(merged, sh, inv, core) {
@@ -266,8 +272,9 @@
       var id = +k, s = rec[id], m = mh[id], g = !!(s && +s.aw > 0), ex = 0;
       var aw = Math.min(40, Math.floor(g ? +s.aw : m ? +m.awakenLevel || 0 : 0)) || 0;
       ['p1', 'p2'].forEach(function (p) { var x = s && s[p] && s[p].x && s[p].x[0]; if (x && G.EXCL_SKILL_ID[id] && +x.id === G.EXCL_SKILL_ID[id]) ex = Math.max(ex, Math.floor(+x.lv) || 0); });
-      var a = byId[id] = { id: id, name: core.heroName(id), live: !!AW.FIRST[id], game: g, snap: !!s, aw: aw, fa: !!(aw && (g ? s.fa : m && m.fullAwaken)), pw: s && +s.pw > 0 ? +s.pw : 0, star: s ? +s.star || 0 : 0, lv: s ? +s.lv || 0 : 0, ex: ex };
-      if (aw) { ra.n++; if (a.fa || aw >= 40) ra.full++; else ra.part.push(a); }
+      var sk = g && AW.FIRST[id] ? awSkills(id, s.aws) : null, fa = !!(aw && (g ? s.fa : m && m.fullAwaken));
+      var a = byId[id] = { id: id, name: core.heroName(id), live: !!AW.FIRST[id], game: g, snap: !!s, aw: aw, fa: fa, sk: sk, full: !!(aw && (fa || (aw >= 40 && sk && sk[1] + sk[2] + sk[3] + sk[4] === 40))), pw: s && +s.pw > 0 ? +s.pw : 0, star: s ? +s.star || 0 : 0, lv: s ? +s.lv || 0 : 0, ex: ex };
+      if (aw) { ra.n++; if (a.full) ra.full++; else ra.part.push(a); } // Lv.40 is not fully awakened: a skill can still be under Lv.10
     });
     if (inv && inv.tabs && Array.isArray(inv.tabs.item)) {
       ra.stones = 0;
@@ -279,7 +286,7 @@
     }
     Object.keys(ra.cards).forEach(function (k) {
       var a = byId[k];
-      if (canAwaken(a)) ra.cand.push({ kind: 'awaken', gain: a.pw, parts: [{ s: 'Awaken ' }, { s: a.name, n: 1 }], meta: 'Awakening Card in bag', ico: { u: 'hero-awake-items/item_' + AW.CARD[k] + '.png', q: 'q5', fb: a.name.charAt(0) }, route: 'heroes/roster?hero=' + encodeURIComponent(a.name) + '&awk=1' });
+      if (canAwaken(a)) ra.cand.push({ kind: 'awaken', hero: a.id, gain: a.pw, parts: [{ s: 'Awaken ' }, { s: a.name, n: 1 }], meta: 'Awakening Card in bag', ico: { u: 'hero-awake-items/item_' + AW.CARD[k] + '.png', q: 'q5', fb: a.name.charAt(0) }, route: 'heroes/roster?hero=' + encodeURIComponent(a.name) + '&awk=hero' });
     });
     ra.part.sort(function (a, b) { return b.aw - a.aw; });
     ra.show = !!(ra.n || Object.keys(byId).some(function (k) { return canAwaken(byId[k]); }));
@@ -385,7 +392,7 @@
     };
   }
 
-  var api = { AW: AW, canAwaken: canAwaken, buildAwaken: buildAwaken, benchExtra: benchExtra, movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
+  var api = { AW: AW, awSkills: awSkills, canAwaken: canAwaken, buildAwaken: buildAwaken, benchExtra: benchExtra, movePicks: movePicks, cleanChips: cleanChips, heroIcon: heroIcon, buildViewModel: buildViewModel, fromLoad: fromLoad, equipSlot: equipSlot, equipQuality: equipQuality, TOTAL_IDS: TOTAL_IDS };
   window.ArmoryVM = api;
   if (isNode) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});

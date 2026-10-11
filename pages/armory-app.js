@@ -27,7 +27,7 @@ function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').repla
 function nd(s) { return esc(s).replace(/(\d[\d,.]*)/g, '<span translate="no">$1</span>'); }
 function nm(s, cls) { return '<span translate="no"' + (cls ? ' class="' + cls + '"' : '') + '>' + esc(s) + '</span>'; }
 function ic(id, cls) { return '<svg class="i ' + (cls || '') + '" aria-hidden="true"><use href="#i-' + id + '"/></svg>'; }
-function fmtK(n) { n = +n || 0; return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); }
+function fmtK(n) { n = +n || 0; if (n >= 1e6) return (n / 1e6).toFixed(2).replace(/\.?0+$/, '') + 'M'; return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K' : String(n); }
 function fmtInt(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 function ramp(p) { return p >= 70 ? 'max' : p >= 50 ? 'hi' : p >= 25 ? 'mid' : 'lo'; }
 function qCls(q) { return q >= 6 ? 'q6' : q === 5 ? 'q5' : q === 4 ? 'q4' : q === 3 ? 'q3' : ''; }
@@ -150,7 +150,7 @@ function applyRoute(first, soft) {
     }
   }
   S.deep = null; if (M && !M.deepRoster(r)) S.deep = r;
-  if (r.view === 'heroes' && (r.seg === 'battle' || r.seg === 'roster') && r.q.awk) awk(function (m) { m.focus(r.q); });
+  if (r.view === 'heroes' && (r.seg === 'battle' || r.seg === 'roster')) { if (r.q.awk) awk(function (m) { m.focus(r.q); }); else if (S.vm.awaken.n) awk(function (m) { m.refresh(); }); }
   if (r.view === 'heroes' && r.seg === 'gear' && r.q.view === 'runes' && S.gview !== 'runes') { S.gview = 'runes'; M.renderGear(); }
   if (r.view === 'base' && r.q.item) openSheet('decor', r.q.item);
   if (r.bag) openSheet('bag');
@@ -214,18 +214,21 @@ function awakenMove() {
 /* a hero's portrait: the awakened art (live heroes) over the base portrait, and the level badge, for an awakened hero (a: its awaken entry) */
 function portrait(id, name, base, a) {
   if (!a || !a.aw) return art(base, 'por', name.charAt(0), '');
-  return '<span class="awk-pa">' + (a.live ? art('https://h5.topwargame.com/DynRes/images/headpic/hero_awakeicon' + (+id) + '_global.png?t=22.jpg', 'por', name.charAt(0), '', base) : art(base, 'por', name.charAt(0), '')) + '<span class="awk-bd"><span translate="no">' + (+a.aw) + '</span></span></span>';
+  return '<span class="awk-pa">' + (a.live ? art('https://h5.topwargame.com/DynRes/images/headpic/hero_awakeicon' + (+id) + '_global.png?t=22.jpg', 'por', name.charAt(0), '', base) : art(base, 'por', name.charAt(0), '')) + '<span class="awk-bd" aria-hidden="true"><span translate="no">' + (+a.aw) + '</span></span></span>';
 }
 function awPor(a) { return portrait(a.id, a.name, ArmoryVM.heroIcon(a.id), a); }
-function awLevel(a) { return a.fa || a.aw >= 40 ? 'Fully awakened' : 'Awakening Lv.' + a.aw + ' of 40'; }
+function awLevel(a) { return a.full ? 'Fully awakened' : 'Awakening Lv.' + a.aw + ' of 40'; }
+/* third line of an awakened row: its four skill levels (a locked skill is a dash) */
+function awSkLine(a) {
+  if (!a.live || !a.game) return '';
+  if (a.sk ? a.sk[1] + a.sk[2] + a.sk[3] + a.sk[4] === 40 : a.fa) return '<span class="hb-2 awk-skl" style="display:block">' + nd('All 4 skills Lv.10') + '</span>';
+  if (!a.sk) return '';
+  return '<span class="hb-2 awk-skl" style="display:block">Skills ' + [1, 2, 3, 4].map(function (i) { return a.sk[i] ? '<span translate="no">' + a.sk[i] + '</span>' : '<span aria-hidden="true">\u2013</span><span class="sr">locked</span>'; }).join(' \u00B7 ') + '</span>';
+}
 function awTop() {
   var A = S.vm.awaken; if (!A.show) return '';
-  var open = !!S.awkOpen, sub = A.n ? A.n + ' awakened in roster' + (A.stones != null ? ' \u00B7 ' + fmtInt(A.stones) + ' Awakening Stones in bag' : '') : 'Heroes that can be awakened';
-  return '<section class="card awk-top"><button class="awk-hd" type="button" data-awkcard aria-expanded="' + open + '"><span class="awk-ht"><span class="awk-hn">Awakening</span><span class="awk-hs">' + nd(sub) + '</span></span>' + ic('down', 'awk-chev') + '</button><div class="awk-body"' + (open ? '' : ' hidden') + '></div></section>';
-}
-function awSum() {
-  var A = S.vm.awaken;
-  return A.n ? '<div class="t13 muted awk-sum">' + nd(A.full + ' of ' + A.n + ' fully awakened') + A.part.slice(0, 2).map(function (a) { return ' &middot; ' + nm(a.name) + ' ' + nd(a.aw + '/40'); }).join('') + '</div>' : '';
+  var open = !!S.awkOpen, sub = A.n ? A.n + ' awakened in roster' + (A.full ? ', ' + A.full + ' fully' : '') + (A.stones != null ? ' \u00B7 ' + fmtInt(A.stones) + ' Awakening Stones in bag' : '') : 'Heroes that can be awakened';
+  return '<section class="card awk-top"><button class="awk-hd" type="button" data-awkcard aria-expanded="' + open + '"><span class="awk-ht"><span class="awk-hn">Awakening</span><span class="awk-hs">' + nd(sub) + '</span><span class="awk-hs awk-hv" translate="no"></span></span>' + ic('down', 'awk-chev') + '</button><div class="awk-body"' + (open ? '' : ' hidden') + '></div></section>';
 }
 /* a hero's awakening block opens with the hero; the card and the blocks follow a redraw */
 function awkOpenHero(id) { if ($('.awk-slot[data-awk="' + (+id) + '"]')) awk(function (m) { m.fill(id); }); }
@@ -454,7 +457,7 @@ function gearCard(h, p, showHero) {
 function heroRow(h) {
   var open = !!S.open[h.id], a = S.vm.awaken.byId[h.id];
   return '<article class="hero' + (open ? ' open' : '') + '" id="h-' + esc(h.id) + '"><button class="hrow" type="button" aria-expanded="' + open + '" aria-controls="hp-' + esc(h.id) + '" data-hero="' + esc(h.id) + '">' + portrait(h.id, h.name, h.icon, a) +
-    '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(h.name) + '</span>' + branchPill(h.branch) + '</span><span class="hb-2" style="display:block">' + (a && a.aw ? nd(awLevel(a)) : 'Level ' + nm(String(h.lv))) + ' &middot; ' + nm(String(h.pieces.length)) + ' of ' + nm('6') + ' gear equipped</span></span>' +
+    '<span class="hb"><span class="hb-1"><span class="hb-n" translate="no">' + esc(h.name) + '</span>' + branchPill(h.branch) + '</span><span class="hb-2" style="display:block">' + (a && a.aw ? nd(awLevel(a)) : 'Level ' + nm(String(h.lv))) + ' &middot; ' + nm(String(h.pieces.length)) + ' of ' + nm('6') + ' gear equipped</span>' + (a ? awSkLine(a) : '') + '</span>' +
     '<span class="hr-score"><span class="n disp" style="display:block" translate="no">' + fmtK(h.score) + '</span><span class="l" style="display:block">gear score</span></span>' + ic('down', 'chev') + '</button>' +
     '<div class="panel" id="hp-' + esc(h.id) + '"><div><div class="gears">' + h.pieces.map(function (p) { return gearCard(h, p); }).join('') + '</div>' + (a ? '<div class="awk-slot" data-awk="' + (+h.id) + '"></div>' : '') + '</div></div></article>';
 }
@@ -488,8 +491,8 @@ function battleList() {
 function renderHeroes() {
   var n = S.vm.heroes.list.length;
   $('#v-heroes').innerHTML = segs('heroes') +
-    '<div class="vb" data-pane="battle"><div class="sechead"><h2 class="title">Heroes in battle reports</h2></div>' + awSum() + awTop() + '<div class="fbar"><div class="grow t13 muted" id="heroCount">' + nd(n + ' heroes') + '</div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="heroList"></div></div>' +
-    '<div class="vb" data-pane="roster" hidden>' + awSum() + awTop() + '<div class="fbar"><div class="grow t13 muted" id="rosterCount"></div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="rosterList"></div></div>' +
+    '<div class="vb" data-pane="battle"><div class="sechead"><h2 class="title">Heroes in battle reports</h2></div>' + awTop() + '<div class="fbar"><div class="grow t13 muted" id="heroCount">' + nd(n + ' heroes') + '</div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="heroList"></div></div>' +
+    '<div class="vb" data-pane="roster" hidden>' + awTop() + '<div class="fbar"><div class="grow t13 muted" id="rosterCount"></div><button class="btn fbtn" type="button" data-open="filter">' + ic('sliders', 'sm') + 'Filter \u00B7 Sort</button>' + ctrls('inl') + '</div><div id="rosterList"></div></div>' +
     '<div class="vb" data-pane="gear" hidden><div id="gearTop"></div><div id="gearBody"></div></div>' +
     '<div class="vb" data-pane="advice" hidden><div id="adviceBody"></div></div>';
   battleList();
@@ -523,7 +526,7 @@ function openSheet(kind, arg) {
     if (!HT.m) { ht(function () { openSheet(kind, arg); }); return; }
     var rh = HT.m.sheet(); if (!rh) return;
     title = rh[0]; body = rh[1];
-  } else if (kind === 'awkorder') {
+  } else if (kind === 'awkorder' || kind === 'awkpower') {
     if (!AWK.m) { awk(function () { openSheet(kind, arg); }); return; }
     var rk = AWK.m.sheet(kind); if (!rk) return;
     title = rk[0]; body = rk[1];
@@ -628,7 +631,7 @@ document.addEventListener('keydown', function (e) {
 });
 window.addEventListener('hashchange', function () { if (!shim()) applyRoute(false); });
 
-H = { portrait: portrait, awPor: awPor, awLevel: awLevel, awkSync: awkSync, awkOpenHero: awkOpenHero, setHeroOpen: setHeroOpen, renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
+H = { awSkLine: awSkLine, portrait: portrait, awPor: awPor, awLevel: awLevel, awkSync: awkSync, awkOpenHero: awkOpenHero, setHeroOpen: setHeroOpen, renderOverview: function () { renderOverview(); watchName(); }, beastMove: beastMove, S: S, d: d, core: core, G: G, BASE: BASE, statLabel: statLabel, WORKER: WORKER, SK_RE: SK_RE, $: $, $$: $$, esc: esc, nd: nd, nm: nm, ic: ic, fmtK: fmtK, fmtInt: fmtInt, ramp: ramp, qCls: qCls, slug: slug, ls: ls, stars: stars, art: art, lbl: lbl, stateName: stateName, sk: sk, readOnly: readOnly, classicUrl: classicUrl, savedReport: savedReport, deviceId: deviceId, toast: toast, go: go, run: run, showSkeleton: showSkeleton, fkHero: fkHero, refreshSheet: refreshSheet, currentCode: currentCode, gearCard: gearCard, branchPill: branchPill, filt: filt, sortBy: sortBy, openSheet: openSheet, closeSheet: closeSheet, advice: advice, more: more, advIndex: advIndex, paintDot: paintDot };
 window.__arm = { S: S, d: d, core: core, go: go, openSheet: openSheet, closeSheet: closeSheet, applyRoute: applyRoute, parseHash: parseHash, VIEWS: VIEWS, ready: false };
 boot();
 if (/[?&]check=1/.test(location.search)) { var cs = document.createElement('script'); cs.src = 'armory-check.js'; document.body.appendChild(cs); }

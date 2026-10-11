@@ -140,7 +140,7 @@ var EXPECTED = [
   log(nums.length > 0 && badNum.length === 0, 'every Overview number has a label and a source word', nums.length + ' numbers' + (badNum.length ? ', missing: ' + badNum.join(', ') : ''));
 
   /* 5. Next moves */
-  var rows = $$('#v-overview .move'), VERBS = /^(Place|Merge|Refine|Upgrade|Swap|Fill|Raise|Save)\b/, mm = [], okMoves = rows.length > 0 && rows.length <= 3;
+  var rows = $$('#v-overview .move'), VERBS = /^(Place|Merge|Refine|Upgrade|Swap|Fill|Raise|Save|Awaken)\b/, mm = [], okMoves = rows.length > 0 && rows.length <= 3;
   rows.forEach(function (r, k) {
     var txt = $('.move-t', r).textContent, pill = $('.pill', r), meta = $('.move-m', r) ? $('.move-m', r).textContent : '';
     if (txt.length > 60) { okMoves = false; mm.push('too long: ' + txt); }
@@ -436,8 +436,11 @@ var EXPECTED = [
   var aA = S.vm.awaken, aIds = Object.keys(aA.byId).filter(function (k) { return aA.byId[k].aw > 0; }), aLive = aIds.filter(function (k) { return aA.byId[k].live; });
   log(!awkCat0 || aA.eligible, 'Awakening: the 168 KB catalog is not fetched on first paint unless a step is affordable or the card has room to say so', awkCat0 ? 'fetched, eligible=' + aA.eligible : 'not fetched');
   await visit('heroes/roster'); await sleep(250);
-  var aSum = $$('#v-heroes .awk-sum'), aTop = $$('#v-heroes .awk-top');
-  log(aA.n ? (aSum.length === 2 && /\d+ of \d+ fully awakened/.test(aSum[0].textContent)) : !aSum.length, 'Awakening: the Heroes summary line says how many are fully awakened, and only when someone is awakened', aSum.length ? aSum[0].textContent.trim() : 'none');
+  var aTop = $$('#v-heroes .awk-top'), aSub = aTop[0] ? $('.awk-hs', aTop[0]).textContent : '';
+  log(aA.n ? (aTop.length === 2 && new RegExp('^' + aA.n + ' awakened in roster' + (aA.full ? ', ' + aA.full + ' fully' : '')).test(aSub)) : !aTop.some(function (t) { return /awakened in roster/.test(t.textContent); }), 'Awakening: the card subtitle says how many are awakened (and fully awakened) in the roster, once, and only when someone is awakened', aSub);
+  log(!$$('#v-heroes .awk-sum').length, 'Awakening: no separate summary line under the Heroes title', 'none');
+  var aSkl = $$('#rosterList .awk-skl').length, aSkWant = $$('#rosterList .awk-slot').filter(function (el) { var x = aA.byId[el.dataset.awk]; return x && x.live && x.game && x.aw > 0 && (x.sk || x.fa); }).length;
+  log(aSkl === aSkWant, 'Awakening: an awakened row with skill data shows its skill levels (Skills 3 \u00B7 6 \u00B7 \u2013 \u00B7 \u2013, or All 4 skills Lv.10)', aSkl + ' lines, ' + aSkWant + ' rows');
   log(aA.show ? aTop.length === 2 : !aTop.length, 'Awakening: the card is on both Heroes panes when there is something to say', aTop.length + ' cards');
   var aBd = $$('#rosterList .awk-bd').length, aShown = $$('#rosterList .awk-slot').filter(function (el) { var x = aA.byId[el.dataset.awk]; return x && x.aw > 0 && !!ArmoryVM.AW.FIRST[x.id]; }).length;
   log(aBd === aShown, 'Awakening: a level badge on each awakened live hero shown in the Roster', aBd + ' badges, ' + aShown + ' awakened live rows shown');
@@ -453,19 +456,19 @@ var EXPECTED = [
     var aBad = targets().bad.filter(function (b) { return /awk|data-awk/.test(b); });
     log(aBad.length === 0, 'Awakening: the block and the card header are 40 px or larger to tap', aBad.join(' | ') || 'none');
     var aNx = $$('.awk-nx', aSl).map(function (x) { return x.textContent; }), aStones = aA.stones;
-    log(aNx.every(function (t) { return /^(Max level|Unlocks at Awakening Lv\.\d+|Level not in game data yet|Next Lv\.\d+: up to [\d,]+ Awakening Stones( · [\d,]+ in bag)?)$/.test(t); }) && (aStones != null || !aNx.some(function (t) { return /in bag/.test(t); })), 'Awakening: the next-level line is a cost with the bag beside it, or Max level, or why it is locked; no bag number without a bag', aNx.join(' | '));
+    log(aNx.every(function (t) { return /^(Unlocks at Awakening Lv\.\d+ \(\d+ levels to go\)|Level not in game data yet|Next Lv\.\d+: up to [\d,]+ stones)$/.test(t); }) && !aNx.some(function (t) { return /in bag/.test(t); }), 'Awakening: the next-level line is a cost, or why it is locked (the bag count is in the block header once, a maxed skill has no line)', aNx.join(' | '));
     aRow.click();
   } else log(null, 'Awakening: no awakened live hero with skill data to open', aIds.length + ' awakened');
   var aHd = $('#v-heroes [data-pane="roster"] .awk-hd');
   if (aHd) {
-    aHd.click(); var aT1 = Date.now(); while (!$('#v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-ord, #v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-ln') && Date.now() - aT1 < 6000) await sleep(100);
+    aHd.click(); var aT1 = Date.now(); while (!$('#v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-sets, #v-heroes [data-pane="roster"] .awk-body:not([hidden]) .awk-ln') && Date.now() - aT1 < 6000) await sleep(100);
     var aBody = $('#v-heroes [data-pane="roster"] .awk-body'), aBt = aBody ? aBody.textContent : '';
-    log(!aA.n || (/Main march/.test(aBt) && /Order/.test(aBt)), 'Awakening: the opened card names the main march and its order', aBt.slice(0, 90));
+    log(!aA.n || (/Main march/.test(aBt) && /Raise order/.test(aBt) && (aBt.match(/2nd march/g) || []).length === 0), 'Awakening: the opened card names the main march and its order', aBt.slice(0, 90));
     log(!/\p{Extended_Pictographic}/u.test(aBt.replace(/[\u00A9\u00AE\u2122]/g, '')) && !/\u2014/.test(aBt), 'Awakening: no emoji or em dash in the card', 'none');
     aHd.click();
   }
   var aMv = S.vm.moves.picks.filter(function (p) { return p.sig === 'g' || p.sig === 'h'; }), aOrd = S.vm.moves.picks.map(function (p) { return p.sig; });
-  log(aMv.every(function (p) { return p.cls === 2 && p.pill === 'Uses what you have'; }) && aMv.every(function (p) { return aOrd.indexOf(p.sig) < Math.max.apply(null, aOrd.map(function (x, i) { return /^(b|d)$/.test(x) ? i : -1; }).concat([99])); }), 'Awakening: Raise and Awaken are "Uses what you have" and come before rune merges and decor', aOrd.join(''));
+  log(aMv.every(function (p) { return (p.cls === 2 && p.pill === 'Uses what you have') || (p.sig === 'g' && p.cls === 3 && p.pill === 'Costs resources'); }) && aMv.filter(function (p) { return p.cls === 2; }).every(function (p) { return aOrd.indexOf(p.sig) < Math.max.apply(null, aOrd.map(function (x, i) { return /^(b|d)$/.test(x) ? i : -1; }).concat([99])); }), 'Awakening: Raise and Awaken are "Uses what you have" and come before rune merges and decor', aOrd.join(''));
   await visit('overview'); await sleep(150);
   var aOr = $$('#movesCard .move-or').length, aAlt = S.vm.moves.picks.filter(function (p) { return p.alt; }).length;
   log(aOr === aAlt, 'Awakening: a Raise row with an "or" shows it as a second line of the same row', aOr + ' second lines, ' + aAlt + ' rows with alt');

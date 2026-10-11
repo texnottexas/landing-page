@@ -125,14 +125,14 @@ test('Awaken: a card in the bag and a hero that qualifies; a card held by a hero
   const inv = { tabs: { item: [{ id: 44300005, a: 1 }, { id: 44300002, a: 1 }] } };
   const A = build([H(SHEN), H(LOPHY, { p1: { x: [{ id: G.EXCL_SKILL_ID[LOPHY], lv: 1 }], b: [] } })], inv);
   assert.deepEqual(A.cand.map((c) => c.parts.map((p) => p.s).join('')), ['Awaken Shen Suyu']);
-  const c = A.cand[0]; assert.equal(c.kind, 'awaken'); assert.equal(c.meta, 'Awakening Card in bag'); assert.equal(c.ico.u, 'hero-awake-items/item_44300005.png'); assert.equal(c.route, 'heroes/roster?hero=Shen%20Suyu&awk=1');
-  assert.deepEqual(L.cardLines(A, nameOf), ['Shen Suyu Awakening Card in bag · ready to awaken', 'Lophy Awakening Card in bag · needs Exclusive Skill Lv.5 (now 1)']);
+  const c = A.cand[0]; assert.equal(c.kind, 'awaken'); assert.equal(c.meta, 'Awakening Card in bag'); assert.equal(c.ico.u, 'hero-awake-items/item_44300005.png'); assert.equal(c.route, 'heroes/roster?hero=Shen%20Suyu&awk=hero');
+  assert.deepEqual(L.cardLines(A, nameOf).map((c) => c.text), ['Shen Suyu Awakening Card in bag · ready to awaken', 'Lophy Awakening Card in bag · needs Exclusive Skill Lv.5 (now 1)']);
   assert.equal(build([H(SHEN, { aw: 1, aws: aws(SHEN, [1]) })], inv).cand.length, 0, 'already awakened');
 });
 test('card lines: who can be awakened and what is missing', () => {
   const A = build([H(SHEN), H(LOPHY, { star: 4 }), H(NOVA)], { tabs: { item: [] } });
-  assert.deepEqual(L.cardLines(A, nameOf), ['Nova can be awakened · needs the Awakening Card', 'Shen Suyu can be awakened · needs the Awakening Card']);
-  assert.deepEqual(L.cardLines(build([H(SHEN)], null), nameOf), ['Shen Suyu can be awakened'], 'bag unknown: no claim about the card');
+  assert.deepEqual(L.cardLines(A, nameOf).map((c) => c.text), ['Nova can be awakened · needs the Awakening Card', 'Shen Suyu can be awakened · needs the Awakening Card']);
+  assert.deepEqual(L.cardLines(build([H(SHEN)], null), nameOf).map((c) => c.text), ['Shen Suyu can be awakened'], 'bag unknown: no claim about the card');
   const n = L.needs(build([H(LOPHY, { star: 4, lv: 100, p1: { x: [{ id: G.EXCL_SKILL_ID[LOPHY], lv: 2 }], b: [] } })]).byId[LOPHY], false);
   assert.deepEqual(n.map((x) => [x.ok, x.text]), [[false, '5 stars (now 4)'], [false, 'Level 120 (now 100)'], [false, 'Exclusive Skill Lv.5 (now 2)'], [false, 'Awakening Card not in bag']]);
 });
@@ -260,10 +260,10 @@ test('moves: the Raise row, its "or" line, the Save-for row; each line is 60 cha
   const at = (stones) => { const w = world(list, stones, { marches: marches([JETT, VIVIAN, FRANZ], [CARNA, HEID, JOAN]) }); return L.moves(L.plan(w.ctx), stones, (id, s) => (id === JETT ? 'Superheat' : 'Energize'), heroName, () => 'roster'); };
   const txt = (ps) => ps.map((x) => x.s).join('');
   let m = at(412)[0];
-  assert.equal(txt(m.parts), 'Raise Superheat on Jett to Lv.7'); assert.equal(txt(m.alt), 'or Energize on Carna to Lv.4 (2nd march)'); assert.equal(m.meta, 'Up to 225 stones (or 150) · 412 in bag'); assert.equal(m.kind, 'raise');
-  assert.equal(m.route, 'heroes/roster?awk=1&hero=Jett'); assert.equal(m.ico.u, 'hero-awake-skills/hero_awake334_2.png');
-  m = at(200)[0]; assert.equal(txt(m.parts), 'Raise Energize on Carna to Lv.4'); assert.equal(m.alt, null); assert.equal(m.meta, '2nd march · Up to 150 stones · 200 in bag');
-  m = at(46)[0]; assert.equal(m.kind, 'save'); assert.equal(txt(m.parts), 'Save for Superheat on Jett Lv.7'); assert.equal(m.meta, '46 / 225 Awakening Stones');
+  assert.equal(txt(m.parts), 'Raise Superheat on Jett to Lv.7'); assert.equal(txt(m.alt).replace(/\u00A0/g, ' '), 'or Energize on Carna to Lv.4 (close second)'); assert.equal(m.meta, 'Up to 225 stones (or 150) · 412 in bag'); assert.equal(m.kind, 'raise');
+  assert.equal(m.route, 'heroes/roster?hero=Jett&awk=1&skill=2'); assert.equal(m.ico.u, 'hero-awake-skills/hero_awake334_2.png');
+  m = at(200)[0]; assert.equal(txt(m.parts), 'Raise Energize on Carna to Lv.4'); assert.equal(m.alt, null); assert.equal(m.meta, 'Close second · Up to 150 stones · 200 in bag');
+  m = at(46)[0]; assert.equal(m.kind, 'save'); assert.equal(txt(m.parts), 'Save for Superheat Lv.7 on Jett'); assert.equal(m.meta, '46 / 225 Awakening Stones');
   [at(412)[0], at(200)[0], at(46)[0]].forEach((x) => { assert.ok(txt(x.parts).length <= 60); if (x.alt) assert.ok(txt(x.alt).length <= 60); });
 });
 
@@ -273,7 +273,7 @@ test('Tex: 46 stones, Shen Suyu 30 with 7/7/7/7 -> no Raise or Awaken move; savi
   assert.equal(A.stones, 46); assert.equal(A.byId[SHEN].aw, 30); assert.deepEqual(A.byId[SHEN].aws, { 1: 7, 2: 7, 3: 7, 4: 7 }); assert.equal(A.byId[SHEN].awp, 145200);
   assert.deepEqual(A.cand, [], 'no Awaken move: Lophy holds a card but his Exclusive Skill is Lv.1');
   assert.equal(A.byId[LOPHY].ex, 1);
-  assert.deepEqual(L.cardLines(A, nameOf), ['Lophy Awakening Card in bag · needs Exclusive Skill Lv.5 (now 1)']);
+  assert.deepEqual(L.cardLines(A, nameOf).map((c) => c.text), ['Lophy Awakening Card in bag · needs Exclusive Skill Lv.5 (now 1)']);
   assert.deepEqual([A.n, A.full, A.part.map((a) => a.name + ' ' + a.aw)], [5, 4, ['Shen Suyu 30']]);
   const p = L.plan(ctx);
   assert.deepEqual(p.sets.slice(0, 3).map((s) => [s.name, s.power]), [['March 3', 3310430], ['March 2', 2953030], ['March 1', 2921830]]);
@@ -284,7 +284,7 @@ test('Tex: 46 stones, Shen Suyu 30 with 7/7/7/7 -> no Raise or Awaken move; savi
   assert.equal(p.move, null);
   assert.deepEqual([p.saving.id, p.saving.slot, p.saving.lv, p.saving.to, p.saving.cost, p.saving.phase], [SHEN, 2, 7, 8, 300, 'B']);
   const mv = L.moves(p, A.stones, (id, s) => 'Phoenix Blaze', heroName)[0];
-  assert.equal(mv.kind, 'save'); assert.equal(mv.parts.map((x) => x.s).join(''), 'Save for Phoenix Blaze on Shen Suyu Lv.8'); assert.equal(mv.meta, '46 / 300 Awakening Stones');
+  assert.equal(mv.kind, 'save'); assert.equal(mv.parts.map((x) => x.s).join(''), 'Save for Phoenix Blaze Lv.8 on Shen Suyu'); assert.equal(mv.meta, '46 / 300 Awakening Stones');
 });
 test('Rex: main = the Jett set, 2nd = the Carna set (89%); saving 62/150 for Energize on Carna Lv.4; Shen Suyu qualifies but has no card', () => {
   const { A, ctx } = fromFixture(REX);
@@ -297,7 +297,7 @@ test('Rex: main = the Jett set, 2nd = the Carna set (89%); saving 62/150 for Ene
   assert.deepEqual([p.m.id, p.m.slot, p.m.lv, p.m.to, p.m.cost, p.m.phase], [CARNA, 1, 3, 4, 150, 'A'], 'Energize (skill 1) 3 -> 4; skill 2 is already at 6');
   assert.equal(p.move, null); assert.equal(p.saving, p.m);
   assert.equal(L.moves(p, 62, nameOf, heroName)[0].meta, '62 / 150 Awakening Stones');
-  assert.deepEqual(L.cardLines(A, nameOf), ['Shen Suyu can be awakened · needs the Awakening Card']);
+  assert.deepEqual(L.cardLines(A, nameOf).map((c) => c.text), ['Shen Suyu can be awakened · needs the Awakening Card']);
   assert.deepEqual([A.n, A.full, A.part.map((a) => a.name + ' ' + a.aw)], [3, 0, ['Jett 35', 'Carna 11', 'Sara 10']]);
   const loose = p.sets.find((s) => s.ids.includes(SARA)); assert.ok(loose, 'Sara is planned too'); assert.deepEqual([loose.next.id, loose.next.slot, loose.next.cost], [SARA, 2, 75]);
 });
@@ -306,7 +306,7 @@ test('Rex with 400 stones and Jett at 6/6/6/6: "Raise Superheat on Jett to Lv.7"
   const { A, ctx } = fromFixture(f); const p = L.plan(ctx);
   const nm = (id, slot) => (id === JETT ? { 1: 'Overload', 2: 'Superheat' }[slot] : { 1: 'Energize' }[slot]);
   const m = L.moves(p, A.stones, nm, heroName)[0];
-  assert.equal(m.parts.map((x) => x.s).join(''), 'Raise Superheat on Jett to Lv.7'); assert.equal(m.alt.map((x) => x.s).join(''), 'or Energize on Carna to Lv.4 (2nd march)');
+  assert.equal(m.parts.map((x) => x.s).join(''), 'Raise Superheat on Jett to Lv.7'); assert.equal(m.alt.map((x) => x.s).join('').replace(/\u00A0/g, ' '), 'or Energize on Carna to Lv.4 (close second)');
   assert.equal(CAT.heroes[JETT].skills.find((s) => s.slot === 2).name, 'Superheat', 'the catalog agrees that skill 2 is Superheat');
 });
 
@@ -349,4 +349,68 @@ test('effect text: a clause whose numbers did not come through becomes "More eff
   assert.equal(L.effectText('Plain effect. Unlocks at Lv. 6: Raises damage by 3.8%.'), 'Plain effect. Unlocks at Lv. 6: Raises damage by 3.8%.');
   assert.equal(L.effectText('Only. Unlocks at Lv. 6: chance {1}'), 'Only. More effect at Lv.6.');
   assert.equal(L.effectText(null), '');
+});
+
+// ---- review round: close marches (all of them), fully awakened, checklist, roles, effects
+test('close marches: main is the set with the MOST skill levels among ALL sets within 15%, not only the runner-up (Tex-like 100 / 89 / 88)', () => {
+  const list = [awk(SARA, 10, [10, 10, 10, 10], { pw: 1000 }), H(170, { pw: 2000 }), H(174, { pw: 1000 }), // March 3: 4000
+    awk(JETT, 35, [10, 10, 10, 10], { pw: 1000 }), H(VIVIAN, { pw: 1500 }), H(FRANZ, { pw: 1060 }), // March 2: 3560 (89%), levels 40
+    awk(NOVA, 40, [10, 10, 10, 10], { pw: 1000 }), H(173, { pw: 1500 }), H(165, { pw: 1000 }), awk(CARNA, 11, [10, 10, 10, 10], { pw: 10 })];
+  list[0].aws = aws(SARA, [1, 1]); // March 3 holds the least skill levels
+  list[6].aws = aws(NOVA, [10, 10, 10, 10]); list[9].aws = aws(CARNA, [10, 10, 10, 10]);
+  const ms = marches([SARA, 170, 174], [JETT, VIVIAN, FRANZ], [NOVA, 173, 165, 0].slice(0, 3));
+  const p = L.plan(world(list, 0, { marches: ms }).ctx);
+  assert.deepEqual(p.sets.slice(0, 3).map((s) => Math.round(s.power / 40)).sort((a, b) => b - a), [100, 89, 88], 'the three sets are within 15% of March 3');
+  assert.equal(p.top.name, 'March 1');
+  const q = (lv) => { const l2 = JSON.parse(JSON.stringify(list)); l2[6].aws = aws(NOVA, lv); l2[3].aws = aws(JETT, [1, 1, 1, 1]); return L.plan(world(l2, 0, { marches: ms }).ctx); };
+  const r = q([10, 10, 10, 10]); assert.equal(r.main.name, 'March 3', 'the 88% set holds the most levels (40 against 4 and 2): it is main although it is the weakest'); assert.deepEqual(r.seconds.map((s) => s.name), ['March 1', 'March 2']);
+  assert.equal(r.top.name, 'March 1');
+});
+test('a hero in two sets is planned under the FINAL main march', () => {
+  const list = [awk(SARA, 10, [1, 1, 1, 1], { pw: 600 }), H(170, { pw: 500 }), H(174, { pw: 500 }), awk(JETT, 35, [5, 5, 5, 5], { pw: 100 }), H(VIVIAN, { pw: 100 }), awk(NOVA, 40, [9, 9, 9, 9], { pw: 900 })];
+  // March 1: Sara/170/174 = 1600 (levels 4); March 2: Nova/Sara/Vivian = 1600 + 100... Sara is in both; March 2 holds more levels
+  const ms = marches([SARA, 170, 174], [NOVA, SARA, VIVIAN]);
+  const p = L.plan(world(list, 0, { marches: ms }).ctx);
+  assert.equal(p.main.name, 'March 2'); assert.ok(p.main.own.includes(SARA), 'Sara is planned under the main march although March 1 alone is not stronger');
+  assert.ok(!p.sets.find((s) => s.name === 'March 1').own.includes(SARA));
+});
+test('Lv.40 is not fully awakened: all four skills must be 10 (or the game says fa)', () => {
+  const A = build([awk(JETT, 40, [10, 10, 10, 6]), awk(NOVA, 40, [10, 10, 10, 10]), awk(SARA, 40, [10, 10, 10, 10], { fa: 1 }), awk(SHEN, 35, [10, 10, 10, 10]), H(CARNA, { aw: 40, fa: 1 })]);
+  assert.deepEqual([JETT, NOVA, SARA, SHEN, CARNA].map((id) => A.byId[id].full), [false, true, true, false, true]);
+  assert.equal(A.full, 3); assert.deepEqual(A.part.map((a) => a.name), ['Jett', 'Shen Suyu']);
+});
+test('everyone at Lv.40 with one skill at 6 and enough stones: Raise appears and the module is worth loading', () => {
+  const list = [awk(JETT, 40, [10, 10, 10, 6], { pw: 100 }), awk(NOVA, 40, [10, 10, 10, 10], { pw: 90 }), awk(SARA, 40, [10, 10, 10, 10], { pw: 80 })];
+  const { A, ctx } = world(list, 600, { marches: marches([JETT, NOVA, SARA]) });
+  const p = L.plan(ctx); assert.deepEqual([p.m.id, p.m.slot, p.m.lv, p.m.to, p.m.cost, p.m.phase], [JETT, 4, 6, 7, 225, 'B']);
+  assert.equal(L.moves(p, 600, nameOf, heroName)[0].kind, 'raise');
+  const vmA = model({ heroes: { list }, inv: { tabs: { item: [{ id: AW.STONE, a: 600 }] } } }); assert.equal(vmA.awaken.eligible, true);
+});
+test('the checklist: "(now N)" only against a rule that is not met, and a conclusion', () => {
+  const a = build([H(SHEN)]).byId[SHEN];
+  assert.deepEqual(L.needs(a, true).map((x) => x.text), ['5 stars', 'Level 120', 'Exclusive Skill Lv.5', 'Awakening Card in bag']);
+  assert.equal(L.verdict(a, true), 'Ready to awaken. Use the Awakening Card on Shen Suyu in the game.');
+  assert.equal(L.verdict(a, false), 'Still needs: Awakening Card not in bag.');
+  const b = build([H(LOPHY, { p1: { x: [{ id: G.EXCL_SKILL_ID[LOPHY], lv: 1 }], b: [] } })]).byId[LOPHY];
+  assert.equal(L.verdict(b, true), 'Still needs: Exclusive Skill Lv.5 (now 1).'); assert.match(L.verdict(a, null), /cannot be checked without bag data/);
+});
+test('march rows: heroes with the same state share a clause; a hero that cannot be awakened yet is named as such', () => {
+  const A = build([awk(SARA, 10, [10, 10, 10, 10]), H(170), H(174), awk(CARNA, 11, [3, 6]), H(LOPHY)]);
+  const t = L.statusLine(A.byId, [SARA, 170, 174], (id) => NAMES[id]);
+  assert.deepEqual(t, [{ names: ['Sara'], text: 'all skills Lv.10' }, { names: ['Rohr', 'Ella'], text: "can't be awakened yet" }]);
+  assert.equal(L.heroStatus(A.byId[CARNA]), '1 of 2 unlocked skills under Lv.6'); assert.equal(L.heroStatus(A.byId[LOPHY]), 'not awakened');
+});
+test('effects: below Lv.6 the Lv.6 clause is its own line, nothing is cut, no [brackets] remain', () => {
+  let n = 0;
+  Object.keys(CAT.heroes).filter((k) => CAT.heroes[k].live).forEach((k) => CAT.heroes[k].skills.forEach((sk) => sk.levels.forEach((l) => {
+    const r = L.splitEffect(l.effect, l.level); assert.ok(!/[\[\]]/.test(r.now + r.six), 'bracket left: ' + (r.now + r.six).slice(0, 80));
+    if (l.level < 6 && /Unlocks at Lv\. ?6:/.test(l.effect)) { n++; assert.ok(r.six.length > 0 && !/Unlocks at/.test(r.now)); } else assert.equal(r.six, '');
+  })));
+  assert.ok(n >= 100, 'rows below Lv.6 with the clause: ' + n);
+  assert.equal(L.splitEffect('Hits [Combo Attack]. Unlocks at Lv. 6: Adds [Ignition].', 3).six, 'Adds Ignition.'); assert.equal(L.splitEffect('Hits [Combo Attack]. Unlocks at Lv. 6: Adds [Ignition].', 6).six, '');
+});
+test('Awaken moves: heroes of the main march rank first (the module re-ranks them), the move carries the hero', () => {
+  const inv = { tabs: { item: [{ id: 44300005, a: 1 }, { id: 44300002, a: 1 }] } };
+  const A = build([H(SHEN, { pw: 100 }), H(LOPHY, { pw: 900 })], inv);
+  assert.deepEqual(A.cand.map((c) => c.hero).sort(), [LOPHY, SHEN].sort());
 });
