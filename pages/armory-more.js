@@ -83,7 +83,7 @@ function pickPlayer(i) {
     var cache = {}; res.reports.forEach(function (r) { cache[r.id] = r.extracted; });
     var pl = JSON.parse(JSON.stringify(res.player)); if (!pl.avatar && p.avatar) pl.avatar = p.avatar;
     var prev = savedReport(), same = prev && prev.player && prev.player.name === pl.name;   /* v1 saveAndRenderReport: marches and the share code survive a rebuild */
-    var keep = { player: pl, reportIds: [id], marchGroups: same && Array.isArray(prev.marchGroups) ? prev.marchGroups : [] };
+    var keep = { player: pl, reportIds: [id], setAt: Date.now(), marchGroups: same && Array.isArray(prev.marchGroups) ? prev.marchGroups : [] };
     if (same && prev.shortcode) keep.shortcode = prev.shortcode;
     ls('playerReport', JSON.stringify(keep));
     ls('playerReportData', JSON.stringify(cache));
@@ -277,7 +277,7 @@ function addReport() {
     var ex = data && data.battle && d.extractPlayerData(data, s.player.name);
     if (!ex) throw new Error('Your player (' + s.player.name + ') was not found in this report.');
     var cache = {}; try { cache = JSON.parse(ls('playerReportData')) || {}; } catch (e) {}
-    cache[id] = ex; s.reportIds.push(id);
+    cache[id] = ex; s.reportIds.push(id); s.setAt = Date.now();
     ls('playerReportData', JSON.stringify(cache)); ls('playerReport', JSON.stringify(s));
     location.reload();
   }).catch(function (e) { err.textContent = e.message || 'Could not get the report.'; });
@@ -285,7 +285,7 @@ function addReport() {
 function removeReport(id) {
   var s = savedReport(); if (!s) return;
   if (s.reportIds.length <= 1) { ls('playerReport', null); ls('playerReportData', null); ls('armory_v2_switched', '1'); location.href = 'armory.html'; return; }
-  s.reportIds = s.reportIds.filter(function (x) { return x !== id; });
+  s.reportIds = s.reportIds.filter(function (x) { return x !== id; }); s.setAt = Date.now();
   var cache = {}; try { cache = JSON.parse(ls('playerReportData')) || {}; } catch (e) {} delete cache[id];
   ls('playerReport', JSON.stringify(s)); ls('playerReportData', JSON.stringify(cache)); location.reload();
 }

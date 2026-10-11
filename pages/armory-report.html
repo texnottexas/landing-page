@@ -5914,7 +5914,7 @@
     if (Number(saved.setAt) >= ts) return null;
     var own = null;
     configs.forEach(function(c) { if (c && saved.shortcode && c.shortcode === saved.shortcode) own = c; });
-    if (own && _ar_snapTime(own) >= ts) return null;
+    if (own && own.shortcode !== snap.shortcode && _ar_snapTime(own) >= ts) return null;
     var ids = String(snap.reportIds || '').split(',').filter(_ar_validReportId);
     if (!ids.length) return null;
     var same = ids.slice().sort().join(',') === saved.reportIds.slice().sort().join(',');
@@ -5923,18 +5923,10 @@
   function _ar_mergeSnapshotMarches(own, snap) {
     own = Array.isArray(own) ? own : [];
     snap = Array.isArray(snap) ? snap : [];
-    if (!own.length) return snap.slice();
-    function key(m) { return ((m && m.heroIds) || []).map(Number).sort(function(a, b) { return a - b; }).join('-'); }
-    var have = {};
-    var out = own.slice();
-    own.forEach(function(m) { have[key(m)] = 1; });
-    snap.forEach(function(m) {
-      var k = key(m);
-      if (k && !have[k] && out.length < 9) { have[k] = 1; out.push(m); }
-    });
-    return out;
+    // the player's own marches are kept as they are (a march they deleted does not come back); Snapshot's only fill an empty list
+    return own.length ? own.slice() : snap.slice();
   }
-  // Resolves null (nothing to do) or { count, undo() }. Only a verified owner's own, writable report is ever touched.
+  // Resolves null (nothing to do) or { count, undo(), discard() }: discard puts everything back as it was, offer included. Only a verified owner's own, writable report is ever touched.
   function _ar_snapshotUpdate() {
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch (e) {}
@@ -5959,6 +5951,7 @@
         .catch(function() { return null; }).then(function(cfg) {
           var prevReport = localStorage.getItem('playerReport');
           var prevData = localStorage.getItem('playerReportData');
+          var prevSeen = localStorage.getItem(seenKey);
           var now = null;
           try { now = JSON.parse(prevReport); } catch (e) {}
           // the list changed while we waited (the player edited it): leave it alone
@@ -5976,6 +5969,13 @@
           } catch (e) { return null; }
           return {
             count: pick.reportIds.length,
+            discard: function() {
+              try {
+                if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);
+                if (prevData == null) localStorage.removeItem('playerReportData'); else localStorage.setItem('playerReportData', prevData);
+                if (prevSeen == null) localStorage.removeItem(seenKey); else localStorage.setItem(seenKey, prevSeen);
+              } catch (e) {}
+            },
             undo: function() {
               try {
                 if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);
@@ -6456,6 +6456,7 @@
     loadSavedBtn.appendChild(svgIcon({ size: 16, children: [['path', { 'd': 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2M12 11a4 4 0 100-8 4 4 0 000 8' }]] }));
     loadSavedBtn.appendChild(document.createTextNode('Load ' + playerName + "'s Report"));
     loadSavedBtn.addEventListener('click', function() {
+      window._arLoadTapped = true;   // a Snapshot update still in flight must not start a second load
       closeWizard();
       initFromSaved(savedConfig);
     });
@@ -33167,14 +33168,18 @@
       renderWizardStep();
       // A newer Snapshot setup replaces this device's report list (owner only; one line + Undo). Never delays the first paint.
       if (!_imp() && !window._adviseCode) _ar_snapshotUpdate().then(function(u) {
-        if (u) _ar_snapshotSwitched(u);
+        if (!u) return;
+        var w = document.getElementById('wizard');
+        // only while the Welcome Back step is what is on screen; otherwise put it all back, to be offered on the next visit
+        if (window._arLoadTapped || !(w && w.classList.contains('open') && wizardState.step === 'choose')) { u.discard(); return; }
+        _ar_snapshotSwitched(u);
       });
     }
   }
 
   function _ar_snapshotRefresh() {
     var w = document.getElementById('wizard');
-    if (w && w.classList.contains('open') && wizardState.step === 'choose') { renderWizardStep(); return; }
+    if (w && w.classList.contains('open')) { if (wizardState.step === 'choose') renderWizardStep(); return; }
     var s = null;
     try { s = JSON.parse(localStorage.getItem('playerReport')); } catch (e) {}
     if (s && s.player && s.reportIds && s.reportIds.length) initFromSaved(s);
@@ -33301,7 +33306,10 @@
             // Only persist server-side marchGroups when this is the viewer's
             // own shortcode. Otherwise a view-only load would overwrite the
             // viewer's saved marches in localStorage.
-            if (isSamePlayer) { if (result.marchGroups && !loadMarches().length) saveMarches(result.marchGroups); }
+            // the device's marches are kept only when the saved report is this player's own
+            var _devOwn = !!(currentSaved && currentSaved.player && ((currentSaved.player.siteKey && resultSiteKey)
+              ? currentSaved.player.siteKey === resultSiteKey : _norm(currentSaved.player.name) === _norm(result.playerName)));
+            if (isSamePlayer) { if (result.marchGroups && !(_devOwn && loadMarches().length)) saveMarches(result.marchGroups); }
             // View-only load (player-view link): surface server marches in-memory
             // so grouped views render without writing the viewer's localStorage.
             else if (Array.isArray(result.marchGroups) && result.marchGroups.length) window._advisorOverrideMarches = result.marchGroups.slice();

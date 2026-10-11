@@ -430,7 +430,7 @@ test('snapshot: a newer Snapshot setup is adopted; own march names kept, shortco
   const s = stored(storage);
   assert.deepStrictEqual(s.reportIds, [NEW_A, NEW_B]);
   assert.equal(s.shortcode, 'PMMQ');
-  assert.deepStrictEqual(s.marchGroups, [{ name: 'Main', heroIds: [1, 2, 3] }, { name: 'March 2', heroIds: [4, 5, 6] }], 'own name for the matching heroes; the unmatched snapshot march is added');
+  assert.deepStrictEqual(s.marchGroups, [{ name: 'Main', heroIds: [1, 2, 3] }], 'only the player\'s own marches stay; the snapshot\'s generic groups are not added back');
   assert.ok(s.setAt > 0);
   assert.equal(storage.getItem('ar_snap_seen_v1_' + W.SK), String(T0));
   assert.ok(!fetch.calls.some((c) => c.opts && c.opts.headers && c.opts.headers.Authorization), 'no token is needed or sent');
@@ -534,6 +534,35 @@ test('snapshot: pick and merge, pure', () => {
   assert.equal(d.pickSnapshotUpdate([snapCfg()], saved, T0), null, 'seen at the same time');
   assert.equal(d.pickSnapshotUpdate([snapCfg()], saved, T0 - 1).code, 'YZFU');
   assert.deepStrictEqual(d.mergeSnapshotMarches([], [{ name: 'March 1', heroIds: [1] }]), [{ name: 'March 1', heroIds: [1] }]);
-  assert.deepStrictEqual(d.mergeSnapshotMarches([{ name: 'Mine', heroIds: [3, 2, 1] }], [{ name: 'March 1', heroIds: [1, 2, 3] }]), [{ name: 'Mine', heroIds: [3, 2, 1] }]);
+  assert.deepStrictEqual(d.mergeSnapshotMarches([{ name: 'Mine', heroIds: [3, 2, 1] }], [{ name: 'March 1', heroIds: [1, 2, 3] }, { name: 'March 2', heroIds: [4] }]), [{ name: 'Mine', heroIds: [3, 2, 1] }]);
   assert.deepStrictEqual(d.mergeSnapshotMarches(null, null), []);
+});
+
+test('snapshot: a device whose primary code IS the Snapshot code adopts a later refresh of that same code', async () => {
+  const same = snapCfg({ shortcode: 'YZFU', reportIds: NEW_A });
+  const { d, storage } = make(snapRoute([same]), owner({ shortcode: 'YZFU', reportIds: [NEW_B] }));
+  const u = await d.snapshotUpdate();
+  assert.ok(u);
+  assert.deepStrictEqual(stored(storage).reportIds, [NEW_A]);
+  assert.equal(stored(storage).shortcode, 'YZFU');
+});
+
+test('snapshot: discard puts the list, cache and the offer back as they were (a load started first)', async () => {
+  const before = owner();
+  const { d, storage } = make(snapRoute([snapCfg()]), before);
+  const u = await d.snapshotUpdate();
+  u.discard();
+  assert.equal(storage.getItem('playerReport'), before.playerReport);
+  assert.equal(storage.getItem('ar_snap_seen_v1_' + W.SK), null);
+  assert.ok(await d.snapshotUpdate(), 'offered again next time');
+});
+
+test('snapshot: every v2 and classic write of the report list stamps setAt (an edit after a Snapshot is never replaced)', () => {
+  const fs = require('node:fs');
+  const more = fs.readFileSync(require('node:path').join(__dirname, '../pages/armory-more.js'), 'utf8');
+  const app = fs.readFileSync(require('node:path').join(__dirname, '../pages/armory-app.js'), 'utf8');
+  assert.ok(/reportIds: \[id\], setAt: Date\.now\(\)/.test(more), 'Start build');
+  assert.ok(/s\.reportIds\.push\(id\); s\.setAt = Date\.now\(\)/.test(more), 'add');
+  assert.ok(/x !== id; \}\); s\.setAt = Date\.now\(\)/.test(more), 'remove');
+  assert.ok(/marchGroups: marches, setAt: Date\.now\(\)/.test(app), 'adoptOwnCode');
 });

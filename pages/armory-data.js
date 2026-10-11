@@ -77,7 +77,7 @@
     if (Number(saved.setAt) >= ts) return null;
     var own = null;
     configs.forEach(function(c) { if (c && saved.shortcode && c.shortcode === saved.shortcode) own = c; });
-    if (own && _ar_snapTime(own) >= ts) return null;
+    if (own && own.shortcode !== snap.shortcode && _ar_snapTime(own) >= ts) return null;
     var ids = String(snap.reportIds || '').split(',').filter(_ar_validReportId);
     if (!ids.length) return null;
     var same = ids.slice().sort().join(',') === saved.reportIds.slice().sort().join(',');
@@ -86,18 +86,10 @@
   function _ar_mergeSnapshotMarches(own, snap) {
     own = Array.isArray(own) ? own : [];
     snap = Array.isArray(snap) ? snap : [];
-    if (!own.length) return snap.slice();
-    function key(m) { return ((m && m.heroIds) || []).map(Number).sort(function(a, b) { return a - b; }).join('-'); }
-    var have = {};
-    var out = own.slice();
-    own.forEach(function(m) { have[key(m)] = 1; });
-    snap.forEach(function(m) {
-      var k = key(m);
-      if (k && !have[k] && out.length < 9) { have[k] = 1; out.push(m); }
-    });
-    return out;
+    // the player's own marches are kept as they are (a march they deleted does not come back); Snapshot's only fill an empty list
+    return own.length ? own.slice() : snap.slice();
   }
-  // Resolves null (nothing to do) or { count, undo() }. Only a verified owner's own, writable report is ever touched.
+  // Resolves null (nothing to do) or { count, undo(), discard() }: discard puts everything back as it was, offer included. Only a verified owner's own, writable report is ever touched.
   function _ar_snapshotUpdate() {
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch (e) {}
@@ -122,6 +114,7 @@
         .catch(function() { return null; }).then(function(cfg) {
           var prevReport = localStorage.getItem('playerReport');
           var prevData = localStorage.getItem('playerReportData');
+          var prevSeen = localStorage.getItem(seenKey);
           var now = null;
           try { now = JSON.parse(prevReport); } catch (e) {}
           // the list changed while we waited (the player edited it): leave it alone
@@ -139,6 +132,13 @@
           } catch (e) { return null; }
           return {
             count: pick.reportIds.length,
+            discard: function() {
+              try {
+                if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);
+                if (prevData == null) localStorage.removeItem('playerReportData'); else localStorage.setItem('playerReportData', prevData);
+                if (prevSeen == null) localStorage.removeItem(seenKey); else localStorage.setItem(seenKey, prevSeen);
+              } catch (e) {}
+            },
             undo: function() {
               try {
                 if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);

@@ -323,7 +323,7 @@ function adoptOwnCode(res) {
   reps.forEach(function (r) { cache[r.id] = r.extracted; });
   var pl = JSON.parse(JSON.stringify(res.player)); pl.siteKey = k;
   var marches = same && Array.isArray(prev.marchGroups) && prev.marchGroups.length ? prev.marchGroups : Array.isArray(res.marchGroups) ? res.marchGroups : [];   /* the player's own march names win over a code's generic ones */
-  var keep = { player: pl, reportIds: ids, marchGroups: marches };
+  var keep = { player: pl, reportIds: ids, marchGroups: marches, setAt: Date.now() };
   if (same && prev.shortcode) keep.shortcode = prev.shortcode; else { keep.shortcode = S.code; ls('ar_saved_sig_v1', ids.join(',') + '|' + JSON.stringify(marches)); }
   ls('playerReport', JSON.stringify(keep)); ls('playerReportData', JSON.stringify(cache));
   ls('armory_v2_switched', null); S.saved = true;
