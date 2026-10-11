@@ -566,3 +566,24 @@ test('snapshot: every v2 and classic write of the report list stamps setAt (an e
   assert.ok(/x !== id; \}\); s\.setAt = Date\.now\(\)/.test(more), 'remove');
   assert.ok(/marchGroups: marches, setAt: Date\.now\(\)/.test(app), 'adoptOwnCode');
 });
+
+test('snapshot: Undo and discard change nothing once the player has edited the list since (the edit is kept)', async () => {
+  const { d, storage } = make(snapRoute([snapCfg()]), owner());
+  const u = await d.snapshotUpdate();
+  const s = stored(storage); s.marchGroups = [{ name: 'Edited', heroIds: [7] }]; storage.setItem('playerReport', JSON.stringify(s));
+  assert.equal(u.undo(), false);
+  assert.equal(u.discard(), false);
+  assert.deepStrictEqual(stored(storage).marchGroups, [{ name: 'Edited', heroIds: [7] }]);
+  assert.deepStrictEqual(stored(storage).reportIds, [NEW_A, NEW_B]);
+});
+
+test('snapshot: a load of the old list that finishes after the list changed does not write its cache over the new one', async () => {
+  let release; const gate = new Promise((r) => { release = r; });
+  const slow = (u) => (u === W.reportUrl(W.CDN, W.REPORT_ID) ? gate.then(() => ({ status: 200, body: W.battleReport() })) : undefined);
+  const { d, storage } = make(slow, owner());
+  const p = d.loadArmory({ saved: true, noHydrate: true });
+  const s = stored(storage); s.reportIds = [NEW_A]; storage.setItem('playerReport', JSON.stringify(s)); storage.setItem('playerReportData', '{"keep":1}');
+  release();
+  await p;
+  assert.equal(storage.getItem('playerReportData'), '{"keep":1}');
+});

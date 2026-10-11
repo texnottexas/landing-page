@@ -275,11 +275,14 @@ function setReady(res) {
   awakenMove();
   if (!S.advise && sk() && res.identity && res.identity.isOwn && !res.readOnly) advIndex();
 }
+var runSeq = 0;   /* a load that was overtaken by a newer one (Undo during a load) paints nothing */
 function run(arg, then) {
+  var seq = ++runSeq;
   return d.loadArmory(arg).then(function (res) {
-    if (res.state !== 'ready') return res;
+    if (res.state !== 'ready' || seq !== runSeq) return res;
     return new Promise(function (resolve) {
       fkSettle(function (shown) {
+        if (seq !== runSeq) return resolve(res);
         try { setReady(res); } catch (e) { console.error(e); renderStart('error'); return resolve(res); }
         if (shown) $$('.view:not([hidden])').forEach(function (s) { s.classList.remove('in'); void s.offsetWidth; s.classList.add('in'); });
         if (then) then(res);
@@ -352,7 +355,7 @@ function snapNotice(u) {
   var n = document.createElement('div'); n.id = 'snapNote'; n.className = 'snapnote'; n.setAttribute('role', 'status');
   var t = document.createElement('span'); t.textContent = 'Updated to your latest battle reports from Snapshot';
   var b = document.createElement('button'); b.type = 'button'; b.className = 'tb link'; b.textContent = 'Undo';
-  b.addEventListener('click', function () { u.undo(); n.remove(); run({ saved: true }); });
+  b.addEventListener('click', function () { var ok = u.undo(); n.remove(); if (ok) run({ saved: true }); });
   n.appendChild(t); n.appendChild(b); document.body.appendChild(n);
 }
 function boot() {

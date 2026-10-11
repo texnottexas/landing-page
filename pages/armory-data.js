@@ -89,7 +89,7 @@
     // the player's own marches are kept as they are (a march they deleted does not come back); Snapshot's only fill an empty list
     return own.length ? own.slice() : snap.slice();
   }
-  // Resolves null (nothing to do) or { count, undo(), discard() }: discard puts everything back as it was, offer included. Only a verified owner's own, writable report is ever touched.
+  // Resolves null (nothing to do) or { count, undo(), discard() }: discard puts everything back as it was, offer included. Both return false (and change nothing) once the list is no longer what the update wrote. Only a verified owner's own, writable report is ever touched.
   function _ar_snapshotUpdate() {
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch (e) {}
@@ -125,26 +125,32 @@
           var cache = {};
           try { cache = JSON.parse(prevData) || {}; } catch (e) { cache = {}; }
           Object.keys(cache).forEach(function(id) { if (pick.reportIds.indexOf(id) < 0) delete cache[id]; });
+          var wrote = JSON.stringify(now);
           try {
-            localStorage.setItem('playerReport', JSON.stringify(now));
+            localStorage.setItem('playerReport', wrote);
             localStorage.setItem('playerReportData', JSON.stringify(cache));
             localStorage.setItem(seenKey, String(pick.updatedAt));
           } catch (e) { return null; }
           return {
             count: pick.reportIds.length,
+            // both only act while the list is still exactly what the adoption wrote: an edit made since is never wiped
             discard: function() {
               try {
+                if (localStorage.getItem('playerReport') !== wrote) return false;
                 if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);
                 if (prevData == null) localStorage.removeItem('playerReportData'); else localStorage.setItem('playerReportData', prevData);
                 if (prevSeen == null) localStorage.removeItem(seenKey); else localStorage.setItem(seenKey, prevSeen);
-              } catch (e) {}
+              } catch (e) { return false; }
+              return true;
             },
             undo: function() {
               try {
+                if (localStorage.getItem('playerReport') !== wrote) return false;
                 if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);
                 if (prevData == null) localStorage.removeItem('playerReportData'); else localStorage.setItem('playerReportData', prevData);
                 localStorage.setItem(seenKey, String(pick.updatedAt));
-              } catch (e) {}
+              } catch (e) { return false; }
+              return true;
             }
           };
         });
@@ -1067,7 +1073,9 @@
           }
           out.identity = identityOf(player);
           if (arg.dataOnly && !out.sources.kinds.length) out.state = 'none';
-          if (useCache && !out.readOnly) {
+          var curSaved = null; try { curSaved = JSON.parse(localStorage.getItem('playerReport')); } catch (e) {}
+          /* a load that was overtaken (the report list changed meanwhile) never writes the cache of its own, older, list */
+          if (useCache && !out.readOnly && curSaved && Array.isArray(curSaved.reportIds) && curSaved.reportIds.filter(_ar_validReportId).join(',') === ids.join(',')) {
             var nc = {}; results.forEach(function(r) { nc[r.id] = r.extracted; });
             try { localStorage.setItem('playerReportData', JSON.stringify(nc)); } catch (e) {}
           }

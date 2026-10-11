@@ -5926,7 +5926,7 @@
     // the player's own marches are kept as they are (a march they deleted does not come back); Snapshot's only fill an empty list
     return own.length ? own.slice() : snap.slice();
   }
-  // Resolves null (nothing to do) or { count, undo(), discard() }: discard puts everything back as it was, offer included. Only a verified owner's own, writable report is ever touched.
+  // Resolves null (nothing to do) or { count, undo(), discard() }: discard puts everything back as it was, offer included. Both return false (and change nothing) once the list is no longer what the update wrote. Only a verified owner's own, writable report is ever touched.
   function _ar_snapshotUpdate() {
     var saved = null;
     try { saved = JSON.parse(localStorage.getItem('playerReport')); } catch (e) {}
@@ -5962,26 +5962,32 @@
           var cache = {};
           try { cache = JSON.parse(prevData) || {}; } catch (e) { cache = {}; }
           Object.keys(cache).forEach(function(id) { if (pick.reportIds.indexOf(id) < 0) delete cache[id]; });
+          var wrote = JSON.stringify(now);
           try {
-            localStorage.setItem('playerReport', JSON.stringify(now));
+            localStorage.setItem('playerReport', wrote);
             localStorage.setItem('playerReportData', JSON.stringify(cache));
             localStorage.setItem(seenKey, String(pick.updatedAt));
           } catch (e) { return null; }
           return {
             count: pick.reportIds.length,
+            // both only act while the list is still exactly what the adoption wrote: an edit made since is never wiped
             discard: function() {
               try {
+                if (localStorage.getItem('playerReport') !== wrote) return false;
                 if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);
                 if (prevData == null) localStorage.removeItem('playerReportData'); else localStorage.setItem('playerReportData', prevData);
                 if (prevSeen == null) localStorage.removeItem(seenKey); else localStorage.setItem(seenKey, prevSeen);
-              } catch (e) {}
+              } catch (e) { return false; }
+              return true;
             },
             undo: function() {
               try {
+                if (localStorage.getItem('playerReport') !== wrote) return false;
                 if (prevReport == null) localStorage.removeItem('playerReport'); else localStorage.setItem('playerReport', prevReport);
                 if (prevData == null) localStorage.removeItem('playerReportData'); else localStorage.setItem('playerReportData', prevData);
                 localStorage.setItem(seenKey, String(pick.updatedAt));
-              } catch (e) {}
+              } catch (e) { return false; }
+              return true;
             }
           };
         });
@@ -32939,7 +32945,9 @@
   }
 
   // ── Re-fetch + merge init ─────────────────────────────────────────────────
+  var _ar_curLoad = null;   // the saved record of the newest load: an overtaken one renders nothing
   function initFromSaved(saved) {
+    _ar_curLoad = saved;
     wizardState.player = saved.player;
     wizardState.reportData = [];
     wizardState._viewOnly = saved._viewOnly || false;
@@ -33088,11 +33096,12 @@
   }
 
   function finishInit(results, saved) {
+    if (_ar_curLoad !== saved) return;
     var valid = results.filter(function(r) { return r && r.extracted; });
     wizardState.reportData = valid;
     // Defensive: never render before decor lookups are in. Safe even when
     // already resolved — the .then runs micro-task synchronously.
-    _ar_decorEnsure().catch(function() { return null; }).then(function() { _finishInitContinue(valid, saved); });
+    _ar_decorEnsure().catch(function() { return null; }).then(function() { if (_ar_curLoad === saved) _finishInitContinue(valid, saved); });
   }
 
   function _finishInitContinue(valid, saved) {
@@ -33200,7 +33209,7 @@
     undo.type = 'button';
     undo.textContent = 'Undo';
     undo.style.cssText = 'background:none;border:0;color:#79c0ff;font:inherit;font-weight:600;cursor:pointer;padding:4px;';
-    undo.addEventListener('click', function() { u.undo(); n.remove(); _ar_snapshotRefresh(); });
+    undo.addEventListener('click', function() { var ok = u.undo(); n.remove(); if (ok) _ar_snapshotRefresh(); });
     n.appendChild(undo);
     document.body.appendChild(n);
     _ar_snapshotRefresh();
@@ -33309,7 +33318,7 @@
             // the device's marches are kept only when the saved report is this player's own
             var _devOwn = !!(currentSaved && currentSaved.player && ((currentSaved.player.siteKey && resultSiteKey)
               ? currentSaved.player.siteKey === resultSiteKey : _norm(currentSaved.player.name) === _norm(result.playerName)));
-            if (isSamePlayer) { if (result.marchGroups && !(_devOwn && loadMarches().length)) saveMarches(result.marchGroups); }
+            if (isSamePlayer) { if (!_devOwn) saveMarches(result.marchGroups || []); else if (result.marchGroups && !loadMarches().length) saveMarches(result.marchGroups); }
             // View-only load (player-view link): surface server marches in-memory
             // so grouped views render without writing the viewer's localStorage.
             else if (Array.isArray(result.marchGroups) && result.marchGroups.length) window._advisorOverrideMarches = result.marchGroups.slice();
