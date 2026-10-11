@@ -204,6 +204,51 @@ function splitEffect(e, lv) {
   if (b) m = b;
   return { now: clean(m ? m[1] : raw), six: m ? clean(m[2]) : '' };
 }
+/* What the next skill level adds, in words, from the catalog's two effect strings. Sentences are matched by their wording with the numbers
+   taken out; only "X is increased / enhanced / reduced by N%" sentences are read (the bulk of the catalog). Anything else that changes, or a
+   number that did not come through ("{1}", "60%,7.5%"), gives '' and the card prints no gain rather than a guess. Below Lv.6 the locked
+   "Unlocks at Lv. 6" clause is not part of the current effect. */
+var GAIN_RE = /^(.*?)\s+(?:is|are)?\s*(increased|enhanced|reduced|increases) by (\d+(?:\.\d+)?)%$/;
+function sentencesOf(txt, lv) {
+  var raw = effectText(txt), m = lv < 6 && /^([\s\S]*?)\s*Unlocks at Lv\. ?6:\s*([\s\S]*)$/.exec(raw);
+  var t = clean(m ? m[1] : raw.replace(/Unlocks at Lv\. ?6:\s*/, ''));
+  return t.split(/\.\s+/).map(function (x) { return x.replace(/\.\s*$/, '').trim(); }).filter(Boolean);
+}
+function gainSubject(sub) {
+  var tog = /^When (.+?) are deployed together, (.*)$/.exec(sub), t = tog ? tog[2] : sub;
+  t = t.replace(/^This hero['’]s\s+/i, '');
+  if (/^(When|For|After|While|Upon|At|This effect)\b/.test(t) || /\bthis hero\b/i.test(t) && /\bchance\b/.test(t)) return null;
+  t = t.charAt(0).toUpperCase() + t.slice(1);
+  return t + (tog ? ' (when deployed together)' : '');
+}
+function parseGain(sent) {
+  if (/[{}]|\d%?,\d/.test(sent)) return null;
+  var m = GAIN_RE.exec(sent); if (!m) return null;
+  var sub = gainSubject(m[1]); if (!sub) return null;
+  return { sub: sub, down: m[2] === 'reduced', v: +m[3] };
+}
+function pct(n) { return String(Math.round(n * 10) / 10) + '%'; }
+function nextGain(curTxt, nextTxt, lv) {
+  if (!curTxt || !nextTxt || lv < 1 || lv >= 10) return '';
+  var cur = sentencesOf(curTxt, lv), nxt = sentencesOf(nextTxt, lv + 1), seen = {}, curBy = {}, out = [], order = [], by = {};
+  var ok = true;
+  cur.forEach(function (x) { var g = parseGain(x); if (!g) { curBy['?' + x] = x; return; } var k = g.sub + '|' + g.down, n = (seen[k] = (seen[k] || 0) + 1); curBy[k + '#' + n] = g; });
+  var seen2 = {};
+  nxt.forEach(function (x) {
+    var g = parseGain(x), prev;
+    if (!g) { if (curBy['?' + x] !== x) ok = false; return; } /* an unreadable sentence is fine only when it did not change */
+    var k = g.sub + '|' + g.down, n = (seen2[k] = (seen2[k] || 0) + 1); prev = curBy[k + '#' + n];
+    var d = prev ? g.v - prev.v : g.v;
+    if (d < 0) { ok = false; return; }
+    if (d === 0) return;
+    var key = g.sub + '|' + g.down; if (!by[key]) { by[key] = { sub: g.sub, down: g.down, d: [], fresh: !prev }; order.push(key); }
+    by[key].d.push(d);
+  });
+  Object.keys(curBy).forEach(function (k) { if (k.charAt(0) === '?' && nxt.indexOf(curBy[k]) < 0) ok = false; });
+  if (!ok) return '';
+  order.forEach(function (k) { var b = by[k], v = b.d.map(pct); out.push(b.sub + (b.down ? ' reduced by a further ' + v.join(' and ') : ' +' + v.join(' and +')) + (b.fresh ? ' (new)' : '')); });
+  return out.join(', ');
+}
 /* What a not-yet-awakened hero needs: [{ok, text}]; "(now N)" only against a rule that is not met */
 function needs(a, hasCard) {
   return [
@@ -246,7 +291,7 @@ function statusLine(byId, ids, nameOf) {
   ids.forEach(function (id) { var t = heroStatus(byId[id]); if (!by[t]) { by[t] = []; order.push(t); } by[t].push(nameOf(id)); });
   return order.map(function (t) { return { names: by[t], text: t }; });
 }
-var Logic = { awSkills: awSkills, enrich: enrich, SLOT_PRI: SLOT_PRI, TRIOS: TRIOS, CORE: CORE, CLOSE: CLOSE, step: step, costTo: costTo, workable: workable, cleanSet: cleanSet, pickSets: pickSets, skillsOf: skillsOf, nextOf: nextOf, plan: plan, moves: moves, effectText: effectText, splitEffect: splitEffect, clean: clean, needs: needs, verdict: verdict, heroStatus: heroStatus, statusLine: statusLine, cardLines: cardLines, fmtInt: fmtInt };
+var Logic = { awSkills: awSkills, enrich: enrich, SLOT_PRI: SLOT_PRI, TRIOS: TRIOS, CORE: CORE, CLOSE: CLOSE, step: step, costTo: costTo, workable: workable, cleanSet: cleanSet, pickSets: pickSets, skillsOf: skillsOf, nextOf: nextOf, plan: plan, moves: moves, effectText: effectText, splitEffect: splitEffect, nextGain: nextGain, clean: clean, needs: needs, verdict: verdict, heroStatus: heroStatus, statusLine: statusLine, cardLines: cardLines, fmtInt: fmtInt };
 if (isNode) module.exports = { Logic: Logic };
 if (!isNode) root.ArmoryAwakenLogic = Logic;
 
@@ -272,7 +317,7 @@ var CSS =
   '.awk-cn{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 8px;font-size:var(--fs-15);font-weight:600}.awk-lv{display:inline-flex;align-items:center;gap:4px;font-size:var(--fs-13);color:var(--muted);font-weight:400}' +
   '.awk-m{position:relative}.awk-m::after{content:"";position:absolute;left:60%;top:0;bottom:0;width:1px;background:var(--muted)}' +
   '.awk-eff{margin:0;font-size:var(--fs-13);color:var(--muted)}.awk-six{margin:0;display:flex;gap:6px;align-items:flex-start;font-size:var(--fs-13);color:var(--text)}.awk-six .i{width:14px;height:14px;flex:none;margin-top:2px;color:var(--muted)}' +
-  '.awk-more{align-self:flex-start;padding:0}.awk-nx{font-size:var(--fs-13);margin-top:auto}.awk-nx.dim{color:var(--muted)}.awk-tag{font-size:var(--fs-12);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-chip);padding:0 6px;align-self:flex-start}' +
+  '.awk-ng{display:block;color:var(--text);margin-top:2px}.awk-more{align-self:flex-start;padding:0}.awk-nx{font-size:var(--fs-13);margin-top:auto}.awk-nx.dim{color:var(--muted)}.awk-tag{font-size:var(--fs-12);color:var(--accent);border:1px solid var(--accent);border-radius:var(--r-chip);padding:0 6px;align-self:flex-start}' +
   '.awk-fold .awk-eff,.awk-fold .awk-six,.awk-fold .awk-more{display:none}.awk-fold.awk-effopen .awk-eff,.awk-fold.awk-effopen .awk-six{display:block}.awk-fold.awk-effopen .awk-six{display:flex}' +
   '.awk-req{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:var(--fs-14)}.awk-req li{display:flex;align-items:center;gap:8px;color:var(--muted)}.awk-req li.ok{color:var(--text)}' +
   '.awk-req .i{width:16px;height:16px;color:var(--ok);flex:none}.awk-req .awk-nil{width:16px;height:16px;flex:none;border:1.5px solid var(--border);border-radius:50%}' +
@@ -331,7 +376,10 @@ function skillCard(a, id, slot, hl) {
   if (a.mode !== 'full') nx = '';
   else if (!lv) nx = a.aw >= gate ? 'Level not in game data yet' : 'Unlocks at ' + nd('Awakening Lv.' + gate + ' (' + (gate - a.aw) + ' levels to go)');
   else if (lv >= 10) nx = '';
-  else nx = 'Next ' + nd('Lv.' + (lv + 1)) + ': up to ' + nd(fmtInt(step(lv))) + ' stones';
+  else {
+    var ng = cs && cs.levels && cs.levels[lv] && cs.levels[lv - 1] ? nextGain(cs.levels[lv - 1].effect, cs.levels[lv].effect, lv) : '';
+    nx = 'Next ' + nd('Lv.' + (lv + 1)) + ': up to ' + nd(fmtInt(step(lv))) + ' stones' + (ng ? '<span class="awk-ng">Next gain: ' + esc(ng) + '</span>' : '');
+  }
   var meter = lv ? '<div class="awk-m"><div class="meter ' + (lv >= 10 ? 'r-max' : lv >= 6 ? 'r-hi' : 'r-lo') + '" role="img" aria-label="Skill level ' + lv + ' of 10, Lv.6 switches on the second effect"><i style="width:' + (lv * 10) + '%"></i></div></div>' : '';
   return '<div class="awk-c' + (lv ? '' : ' awk-lock') + (hl ? ' awk-hl' : '') + '" data-awks="' + (+slot) + '">' + icon + '<div class="awk-cb"><div class="awk-cn"><span translate="no">' + esc(name) + '</span>' +
     (a.mode === 'full' ? '<span class="awk-lv" translate="no">' + (lv ? 'Lv.' + lv + ' of 10' : ic('lock', 'sm') + 'Locked') + '</span>' : '') + '</div>' +

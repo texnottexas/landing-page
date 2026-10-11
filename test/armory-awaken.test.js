@@ -492,3 +492,27 @@ test('core marches: Save for and the "or" row work when the main march is a core
   assert.equal(p.main.next.phase, 'B'); assert.ok(p.alt && p.alt.id === JETT, 'the close second still under Lv.6: the or row');
   assert.equal(p.move.or.id, JETT);
 });
+
+// ---- the "Next gain" line: what the next skill level adds, read from two catalog strings
+test('nextGain: a plain delta, every number from the catalog, nothing printed when the text cannot be diffed', () => {
+  const hp = (a, b) => 'HP Boost effect is increased by ' + a + '%. HP Boost effect is increased by ' + b + '%. Unlocks at Lv. 6: Active skill damage is increased by 1.5%.';
+  assert.equal(L.nextGain(hp(2, 1), hp(3, 1.5), 2), 'HP Boost effect +1% and +0.5%');
+  // Lv.5 -> 6: the locked clause was not active, so it is new
+  assert.equal(L.nextGain(hp(6, 3), 'HP Boost effect is increased by 8.0%. Active skill damage is increased by 1.5%. HP Boost effect is increased by 4.0%.', 5), 'HP Boost effect +2% and +1%, Active skill damage +1.5% (new)');
+  assert.equal(L.nextGain('Damage taken is reduced by 3.0%.', 'Damage taken is reduced by 5.0%.', 7), 'Damage taken reduced by a further 2%');
+  // a sentence that is not "increased by N%" and changes: nothing (a chance, a stack count)
+  assert.equal(L.nextGain('Applies 1 stack(s) of 26.0% Magnetic Pulse.', 'Applies 1 stack(s) of 29.0% Magnetic Pulse.', 3), '');
+  // a placeholder that did not come through: nothing
+  assert.equal(L.nextGain('HP Boost effect is increased by {1}%.', 'HP Boost effect is increased by 3.0%.', 2), '');
+  // an unreadable sentence that does not change is fine
+  assert.equal(L.nextGain('HP Boost effect is increased by 1.0%. This effect can trigger up to 3 times per round.', 'HP Boost effect is increased by 2.0%. This effect can trigger up to 3 times per round.', 1), 'HP Boost effect +1%');
+  assert.equal(L.nextGain('a', 'b', 10), ''); assert.equal(L.nextGain('', 'x', 1), '');
+});
+test('nextGain over every live skill level: no placeholder, markup or negative number; about half the catalog reads cleanly', () => {
+  let tot = 0, got = 0;
+  Object.keys(CAT.heroes).forEach((id) => { const h = CAT.heroes[id]; if (!h.live) return; h.skills.forEach((s) => { for (let lv = 1; lv < 10; lv++) {
+    tot++; const g = L.nextGain(s.levels[lv - 1].effect, s.levels[lv].effect, lv); if (!g) continue; got++;
+    assert.ok(!/[{}\[\]]|undefined|NaN|\+-/.test(g), 'bad gain: ' + g); assert.ok(/\d/.test(g), g);
+  } }); });
+  assert.ok(tot === 216 && got >= 90, got + ' of ' + tot);
+});
