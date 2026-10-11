@@ -3,6 +3,8 @@
 // cards and base shares in chat, on any server, with the game's own world view and collect requests: look at the
 // owner's city (901), then collect its box (2503). No march, no camera move. Launched from the Ops Center.
 // A checked spot is remembered until its box ends (30 min when there was none), whoever shares it again.
+// Spots players paste from FunCC on 2864tw.com/mask-spots.html come with the list (the boxes FunCC lists that the worker
+// can't read, mostly far servers): looked at after the listed boxes, at most 6 in 10 minutes, and never shared.
 // Sharing mode (off by default): after a collect, the game's own box card goes to world chat unless world chat
 // already has it, at least 10 s after the last share, through the chat controller's sendToWorldChannel.
 // Rules live in mask-boxes-core.js (window.MaskBoxesCore); this file talks to the game, the worker and the page.
@@ -13,7 +15,7 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-08.2';
+  var VERSION = '2026-10-11';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
@@ -108,7 +110,7 @@
 
   var S = {
     running: false, stopped: false, siteKey: '', boxes: [], feedOk: true, nextFetch: 0, tried: {}, log: [],
-    chat: [], bases: [], worldCards: [], spots: {}, baseLog: [], wake: false, nextIn: 0,
+    chat: [], bases: [], worldCards: [], spots: {}, baseLog: [], pasted: [], pasteLog: [], wake: false, nextIn: 0,
     share: false, shareWant: lsGet(LS_SHARE) === '1', shareMsg: '', shareBusy: false, shareOkAt: 0, beat: null,
     shareQ: [], lastShareAt: 0, shared: null, lastShare: '', worldOk: false, shareStopped: '',
     types: { 1: true, 2: true, 3: true }, count: null, done: null, last: '', foot: 'Starting...', tone: 'ok',
@@ -146,8 +148,8 @@
     S.chat = C.chatBoxes(L.all, now); S.bases = C.baseShares(L.world, now); S.worldCards = C.chatBoxes(L.world, now); S.worldOk = L.worldOk;
   }
   // A checked spot is remembered until its box ends (30 min with no box), at the reported spot and the city anchor.
-  function remember(b, pt) {
-    var now = Date.now(), until = pt && pt.endMs > now ? pt.endMs : now + C.SPOT_NO_BOX_MS;
+  function remember(b, pt, atLeast) {
+    var now = Date.now(), until = Math.max(pt && pt.endMs > now ? pt.endMs : now + C.SPOT_NO_BOX_MS, atLeast || 0);
     S.spots = C.rememberSpot(S.spots, C.cityKey(b), until);
     if (pt && pt.w) S.spots = C.rememberSpot(S.spots, pt.w + ':' + pt.x + ':' + pt.y, until);
     var s = C.pruneSpots(S.spots, now), keys = Object.keys(s);
@@ -169,8 +171,9 @@
     try { var T = req('TableManager').TABLE; for (var i = 1; i <= 8; i++) { var r = T.getTableDataById('mask_mystery_party', i); if (r && Number(r.item_id) === Number(itemId)) return r; } } catch (e) {}
     return null;
   }
-  // The share gap and the base-share ration hold across a relaunch, like the daily counts and spot memory.
-  function saveRate() { lsSet(LS_RATE + S.siteKey, JSON.stringify({ lastShareAt: S.lastShareAt, baseLog: S.baseLog.filter(function (t) { return t > Date.now() - 600000; }) })); }
+  // The share gap and the base-share and pasted-spot rations hold across a relaunch, like the daily counts and spot memory.
+  function recent(log) { return log.filter(function (t) { return t > Date.now() - 600000; }); }
+  function saveRate() { lsSet(LS_RATE + S.siteKey, JSON.stringify({ lastShareAt: S.lastShareAt, baseLog: recent(S.baseLog), pasteLog: recent(S.pasteLog) })); }
   function shareCheckFor(q) {
     return C.shareCheck({ on: shareFresh() && !S.shareStopped, typeOn: !!S.types[q.type], endMs: q.pt.endMs, now: Date.now(), sharedIds: sharedIds(), instanceId: q.instanceId,
       worldCards: S.worldCards, worldOk: S.worldOk, server: q.pt.w, x: q.pt.x, y: q.pt.y, lastShareAt: S.lastShareAt });
@@ -253,7 +256,9 @@
   async function fetchFeed() {
     S.nextFetch = Date.now() + FEED_MS;
     try {
-      var r = await fetch(WORKER + '/maskintel', { cache: 'no-store' }), j = await r.json();
+      var r = await fetch(WORKER + '/maskintel', { cache: 'no-store' }), j = null;
+      try { j = await r.json(); } catch (e) {}
+      S.pasted = C.pastedSpots(j);                           // pasted spots come even when both lists are down
       if (!r.ok || !j || !j.ok || !Array.isArray(j.boxes)) throw new Error('feed');
       S.boxes = j.boxes; S.feedOk = true;
     } catch (e) { S.feedOk = false; }
@@ -271,18 +276,25 @@
     }
   }
   function allBoxes() { return C.mergeBoxes([S.feedOk ? S.boxes : [], S.chat]); }
-  // Known boxes (feed and cards) first, soonest-ending; a base share only when none is due.
+  // Known boxes (feed and cards) first, soonest-ending; then a pasted spot; a base share only when neither is due.
   function nextWork() {
     var o = { now: Date.now(), types: S.types, tried: S.tried, counts: counts(), spots: S.spots };
     var list = C.candidates(allBoxes(), o);
     if (list.length) return list[0];
-    // a base share is only worth a view while some type is on and under its 20
+    // a pasted spot or a base share is only worth a view while some type is on and under its 20
     var c = counts(), any = [1, 2, 3].some(function (t) { return S.types[t] && (c[t] || 0) < C.DAILY_CAP; });
     if (!any) return null;
+    o.pasteLog = S.pasteLog;
+    var p = C.pastedCandidate(S.pasted, o);
+    if (p) return { src: 'pasted', server: p.server, x: p.x, y: p.y, addedAt: p.addedAt };
     o.baseLog = S.baseLog;
     return C.baseCandidate(S.bases, o);
   }
-  function waitingText() { return S.feedOk ? 'Waiting for new boxes' : S.chat.length || S.bases.length ? 'Box list unavailable · using chat (' + S.chat.length + ')' : 'Box list unavailable'; }
+  function waitingText() {
+    if (S.feedOk) return 'Waiting for new boxes';
+    if (S.chat.length || S.bases.length) return 'Box list unavailable · using chat (' + S.chat.length + ')';
+    return S.pasted.length ? 'Box list unavailable · using pasted spots (' + S.pasted.length + ')' : 'Box list unavailable';
+  }
   async function loop() {
     try { await run(); }
     catch (e) { stop('something went wrong (' + String((e && e.message) || e).slice(0, 60) + ')'); }
@@ -292,7 +304,7 @@
       if (Date.now() >= S.nextFetch) await fetchFeed();
       if (!S.running) break;
       readChat();
-      if (!S.feedOk && !S.chat.length && !S.bases.length) { await untilNextFetch('Box list unavailable', 'warn'); continue; }
+      if (!S.feedOk && !S.chat.length && !S.bases.length && !S.pasted.length) { await untilNextFetch('Box list unavailable', 'warn'); continue; }
       if (!ready()) { setFoot('Game disconnected. Waiting...', 'bad'); await delay(1000); continue; }
       readServer();
       if (S.shareQ.length) await sharePending();
@@ -312,11 +324,12 @@
   // Wait for the shared clock, then check again: the wait can be long, and the game can drop meanwhile.
   async function turn() { await idle(); await pace(); return S.running && ready() && !flight; }
   async function tryBox(b) {
-    var isBase = b.src === 'base', where = 'S' + b.server + ' (' + b.x + ', ' + b.y + ')';
-    setFoot(isBase ? 'Checking a shared base at ' + where : 'Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
+    var isPasted = b.src === 'pasted', isBase = b.src === 'base' || isPasted, where = 'S' + b.server + ' (' + b.x + ', ' + b.y + ')';
+    setFoot(isPasted ? 'Checking a pasted spot at ' + where : isBase ? 'Checking a shared base at ' + where : 'Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
     if (!(await turn())) return;                            // nothing sent: the box stays untried
-    S.tried[isBase ? C.cityKey(b) : C.boxKey(b)] = 1;
-    if (isBase) { S.baseLog.push(Date.now()); saveRate(); }
+    S.tried[isBase ? C.cityKey(b) : C.boxKey(b)] = 1;       // a base share or pasted spot: no type or end time, just a place
+    if (isBase) { (isPasted ? S.pasteLog : S.baseLog).push(Date.now()); saveRate(); }
+    if (isPasted) remember(b, null, C.pastedUntil(b, Date.now()));   // one look, ever: even if the game refuses it
     var answer = await sendView(b);
     var found = C.findBox(answer, b.x, b.y, b.server, isBase ? undefined : b.endMs);
     if (found.state === 'stop') { note('failed'); stop(stopText(found.key, 'the game refused to show that city.')); return; }
@@ -334,7 +347,8 @@
     note(c.kind === 'ok' || c.kind === 'claimed' ? c.kind : 'failed');
     if (c.kind === 'ok') {
       bump(type); markDone(found.instanceId); S.last = itemLabel(c.items) + ' from ' + where;
-      if (S.share && !S.shareStopped && found.pt) S.shareQ.push({ instanceId: found.instanceId, type: type, pt: found.pt, host: hostName(found.pt.info), at: Date.now() });
+      // a pasted spot's box is never shared: its card does not work for those servers (Tex)
+      if (S.share && !S.shareStopped && found.pt && !isPasted) S.shareQ.push({ instanceId: found.instanceId, type: type, pt: found.pt, host: hostName(found.pt.info), at: Date.now() });
     }
     else if (c.kind === 'claimed') markDone(found.instanceId);
     else if (c.kind === 'stop') { stop(stopText(c.key, 'a collect came back without a reward.')); return; }
@@ -450,7 +464,7 @@
       var al = r[0] + ' ' + r[1] + ' since reset'; if (b.getAttribute('aria-label') !== al) b.setAttribute('aria-label', al);
     });
     var f = document.getElementById('mbx-foot'); if (f && f.textContent !== S.foot) { f.textContent = S.foot; f.title = S.foot; }
-    var srcText = (S.feedOk ? 'List ' + S.boxes.length : 'List down') + ' · Chat ' + S.chat.length + (S.bases.length ? ' · Bases ' + S.bases.length : '') +
+    var srcText = (S.feedOk ? 'List ' + S.boxes.length : 'List down') + ' · Chat ' + S.chat.length + (S.bases.length ? ' · Bases ' + S.bases.length : '') + (S.pasted.length ? ' · Pasted ' + S.pasted.length : '') +
       (S.nextIn ? ' · next ' + S.nextIn + ' s' : '');
     var sl = document.getElementById('mbx-src'); if (sl && sl.textContent !== srcText) { sl.textContent = srcText; sl.title = srcText; }
     var lt = S.last ? 'Last: ' + S.last : '';
@@ -468,7 +482,7 @@
     running: true, version: VERSION,
     stop: function (reason) { stop(reason || 'stopped by you'); },
     flash: function () { if (!card) return; card.classList.add('flash'); setTimeout(function () { if (card) card.classList.remove('flash'); }, 600); },
-    state: function () { return { counts: counts(), tried: Object.keys(S.tried).length, last: S.last, foot: S.foot, types: S.types, chat: S.chat.length, bases: S.bases.length, spots: Object.keys(S.spots).length, share: S.share, shared: sharedIds().length, queued: S.shareQ.length }; }
+    state: function () { return { counts: counts(), tried: Object.keys(S.tried).length, last: S.last, foot: S.foot, types: S.types, chat: S.chat.length, bases: S.bases.length, pasted: S.pasted.length, spots: Object.keys(S.spots).length, share: S.share, shared: sharedIds().length, queued: S.shareQ.length }; }
   };
   ensureRoot();
   showMessage('Starting...');
@@ -483,7 +497,8 @@
     var rt = lsJSON(LS_RATE + S.siteKey);
     if (rt && typeof rt === 'object') {
       if (Number(rt.lastShareAt) > 0) S.lastShareAt = Number(rt.lastShareAt);
-      if (Array.isArray(rt.baseLog)) S.baseLog = rt.baseLog.map(Number).filter(function (t) { return t > Date.now() - 600000; });
+      if (Array.isArray(rt.baseLog)) S.baseLog = recent(rt.baseLog.map(Number));
+      if (Array.isArray(rt.pasteLog)) S.pasteLog = recent(rt.pasteLog.map(Number));
     }
     if (S.stopped) return;
     S.running = true;

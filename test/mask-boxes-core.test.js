@@ -202,3 +202,33 @@ test('REVIEW #3: shareCheck fails closed when world chat could not be read', () 
   assert.deepEqual(M.shareCheck(o), { ok: false, reason: 'no world chat' });
   assert.deepEqual(M.shareCheck(Object.assign({}, o, { worldOk: true })), { ok: true });
 });
+
+// Spots players pasted from FunCC on 2864tw.com/mask-spots.html (Tex, 2026-10-11), handed out with the box list.
+test('pastedCandidate: newest first, skips tried and remembered spots, at most 6 looks in 10 minutes', () => {
+  assert.equal(M.PASTE_PER_10MIN, 6);
+  const sp = (server, addedAt) => ({ server, x: 452, y: 422, addedAt });
+  const list = [sp(1, NOW - 5000), sp(2, NOW - 1000), sp(3, NOW - 3000)];
+  assert.equal(M.pastedCandidate(list, { now: NOW, tried: {}, spots: {}, pasteLog: [] }).server, 2);
+  const tried = {}; tried[M.cityKey(sp(2))] = 1;
+  const spots = {}; spots[M.cityKey(sp(3))] = NOW + 60000;
+  assert.equal(M.pastedCandidate(list, { now: NOW, tried, spots, pasteLog: [] }).server, 1);
+  const log = [1, 2, 3, 4, 5, 6].map((i) => NOW - i * 60000);
+  assert.equal(M.pastedCandidate(list, { now: NOW, tried: {}, spots: {}, pasteLog: log }), null);
+  assert.equal(M.pastedCandidate(list, { now: NOW, tried: {}, spots: {}, pasteLog: log.map((t) => t - 600000) }).server, 2, 'older looks no longer count');
+  assert.equal(M.pastedCandidate(null, { now: NOW, tried: {}, spots: {}, pasteLog: [] }), null);
+});
+
+test('pastedSpots: keeps well-formed spots from the list answer, drops anything else', () => {
+  assert.deepEqual(M.pastedSpots({ spots: [{ server: 2656, x: 452, y: 422, addedAt: NOW }, { server: 0, x: 1, y: 1, addedAt: NOW }, { server: 5, x: 'a', y: 1 }, null, { server: 7, x: 3000, y: 1, addedAt: NOW },
+    { server: 8, x: 1201, y: 1, addedAt: NOW }, { server: 9, x: 1200, y: 0, addedAt: NOW }] }),
+    [{ server: 2656, x: 452, y: 422, addedAt: NOW }, { server: 9, x: 1200, y: 0, addedAt: NOW }], 'x and y on the map, 0-1200');
+  assert.deepEqual(M.pastedSpots({}), []);
+  assert.deepEqual(M.pastedSpots(null), []);
+});
+
+test('pastedUntil: a pasted spot is remembered until the list drops it (60 min after it was added, plus a minute), at least 30 min', () => {
+  assert.equal(M.PASTE_TTL_MS, 3600000);
+  assert.equal(M.pastedUntil({ addedAt: NOW }, NOW), NOW + 3600000 + 60000);
+  assert.equal(M.pastedUntil({ addedAt: NOW - 3500000 }, NOW), NOW + M.SPOT_NO_BOX_MS, 'nearly gone from the list: the usual 30 min');
+  assert.equal(M.pastedUntil({}, NOW), NOW + M.SPOT_NO_BOX_MS);
+});

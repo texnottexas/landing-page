@@ -17,16 +17,16 @@ const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 const T = 260617001;                                     // a box's item is T + its type
 
-let server, base, browser, feed, feedMode, feedHits, lease, shareMode, shareLog, usageLog, usageMode;
+let server, base, browser, feed, feedMode, feedHits, lease, shareMode, shareLog, usageLog, usageMode, pasted;
 test.before(async () => {
   server = http.createServer((req, res) => {
     const name = decodeURIComponent(req.url.split('?')[0].replace(/^\/+/, '')) || 'index.html';
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' };
     if (name === 'maskintel') {
       feedHits++;
-      if (feedMode === 'down') { res.writeHead(502, Object.assign({ 'content-type': 'application/json' }, cors)); res.end('{"ok":false,"error":"upstream"}'); return; }
+      if (feedMode === 'down') { res.writeHead(502, Object.assign({ 'content-type': 'application/json' }, cors)); res.end(JSON.stringify({ ok: false, error: 'upstream', spots: pasted })); return; }
       res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors));
-      res.end(JSON.stringify({ ok: true, fetchedAt: Date.now(), boxes: feed }));
+      res.end(JSON.stringify({ ok: true, fetchedAt: Date.now(), boxes: feed, spots: pasted }));
       return;
     }
     if (name === 'maskshare/claim' || name === 'maskshare/release') {   // the worker's share-mode hold, in memory
@@ -79,7 +79,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { feed = []; feedMode = 'ok'; feedHits = 0; lease = {}; shareMode = 'ok'; shareLog = []; usageLog = []; usageMode = 'ok'; });
+test.beforeEach(() => { feed = []; feedMode = 'ok'; feedHits = 0; lease = {}; shareMode = 'ok'; shareLog = []; usageLog = []; usageMode = 'ok'; pasted = []; });
 
 const box = (o) => Object.assign({ server: 619, x: 404, y: 612, owner: 'A', type: 1, endMs: Date.now() + 600000 }, o);
 
@@ -790,7 +790,9 @@ test('USAGE-1: it reports today\'s box count at launch and after each collect: s
   await waitSent(page, 4);
   await waitUsage(3);
   const day = await page.evaluate(() => MaskBoxesCore.gameDay(Date.now()));
-  assert.deepEqual(usageLog.map((u) => u.body), [0, 1, 2].map((n) => ({ siteKey: SK, name: 'Tex', tool: 'mask-boxes', version: '2026-10-08.2', count: n, day })));
+  const version = await page.evaluate(() => __MBX.version);
+  assert.match(version, /^\d{4}-\d{2}-\d{2}/);
+  assert.deepEqual(usageLog.map((u) => u.body), [0, 1, 2].map((n) => ({ siteKey: SK, name: 'Tex', tool: 'mask-boxes', version, count: n, day })));
   usageLog.forEach((u) => { assert.match(u.type, /^text\/plain/); assert.ok(!u.raw.includes(UID), 'no UID'); });
   await ctx.close();
 });
@@ -804,5 +806,116 @@ test('USAGE-2: a usage report that fails changes nothing: boxes are still collec
   await waitText(page, '#mbx-t1', /1\/20/);
   await waitUsage(2);
   assert.deepEqual(usageLog.map((u) => u.body.count), [0, 1], 'one try each, no retry');
+  await ctx.close();
+});
+
+// ---- spots pasted from FunCC on 2864tw.com/mask-spots.html, handed out with the box list (Tex, 2026-10-11)
+const ps = (server, x, y, ago) => ({ server, x, y, addedAt: Date.now() - (ago || 0) });
+
+test('PASTE-1: a pasted spot is looked at and its box collected, with the list empty; the card counts pasted spots', async () => {
+  pasted = [ps(2656, 452, 422)];
+  const { ctx, page } = await open((t) => { __fake.cities['2656:452:422'] = { pid: '777', itemId: t + 2, instanceId: 'p1' }; }, T);
+  await launch(page);
+  await waitSent(page, 2);
+  const s = await sent(page);
+  assert.deepEqual(s.map((x) => x.rid), [901, 2503]);
+  assert.deepEqual(s[0].p, { x: 452, y: 422, k: 2656, rid: 0, width: 25, height: 30, marchInfo: true, viewLevel: 0 });
+  assert.deepEqual(s[1].p, { targetUidStr: '777' });
+  await waitText(page, '#mbx-t2', /HT\s*1\/20/);
+  await waitText(page, '#mbx-src', /Pasted 1/);
+  await ctx.close();
+});
+
+test('PASTE-2: listed boxes go first, then pasted spots', async () => {
+  feed = [box({ server: 619, x: 404, y: 612, type: 1 })];
+  pasted = [ps(2656, 452, 422)];
+  const { ctx, page } = await open((t) => {
+    __fake.cities['619:404:612'] = { pid: '222', itemId: t + 1, instanceId: 'f1' };
+    __fake.cities['2656:452:422'] = { pid: '777', itemId: t + 2, instanceId: 'p2' };
+  }, T);
+  await launch(page);
+  await waitSent(page, 4);
+  assert.deepEqual((await sent(page)).filter((x) => x.rid === 901).map((x) => x.p.k), [619, 2656]);
+  await ctx.close();
+});
+
+test('PASTE-3: an empty pasted spot is looked at once, and not again after a relaunch', async () => {
+  pasted = [ps(2656, 452, 422)];
+  const { ctx, page } = await open();
+  await launch(page);
+  await waitSent(page, 1);
+  await page.waitForTimeout(1500);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [901]);
+  await page.evaluate(() => { __MBX.stop(); });
+  await launch(page);
+  await page.waitForFunction(() => window.__MBX && window.__MBX.running);
+  await page.waitForTimeout(2000);
+  assert.equal((await sent(page)).length, 1, 'remembered: no second look');
+  await ctx.close();
+});
+
+test('PASTE-4: at most 6 pasted-spot looks in 10 minutes, so a burst of bad pastes cannot hammer the account', async () => {
+  pasted = Array.from({ length: 9 }, (_, i) => ps(3000 + i, 452, 422, i * 1000));
+  const { ctx, page } = await open();
+  await launch(page);
+  await waitSent(page, 6);
+  await page.waitForTimeout(2500);
+  assert.equal((await sent(page)).filter((x) => x.rid === 901).length, 6);
+  await ctx.close();
+});
+
+test('PASTE-5: with both box lists down, pasted spots still get collected', async () => {
+  feedMode = 'down';
+  pasted = [ps(2656, 452, 422)];
+  const { ctx, page } = await open((t) => { __fake.cities['2656:452:422'] = { pid: '777', itemId: t + 3, instanceId: 'p5' }; }, T);
+  await launch(page);
+  await waitSent(page, 2);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [901, 2503]);
+  await waitText(page, '#mbx-t3', /RSS\s*1\/20/);
+  await ctx.close();
+});
+
+test('PASTE-6: share mode on: a listed box is shared, a box from a pasted spot is collected but never shared (Tex: shares do not work for those servers)', async () => {
+  const end = Date.now() + 600000;
+  feed = [box({ server: 864, x: 405, y: 429, endMs: end })];
+  pasted = [ps(2656, 452, 422)];
+  const { ctx, page } = await open(([t, e]) => {
+    localStorage.setItem('mbx_share_v1', '1');
+    __fake.cities['864:405:429'] = { pid: '22', itemId: t + 1, instanceId: 's22', endMs: e, host: 'Hosty' };
+    __fake.cities['2656:452:422'] = { pid: '777', itemId: t + 2, instanceId: 'p6', endMs: e, host: 'Faraway' };
+  }, [T, end]);
+  await launch(page);
+  await waitSent(page, 4);
+  await page.waitForFunction(() => __fake.shares.length >= 1, null, { timeout: 10000 });
+  await waitText(page, '#mbx-t2', /HT\s*1\/20/);
+  assert.deepEqual((await sent(page)).filter((x) => x.rid === 2503).map((x) => x.p.targetUidStr), ['22', '777'], 'both collected');
+  assert.equal(await page.evaluate(() => __MBX.state().queued), 0, 'nothing waiting to be shared');
+  await page.waitForTimeout(12000);                                // past the 10 s share gap
+  const s = await page.evaluate(() => __fake.shares);
+  assert.deepEqual(s.map((x) => x.link.extra.jumpServerId), [864], 'only the listed box went to world chat');
+  await ctx.close();
+});
+
+test('PASTE-7: a pasted spot the game refuses to show stops the run as any refusal does, and is not looked at again after a relaunch', async () => {
+  pasted = [ps(41070, 345, 369)];
+  const { ctx, page } = await open(() => { __fake.viewError = 'view_too_fast'; });
+  await launch(page);
+  await waitText(page, '#mbx-root', /Mask Mystery Boxes stopped: Too frequent/);
+  await page.evaluate(() => { __fake.viewError = ''; });
+  await launch(page);
+  await page.waitForFunction(() => window.__MBX && window.__MBX.running);
+  await page.waitForTimeout(2000);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [901], 'one look, ever');
+  await ctx.close();
+});
+
+test('PASTE-8: an empty pasted spot is remembered until the list drops it, not just the usual 30 minutes', async () => {
+  pasted = [ps(2656, 452, 422, 5 * 60000)];                       // added 5 minutes ago: the list keeps it 55 more
+  const { ctx, page } = await open();
+  await launch(page);
+  await waitSent(page, 1);
+  await page.waitForTimeout(500);
+  const left = await page.evaluate((sk) => JSON.parse(localStorage.getItem('mbx_spots_v1_' + sk))['2656:452:422'] - Date.now(), SK);
+  assert.ok(left > 55 * 60000 && left < 57 * 60000, 'remembered until the list drops it: ' + Math.round(left / 60000) + ' min');
   await ctx.close();
 });

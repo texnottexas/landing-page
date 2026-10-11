@@ -178,6 +178,24 @@
     list.sort(function (a, c) { return c.at - a.at; });
     return list[0] || null;
   }
+  // A spot pasted from FunCC on mask-spots.html (Tex, 2026-10-11): a good lead with no type or end time. Newest first,
+  // untried, unremembered; at most 6 looks in 10 minutes so a burst of bad pastes can't hammer the account.
+  var PASTE_PER_10MIN = 6, PASTE_TTL_MS = 3600000;
+  function pastedCandidate(spots, o) {
+    var recent = (o.pasteLog || []).filter(function (t) { return t > o.now - 600000; });
+    if (recent.length >= PASTE_PER_10MIN) return null;
+    var list = (spots || []).filter(function (s) { var k = cityKey(s); return !(o.tried && o.tried[k]) && !spotBlocked(o.spots, k, o.now); });
+    list.sort(function (a, c) { return c.addedAt - a.addedAt; });
+    return list[0] || null;
+  }
+  function pastedSpots(answer) {
+    var raw = answer && Array.isArray(answer.spots) ? answer.spots : [], ok = function (n, max) { return typeof n === 'number' && n % 1 === 0 && n >= 0 && n <= max; };
+    return raw.filter(function (s) { return s && ok(s.server, 99999) && s.server > 0 && ok(s.x, 1200) && ok(s.y, 1200) && ok(s.addedAt, 9e15); })
+      .map(function (s) { return { server: s.server, x: s.x, y: s.y, addedAt: s.addedAt }; });
+  }
+  // A pasted spot is remembered from the moment it's looked at until the list drops it, so one look is all it ever
+  // gets: an empty spot, or one the game refused to show, isn't looked at again after a relaunch.
+  function pastedUntil(spot, now) { return Math.max(now + SPOT_NO_BOX_MS, ((spot && spot.addedAt) || 0) + PASTE_TTL_MS + 60000); }
   // The city holding the box we found: its anchor, server (p.w), end, item and player info (for the share card).
   function boxPoint(answer, pid) {
     var d;
@@ -221,7 +239,8 @@
     gate: gate, countsFor: countsFor, cardRows: cardRows, trackServer: trackServer, countsWith: countsWith,
     SPOT_NO_BOX_MS: SPOT_NO_BOX_MS, BASE_MAX_AGE_MS: BASE_MAX_AGE_MS, cityKey: cityKey, chatBoxes: chatBoxes, baseShares: baseShares,
     mergeBoxes: mergeBoxes, spotBlocked: spotBlocked, rememberSpot: rememberSpot, pruneSpots: pruneSpots, baseCandidate: baseCandidate, boxPoint: boxPoint,
-    SHARE_GAP_MS: SHARE_GAP_MS, SHARE_MIN_LEFT_MS: SHARE_MIN_LEFT_MS, shareCheck: shareCheck, shareLink: shareLink
+    SHARE_GAP_MS: SHARE_GAP_MS, SHARE_MIN_LEFT_MS: SHARE_MIN_LEFT_MS, shareCheck: shareCheck, shareLink: shareLink,
+    PASTE_PER_10MIN: PASTE_PER_10MIN, PASTE_TTL_MS: PASTE_TTL_MS, pastedCandidate: pastedCandidate, pastedSpots: pastedSpots, pastedUntil: pastedUntil
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = MaskBoxesCore;
   else root.MaskBoxesCore = MaskBoxesCore;

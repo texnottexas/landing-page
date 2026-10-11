@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="referrer" content="no-referrer" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; manifest-src 'self';" />
+  <link rel="manifest" href="/manifest.json">
+  <title>Mask Box Spots - Server 2864</title>
+  <!-- Mask box spots pasted from FunCC (Tex, 2026-10-11). FunCC lists boxes on far servers that the worker can't
+       read; players copy them there ("Copy Coordinates" gives "S4107 345,369") and paste them here. Every Mask
+       Boxes collector in the Ops Center checks these spots for an hour. Direct link only, not in the nav. -->
+  <style>
+    :root {
+      --bg: #0d1117; --bg2: #161b22; --card: #1c2128; --border: #30363d; --tag: #21262d;
+      --text: #e6edf3; --muted: #8b949e; --accent: #79c0ff;
+      --green: #3fb950; --gold: #d29922; --red: #f85149;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+    a { color: var(--accent); }
+    header {
+      background: var(--bg2); border-bottom: 1px solid var(--border); padding: .85rem 2rem;
+      display: flex; align-items: center; gap: 1.2rem; position: sticky; top: 0; z-index: 10;
+    }
+    .home { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; }
+    .home:hover { color: var(--accent); border-color: var(--accent); }
+    .title { font-size: 1.1rem; font-weight: 700; color: var(--accent); }
+    .sub { font-size: .75rem; color: var(--muted); margin-top: 3px; }
+    main { max-width: 640px; margin: 0 auto; padding: 1.5rem 2rem 3rem; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 1.25rem 1.4rem; margin-bottom: 1.25rem; }
+    h2 { font-size: 1rem; font-weight: 700; margin-bottom: .6rem; display: flex; align-items: baseline; gap: .6rem; }
+    h2 .count { font-size: .8rem; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .lead { font-size: .88rem; color: var(--muted); line-height: 1.55; margin-bottom: 1rem; }
+    .lead b { color: var(--text); font-weight: 600; }
+    .as { display: flex; align-items: center; gap: .5rem; font-size: .85rem; color: var(--muted); margin-bottom: .6rem; min-height: 32px; }
+    .as b { color: var(--text); }
+    .linkbtn { background: none; border: none; color: var(--accent); font: inherit; cursor: pointer; padding: .4rem .2rem; }
+    .pick { margin-bottom: .8rem; }
+    .pick label { display: block; font-size: .8rem; color: var(--muted); margin-bottom: .35rem; }
+    select, textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 16px; }
+    select { min-height: 44px; padding: 0 .6rem; }
+    textarea { min-height: 112px; padding: .65rem .75rem; resize: vertical; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.5; }
+    select:focus, textarea:focus { outline: none; border-color: var(--accent); }
+    .row { display: flex; align-items: center; gap: .75rem; margin-top: .75rem; flex-wrap: wrap; }
+    .add { min-height: 44px; padding: 0 1.4rem; border-radius: 8px; border: none; background: #238636; color: #fff; font-family: inherit; font-size: .95rem; font-weight: 600; cursor: pointer; }
+    .add:disabled { background: var(--tag); color: var(--muted); cursor: default; }
+    .hint { font-size: .78rem; color: var(--muted); }
+    .msg { font-size: .85rem; margin-top: .75rem; line-height: 1.45; }
+    .msg:empty { display: none; }
+    .msg.ok { color: var(--green); } .msg.bad { color: var(--red); }
+    .results { list-style: none; margin-top: .6rem; font-size: .85rem; }
+    .results li { display: flex; justify-content: space-between; gap: 1rem; padding: .35rem 0; border-top: 1px solid var(--border); }
+    .results .spot { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .results .st { flex: none; }
+    .st.added { color: var(--green); } .st.already { color: var(--muted); } .st.full, .st.limit, .st.bad { color: var(--gold); }
+    .spots { list-style: none; }
+    .spots li { display: grid; grid-template-columns: auto 1fr; gap: .1rem 1rem; padding: .65rem 0; border-top: 1px solid var(--border); }
+    .spots li:first-child { border-top: none; }
+    .spots .where { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .spots .where span { color: var(--muted); font-weight: 400; }
+    .spots .who { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .spots .when { grid-column: 1 / -1; font-size: .78rem; color: var(--muted); }
+    .empty { font-size: .85rem; color: var(--muted); padding: .4rem 0; }
+    @media (max-width: 640px) {
+      header { padding: .7rem 1rem; }
+      main { padding: 1rem 1rem 2rem; }
+      .card { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+<header>
+  <a class="home" href="https://2864tw.com" title="Home" aria-label="Home">
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 .5 15 6v9.5h-4.5V10h-5v5.5H1V6z"/></svg>
+  </a>
+  <div>
+    <div class="title">Mask Box Spots</div>
+    <div class="sub">Server 2864</div>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Add spots</h2>
+    <p class="lead">On <a href="https://game.funcc.xyz/mask-intel" target="_blank" rel="noopener noreferrer">FunCC's Mask Intel</a>, tap <b>Copy Coordinates</b> on a box and paste it here, one per line, up to 10 at a time. Every Mask Boxes collector in the Ops Center checks these spots for the next hour.</p>
+    <div class="as" id="ms-as"></div>
+    <div class="pick" id="ms-pick" hidden>
+      <label for="ms-who">Who are you?</label>
+      <select id="ms-who"><option value="">Pick your name</option></select>
+    </div>
+    <textarea id="ms-text" placeholder="S4107 345,369" spellcheck="false" autocomplete="off" autocapitalize="off" aria-label="Spots to add"></textarea>
+    <div class="row">
+      <button class="add" id="ms-add" type="button" disabled>Add</button>
+      <span class="hint">Server, then X and Y</span>
+    </div>
+    <div class="msg" id="ms-msg" role="status" aria-live="polite"></div>
+    <ul class="results" id="ms-results"></ul>
+  </section>
+
+  <section class="card">
+    <h2>Live spots <span class="count" id="ms-count"></span></h2>
+    <ul class="spots" id="ms-list"><li class="empty">Loading...</li></ul>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var WORKER = window.__MS_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
+  var REFRESH_MS = window.__MS_REFRESH_MS || 30000;
+  var LS_WHO = 'mask_spots_who_v1', SK = /^[a-f0-9]{16}$/;
+  var STATUS = { added: 'Added', already: 'Already listed', full: 'List is full (40 spots)', limit: 'You can add 30 an hour' };
+  var ERRORS = {
+    not_member: 'Only players on the Server 2864 roster can add spots.',
+    rate_limited: 'Too many tries. Wait a minute and try again.',
+    too_large: 'That is too much text. Paste up to 10 spots at a time.',
+    nothing_readable: "Couldn't read any spots. Use FunCC's Copy Coordinates button; a spot looks like S4107 345,369.",
+    bad_request: 'Pick your name first.',
+    roster_unavailable: 'The roster is not available right now. Try again in a minute.'
+  };
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { who: null, ttl: 3600000, max: 40, spots: [], busy: false, roster: false };
+
+  function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+  function readId(raw) {
+    try { var id = JSON.parse(raw); if (id && !id.guest && SK.test(id.siteKey || '') && id.name) return { name: String(id.name).trim(), siteKey: id.siteKey }; } catch (e) {}
+    return null;
+  }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+
+  // ---- who is adding: the name picked here, else the site identity, else the roster picker
+  function showWho() {
+    var as = $('ms-as'); as.textContent = '';
+    if (state.who) {
+      var who = el('span', null, 'Adding as ');
+      who.appendChild(el('b', null, state.who.name));
+      as.appendChild(who);
+      var c = el('button', 'linkbtn', 'Not you?'); c.type = 'button'; c.id = 'ms-change';
+      c.onclick = function () { lsSet(LS_WHO, null); state.who = null; $('ms-who').value = ''; showWho(); };
+      as.appendChild(c);
+      $('ms-pick').hidden = true;
+    } else {
+      $('ms-pick').hidden = false;
+      fillRoster();
+    }
+    $('ms-add').disabled = !state.who || state.busy;
+  }
+  function fillRoster() {
+    if (state.roster) return;
+    state.roster = true;
+    fetch('player-data.json').then(function (r) { return r.json(); }).then(function (players) {
+      var sel = $('ms-who');
+      (Array.isArray(players) ? players : []).filter(function (p) { return p && SK.test(p.siteKey || '') && p.name; })
+        .sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); })
+        .forEach(function (p) {
+          var o = el('option', null, p.name + (p.alliance ? ' (' + p.alliance + ')' : ''));
+          o.value = p.siteKey; o.setAttribute('data-name', p.name);
+          sel.appendChild(o);
+        });
+    }).catch(function () { state.roster = false; });
+  }
+  $('ms-who').addEventListener('change', function () {
+    var sel = $('ms-who'), o = sel.options[sel.selectedIndex];
+    if (!sel.value) return;
+    state.who = { name: o.getAttribute('data-name'), siteKey: sel.value };
+    lsSet(LS_WHO, JSON.stringify(state.who));
+    showWho();
+  });
+
+  // ---- the live list
+  function ago(ms) { var m = Math.floor(ms / 60000); return m < 1 ? 'just now' : m + ' min ago'; }
+  function renderList() {
+    var list = $('ms-list'), now = Date.now(), live = state.spots.filter(function (s) { return s.addedAt + state.ttl > now; });
+    list.textContent = '';
+    $('ms-count').textContent = live.length + ' of ' + state.max;
+    if (!live.length) { list.appendChild(el('li', 'empty', 'No spots right now.')); return; }
+    live.forEach(function (s) {
+      var li = el('li'), where = el('div', 'where', 'S' + s.server + ' ');
+      where.appendChild(el('span', null, s.x + ', ' + s.y));
+      li.appendChild(where);
+      li.appendChild(el('div', 'who', s.name || ''));
+      var left = Math.max(1, Math.ceil((s.addedAt + state.ttl - now) / 60000));
+      li.appendChild(el('div', 'when', 'Added ' + ago(now - s.addedAt) + ' · checked for ' + left + ' more min'));
+      list.appendChild(li);
+    });
+  }
+  function take(j) {
+    if (!j || !Array.isArray(j.spots)) return;
+    if (j.ttlMs > 0) state.ttl = j.ttlMs;
+    if (j.max > 0) state.max = j.max;
+    state.spots = j.spots.filter(function (s) { return s && typeof s.server === 'number' && typeof s.x === 'number' && typeof s.y === 'number' && typeof s.addedAt === 'number'; });
+    renderList();
+  }
+  function load() {
+    if (document.hidden) return;
+    fetch(WORKER + '/maskspots', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(take)
+      .catch(function () { if (!state.spots.length) { $('ms-list').textContent = ''; $('ms-list').appendChild(el('li', 'empty', "Couldn't load the list. Retrying...")); } });
+  }
+
+  // ---- adding
+  function say(text, tone) { var m = $('ms-msg'); m.textContent = text; m.className = 'msg' + (tone ? ' ' + tone : ''); }
+  function showResults(results, bad) {
+    var ul = $('ms-results'); ul.textContent = '';
+    (results || []).forEach(function (r) {
+      var li = el('li'); li.appendChild(el('span', 'spot', r.spot));
+      li.appendChild(el('span', 'st ' + (STATUS[r.status] ? r.status : 'bad'), STATUS[r.status] || r.status)); ul.appendChild(li);
+    });
+    (bad || []).forEach(function (b) {
+      var li = el('li'); li.appendChild(el('span', 'spot', b)); li.appendChild(el('span', 'st bad', "Couldn't read")); ul.appendChild(li);
+    });
+  }
+  function add() {
+    var text = $('ms-text').value;
+    if (!state.who || state.busy) return;
+    if (!text.trim()) { say('Paste a spot first, like S4107 345,369.', 'bad'); return; }
+    state.busy = true; $('ms-add').disabled = true; $('ms-add').textContent = 'Adding...'; say('');
+    fetch(WORKER + '/maskspots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ siteKey: state.who.siteKey, text: text }) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { status: r.status, j: j || {} }; }); })
+      .then(function (a) {
+        if (a.status === 200 && a.j.ok) {
+          var n = (a.j.results || []).filter(function (r) { return r.status === 'added'; }).length;
+          $('ms-text').value = '';
+          showResults(a.j.results, a.j.bad);
+          say(n ? 'Added ' + n + (n === 1 ? ' spot.' : ' spots.') + ' Collectors will check ' + (n === 1 ? 'it' : 'them') + ' for the next hour.' : 'Nothing new added.', n ? 'ok' : '');
+          take(a.j);
+          return;
+        }
+        showResults([], a.j.bad);
+        say(ERRORS[a.j.error] || 'Something went wrong (' + a.status + '). Try again.', 'bad');
+      })
+      .catch(function () { say("Couldn't reach the server. Check your connection and try again.", 'bad'); })
+      .then(function () { state.busy = false; $('ms-add').textContent = 'Add'; $('ms-add').disabled = !state.who; });
+  }
+  $('ms-add').addEventListener('click', add);
+  $('ms-text').addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); add(); } });
+
+  state.who = readId(lsGet(LS_WHO)) || readId(lsGet('playerIdentity'));
+  showWho();
+  load();
+  setInterval(load, REFRESH_MS);
+  setInterval(renderList, 30000);                    // the minutes move on between list checks
+  document.addEventListener('visibilitychange', load);
+})();
+</script>
+</body>
+</html>
