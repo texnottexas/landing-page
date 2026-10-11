@@ -816,7 +816,7 @@ var CSS =
   '.bag-c:active{background:var(--card-hi)}.bag-c .ico,.bag-c .fb{width:48px;height:48px}' +
   '.bag-q1{border-color:var(--dim)}.bag-q2{border-color:var(--ok)}.bag-q3{border-color:var(--q3)}.bag-q4{border-color:var(--q4)}.bag-q5{border-color:var(--q5)}.bag-q6{border-color:var(--q6)}' +
   '.bag-nm{width:100%;font-size:var(--fs-13);line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}' +
-  '.bag-ft{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px;max-width:100%}.bag-a{font-size:var(--fs-14);font-weight:700}' +
+  '.bag-ft{display:block;max-width:100%;text-align:center}.bag-a{font-size:var(--fs-14);font-weight:700}' +
   '.bag-tally{font-size:var(--fs-13);color:var(--muted)}' +
   '.bag-d{white-space:pre-line;overflow-wrap:anywhere;font-size:var(--fs-15)}.bag-facts{margin-top:4px}.bag-facts .srow .a{font-size:var(--fs-14);font-weight:400;color:var(--muted)}.bag-facts .srow .v{font-weight:700;text-align:right;overflow-wrap:anywhere}' +
   '@media (min-width:600px){.bag-g{grid-template-columns:repeat(4,minmax(0,1fr))}}' +
@@ -861,10 +861,10 @@ function resHtml(rows) {
 function cellHtml(c) {
   if (c.agg) {
     var m = L.AGG[c.agg], tot = L.AGG[c.agg] && Logic.fmtCell(num(aggTotalOf(c.agg)));
-    return '<button class="bag-c bag-q' + m.q + '" type="button" data-bagagg="' + c.agg + '">' + aggIcon(c.agg) + '<span class="bag-nm" translate="no">' + esc(m.name) + '</span><span class="bag-ft"><span class="bag-a" translate="no">×' + esc(tot) + '</span><span class="pill p-lv">Total</span></span></button>';
+    return '<button class="bag-c bag-q' + m.q + '" type="button" data-bagagg="' + c.agg + '">' + aggIcon(c.agg) + '<span class="bag-nm" translate="no">' + esc(m.name) + '</span><span class="bag-ft"><span class="bag-a" translate="no">×' + esc(tot) + '</span> <span class="pill p-lv">Total</span></span></button>';
   }
   var it = c.it, lv = lvOf(it), q = qOf(it), key = (it.tab || curTab(it)) + ':' + it.id;
-  return '<button class="bag-c bag-q' + q + '" type="button" data-bagi="' + esc(key) + '">' + icon(it, 'bag-q' + q) + '<span class="bag-nm" translate="no">' + esc(noHy(nameOf(it))) + '</span><span class="bag-ft"><span class="bag-a" translate="no">×' + esc(Logic.fmtCell(it.amount)) + '</span>' + (lv ? '<span class="pill p-lv" translate="no">Lv.' + esc(Math.round(num(lv))) + '</span>' : '') + '</span></button>';
+  return '<button class="bag-c bag-q' + q + '" type="button" data-bagi="' + esc(key) + '">' + icon(it, 'bag-q' + q) + '<span class="bag-nm" translate="no">' + esc(noHy(nameOf(it))) + '</span><span class="bag-ft"><span class="bag-a" translate="no">×' + esc(Logic.fmtCell(it.amount)) + '</span>' + (lv ? ' <span class="pill p-lv" translate="no">Lv.' + esc(Math.round(num(lv))) + '</span>' : '') + '</span></button>';
 }
 function curTab() { return T.tab; }
 function aggTotalOf(kind) { var m = L.aggModel(kind, D); return m ? m.total : 0; }
@@ -873,7 +873,7 @@ function catDefault() { var c = L.CATS[T.tab]; return c ? c[0][0] : ''; }
 function btnText() { var n = dirty(); return 'Filter · Sort' + (n ? ' (' + n + ')' : ''); }
 function selectHtml(k, lab, list) {
   var val = k === 'cat' ? (T.cat || catDefault()) : T[k];
-  return '<label class="bag-f"><span>' + esc(lab) + '</span><select class="sel" data-bagf="' + k + '">' + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (/\d/.test(o[1]) ? ' translate="no"' : '') + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1] + (o.length > 2 ? ' (' + Logic.fmtCell(o[2]) + ')' : '')) + '</option>'; }).join('') + '</select></label>';
+  return '<label class="bag-f"><span>' + esc(lab) + '</span><select class="sel" data-bagf="' + k + '">' + list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o.length > 2 || /\d/.test(o[1]) ? ' translate="no"' : '') + (String(val) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1] + (o.length > 2 ? ' (' + Logic.fmtCell(o[2]) + ')' : '')) + '</option>'; }).join('') + '</select></label>';
 }
 function fieldList() {
   var out = [], cats = L.categories(D, T.tab);
