@@ -574,6 +574,7 @@ var CSS =
   '.bse-tn{grid-row:1;margin:0 4px;min-width:0;height:100%;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 4px;border:1px solid var(--border);border-radius:var(--r-card);background:var(--card-hi);color:var(--text);text-align:center}' +
   '.bse-tn .ico,.bse-tn .fb{width:40px;height:40px;flex:none}.bse-tnn{font-size:var(--fs-12);font-weight:600;line-height:1.2;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere}.bse-tns{font-size:var(--fs-12);color:var(--muted);margin-top:auto}' +
   '.bse-tn.off{background:var(--surface);border-style:dashed}.bse-tn.off .ico,.bse-tn.off .fb{filter:grayscale(1);opacity:.5}.bse-tn.off .bse-tnn{font-weight:400}' +
+  '.bse-spk{visibility:hidden}' +
       '.bse-tl{margin:0;padding:0;list-style:none}.bse-tl > li{display:flex;align-items:center;gap:12px;min-height:var(--row);padding:8px 0;border-top:1px solid var(--rule)}.bse-tl > li:first-child{border-top:0}.bse-tl .ico,.bse-tl .fb{width:40px;height:40px}' +
   '.bse-tt{flex:1;min-width:0}.bse-tv{white-space:nowrap;font-size:var(--fs-13);color:var(--muted);text-align:right}' +
   '.bse-line{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:var(--fs-14);color:var(--muted)}.bse-line span b{color:var(--text)}' +
@@ -737,7 +738,8 @@ function paneRefreshAll() { var v = $('#v-base [data-pane="decor"]'); if (v) v.i
 /* ---- Spend my shards ---- */
 function spendOwner() { return !readOnly() && S.res.identity && S.res.identity.unlocked && S.vm.decor && S.vm.decor.known; }
 function spendHtml() {
-  if (!spendOwner()) return '';
+  /* the bag arrives with the worker's game data, after the first paint: an owner holds the panel's room until then, so the list does not drop */
+  if (!spendOwner()) return !readOnly() && S.pend && S.res.identity && S.res.identity.unlocked && !(S.vm.decor && S.vm.decor.known) ? '<section class="card bse-sec bse-spk" id="bseSpend" aria-hidden="true"><button class="bse-hd" type="button" tabindex="-1" disabled><span class="bse-ht"><span class="bse-hn">Spend my shards</span><span class="bse-hm">0 Universal Decor Shards in bag</span></span>' + ic('down', 'bse-chev') + '</button></section>' : '';
   var sh = S.vm.decor.shards, isOpen = spend.open;
   var head = '<button class="bse-hd" type="button" data-bsespend aria-expanded="' + isOpen + '"><span class="bse-ht"><span class="bse-hn">Spend my shards</span><span class="bse-hm">' + nd(fmtInt(sh) + ' Universal Decor Shards in bag') + '</span></span>' + ic('down', 'bse-chev') + '</button>';
   var body = '';

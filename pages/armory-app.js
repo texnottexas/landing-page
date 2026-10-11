@@ -279,10 +279,12 @@ var runSeq = 0;   /* a load that was overtaken by a newer one (Undo during a loa
 function run(arg, then) {
   var seq = ++runSeq;
   return d.loadArmory(arg).then(function (res) {
-    if (res.state !== 'ready' || seq !== runSeq) return res;
+    if (seq !== runSeq) return res;   /* overtaken by a newer load: paint nothing */
+    if (res.state !== 'ready') { if (!(arg && arg.noHydrate)) S.pend = false; return res; }
     return new Promise(function (resolve) {
       fkSettle(function (shown) {
         if (seq !== runSeq) return resolve(res);
+        S.pend = !!(arg && arg.noHydrate); /* a pass without the worker's game data: more may arrive (the Base screens reserve room for what it adds) */
         try { setReady(res); } catch (e) { console.error(e); renderStart('error'); return resolve(res); }
         if (shown) $$('.view:not([hidden])').forEach(function (s) { s.classList.remove('in'); void s.offsetWidth; s.classList.add('in'); });
         if (then) then(res);
