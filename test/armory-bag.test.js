@@ -123,13 +123,18 @@ test('names: any single token with an underscore is a key; {n} is stripped from 
   assert.ok(r.reduce((a, x) => a + (x[0] ? x[2] : 0), 0) < data.tabs.item.length, 'folded packs are not counted');
 });
 
-test('the Awakening Stone and Cards, missing from the item table, get the armory\'s own names and art', () => {
-  assert.equal(raw.tabs.item.find((x) => x.id === 44301001).name, '#44301001', 'the table really lacks it');
+test('the Awakening Stone and Cards come from the item table (the game\'s names and art); the armory\'s own names are only a fallback', () => {
+  const ASSETS = 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/';
+  assert.equal(raw.tabs.item.find((x) => x.id === 44301001).name, 'Awakening Stone', 'the table names it');
   const st = data.tabs.item.find((x) => x.id === 44301001);
-  assert.equal(st.label, 'Awakening Stone'); assert.ok(!st.unknown); assert.equal(st.icon, 'item_44301001.png'); assert.equal(Bag.iconUrl(st), 'https://raw.githubusercontent.com/texnottexas/landing-page/main/assets/hero-awake-items/item_44301001.png');
+  assert.equal(st.label, 'Awakening Stone'); assert.ok(!st.unknown); assert.equal(st.icon, 'image__item__item_44301001.png'); assert.equal(Bag.iconUrl(st), ASSETS + 'inventory-icons/image__item__item_44301001.png');
+  for (const id of [44301001, 44300001, 44300002, 44300003, 44300004, 44300005, 44300006]) assert.ok(fs.existsSync(path.join(P.ROOT, 'assets/inventory-icons/image__item__item_' + id + '.png')), id + ' art');
   const dd = L.prepare(L.rehydrate({ v: 1, resources: {}, tabs: { item: [{ id: 44300003, a: 1 }] } }, lk), KNOWN);
-  assert.equal(dd.tabs.item[0].label, 'Hero Awakening Card'); assert.ok(dd.tabs.item[0].text);
-  assert.equal(L.prepare(L.rehydrate({ v: 1, resources: {}, tabs: { item: [{ id: 44301001, a: 1 }] } }, lk), {}).tabs.item[0].label, 'Unknown item', 'without the overlay it stays unknown');
+  assert.equal(dd.tabs.item[0].label, 'Jett Awakening Card', 'the table wins over the overlay'); assert.ok(dd.tabs.item[0].text);
+  const lkNoRow = Object.assign({}, lk, { item: Object.assign({}, item) }); delete lkNoRow.item['44301001'];
+  const fb = L.prepare(L.rehydrate({ v: 1, resources: {}, tabs: { item: [{ id: 44301001, a: 1 }] } }, lkNoRow), KNOWN).tabs.item[0];
+  assert.equal(fb.label, 'Awakening Stone', 'a table without the row falls back to the overlay'); assert.equal(Bag.iconUrl(fb), ASSETS + 'hero-awake-items/item_44301001.png');
+  assert.equal(L.prepare(L.rehydrate({ v: 1, resources: {}, tabs: { item: [{ id: 44301001, a: 1 }] } }, lkNoRow), {}).tabs.item[0].label, 'Unknown item', 'without the row or the overlay it stays unknown');
 });
 
 test('view: default sort is by type (headed), "Rarity, high first" really sorts by rarity, search crosses every tab', () => {
