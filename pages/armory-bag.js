@@ -657,9 +657,19 @@ function displayName(it, tab) {
   if (!n || isKey(n) || /^(Decor |Hero |Unit )?#\d+$/.test(n)) return 'Unknown item';
   return n;
 }
+  /* <id=N> effect tags in item text: a known effect reads its name; an unknown id (or a value slot) is dropped with the "by" / "and" that led to it */
+  var _AR_EFFECT_NAMES = {5:'Indestructible',9:'Silence',10:'Heavy Armor',11:'Vulnerable',12:'Debilitation',13:'HP Boost',18:'Abnormal Status',19:'Hostile',21:'Domination',46:'Ignition',47:'Splash',52:'Combo Attack',72:'Magnetic Pulse',77:'Light Armor',78:'Vitality',85:'Block',88:'Taunt',89:'Meditation',92:'Concentration'};
+  function _ar_resolveEffectTags(s) {
+    var t = String(s == null ? '' : s);
+    if (t.indexOf('<id=') < 0) return t;
+    var known = function (m, id) { return Object.prototype.hasOwnProperty.call(_AR_EFFECT_NAMES, id) ? _AR_EFFECT_NAMES[id] : m; };
+    t = t.replace(/<id=(\d+)>/g, known);
+    return t.replace(/<id=\d+>\s+and\s+/g, '').replace(/\s+and\s+<id=\d+>/g, '').replace(/\s+by\s+<id=\d+>/g, '').replace(/<id=\d+>/g, '')
+      .replace(/[ \t]{2,}/g, ' ').replace(/\s+([.,;)])/g, '$1').replace(/\(\s+/g, '(').trim();
+  }
 /* descriptions: template placeholders ({0}), [bracket] markup and untranslated keys are dropped; the value of {0} is not in the table */
 function cleanDesc(s) {
-  var t = String(s == null ? '' : s).trim();
+  var t = _ar_resolveEffectTags(s).trim();
   if (isKey(t)) return '';
   /* a {n} placeholder reads X (its value is not in the table); no neighbouring word is touched */
   return t.replace(/([A-Za-z])\{\d+\}/g, '$1 X').replace(/\{\d+\}(?=[A-Za-z])/g, 'X ').replace(/\{\d+\}/g, 'X').replace(/\[([^\]]+)\]/g, '$1').replace(/[{}\[\]]/g, '').replace(/\s+([.,;)])/g, '$1').replace(/ {2,}/g, ' ').trim();
@@ -862,6 +872,7 @@ function setOwned(data, it) {
 }
 
 var api = {
+  resolveEffectTags: _ar_resolveEffectTags,
   rehydrate: _ar_rehydrateInv, prepare: prepare, categories: categories, total: total, titanCats: titanCats, rarities: rarities, view: view, resources: resources, aggModel: aggModel, findItem: findItem, setOwned: setOwned,
   classify: _ar_classifyItemBucket, titanGear: _ar_classifyTitanGear, boxedGems: _ar_boxedGemsPerOpen, boxedOdinium: _ar_boxedOdiniumPerOpen, vitYield: _ar_vitYieldFromCfg, boxedVit: _ar_boxedVitPerOpen, gemValue: _ar_gemValueFromCfg,
   resolveIcon: _ar_resolveItemIcon, compactNumber: _ar_compactNumber, packQuantity: _ar_packQuantity, resourceKind: _ar_resourceKind, bucketOrder: _AR_BUCKET_ORDER.slice(),

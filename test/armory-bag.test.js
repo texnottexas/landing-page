@@ -14,7 +14,7 @@ const G = require('../pages/tw-game-data.js');
 const Core = require('../pages/armory-core.js');
 
 const SRC = fs.readFileSync(path.join(P.ROOT, 'pages/armory-bag.js'), 'utf8');
-const NAMES = ['_ar_sanitizeName', '_ar_resolveItemIcon', '_ar_heroSubtab', '_AR_BUCKET_ORDER', '_AR_BUCKET_INDEX', '_ar_isSpeedup', '_ar_isHTChip', '_ar_isFormation', '_ar_isEnigma', '_AR_SKILL_UNIVERSAL_IDS', '_ar_isSkillOrUniversal', '_ar_isCombatBuff', '_ar_isChoiceChest', '_AR_UNIT_CHOICE_IDS', '_ar_isUnitChoice', '_ar_resourceKind', '_ar_parseSuffixed', '_ar_packQuantity', '_ar_compactNumber', '_ar_classifyItemBucket', '_ar_classifyTitanGear', '_ar_boxedGemsPerOpen', '_ar_boxedOdiniumPerOpen', '_ar_vitYieldFromCfg', '_ar_boxedVitPerOpen', '_ar_gemValueFromCfg', '_ar_rehydrateInv'];
+const NAMES = ['_ar_sanitizeName', '_ar_resolveItemIcon', '_ar_heroSubtab', '_AR_BUCKET_ORDER', '_AR_BUCKET_INDEX', '_ar_isSpeedup', '_ar_isHTChip', '_ar_isFormation', '_ar_isEnigma', '_AR_SKILL_UNIVERSAL_IDS', '_ar_isSkillOrUniversal', '_ar_isCombatBuff', '_ar_isChoiceChest', '_AR_UNIT_CHOICE_IDS', '_ar_isUnitChoice', '_ar_resourceKind', '_ar_parseSuffixed', '_ar_packQuantity', '_ar_compactNumber', '_ar_classifyItemBucket', '_ar_classifyTitanGear', '_ar_boxedGemsPerOpen', '_ar_boxedOdiniumPerOpen', '_ar_vitYieldFromCfg', '_ar_boxedVitPerOpen', '_ar_gemValueFromCfg', '_ar_rehydrateInv', '_AR_EFFECT_NAMES', '_ar_resolveEffectTags'];
 
 test('every copied function is the page\'s exact text', () => {
   for (const n of NAMES) {
@@ -108,7 +108,7 @@ test('descriptions: placeholders read X, nothing glued, no [markup], over the wh
   for (const k of Object.keys(item)) {
     const o = String(item[k].d == null ? '' : item[k].d), t = L.cleanDesc(o); n++;
     assert.ok(!/[{}\[\]]/.test(t) && !/ {2}/.test(t), k + ': ' + t);
-    const ow = words(o); for (const w of words(t)) assert.ok(w === 'x' || ow.has(w), k + ' glued or invented "' + w + '": ' + t); // every word of the output was a word of the input
+    const ow = words(L.resolveEffectTags(o)); for (const w of words(t)) assert.ok(w === 'x' || ow.has(w), k + ' glued or invented "' + w + '": ' + t); // every word of the output was a word of the input
     if (/\{\d\}/.test(o)) assert.ok(/X/.test(t) || /^\s*$/.test(t), k);
   }
   assert.ok(n > 10000);
@@ -182,4 +182,22 @@ test('an unknown id keeps its row, and the sheet model finds items by tab and id
 
 test('the stone id matches the view-model\'s', () => {
   assert.equal(L.STONE_ID, require('../pages/armory-vm.js').AW.STONE);
+});
+
+test('no item description shows a raw <id=N> tag (v2 cleanDesc and the page helper agree)', () => {
+  const pageFn = P.fnSource('_ar_resolveEffectTags');
+  assert.ok(pageFn, 'page helper missing');
+  const bag = L;
+  let tagged = 0;
+  for (const k of Object.keys(item)) {
+    const d = item[k].d == null ? '' : String(item[k].d);
+    const out = bag.cleanDesc(d);
+    if (d.indexOf('<id=') >= 0) tagged++;
+    assert.ok(out.indexOf('<id=') < 0, k + ' still shows a tag: ' + out);
+    assert.ok(!/ {2}|\bby\s*[.,;)]|\bby$|\band\s*[.,;)]/.test(out), k + ' reads badly: ' + out);
+  }
+  assert.ok(tagged > 0);
+  const f = bag.resolveEffectTags;
+  assert.equal(f('Improve by <id=200> (number of <id=9> and <id=12> units).'), 'Improve (number of Silence and Debilitation units).');
+  assert.equal(f("hero X's <id=90> and <id=91> effects."), "hero X's effects.");
 });
