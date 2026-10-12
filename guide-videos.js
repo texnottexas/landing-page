@@ -5,8 +5,10 @@
   'use strict';
 
   var FILMS = {
+    armorySafari: { id: 'S4a3rUMh_og', label: 'Safari', shape: 'portrait' },
     armoryFirefox: { id: 'oJzwzk23Wy0', label: 'Firefox', shape: 'portrait' },
     armoryChrome: { id: 'AeJQdsfFOlQ', label: 'Chrome (Android)', shape: 'portrait' },
+    opsSafari: { id: '3yKKexfSbi0', label: 'Safari', shape: 'portrait' },
     opsFirefox: { id: 'kFM_6rfewek', label: 'Firefox', shape: 'portrait' },
     opsChrome: { id: 'rpVzcwY9kbw', label: 'Chrome (Android)', shape: 'portrait' },
     opsDesktop: { id: '7u_bMEbqXpk', label: 'Desktop', shape: 'landscape' }
@@ -16,13 +18,13 @@
     armory: {
       title: 'Watch the walkthrough',
       sub: 'Battles, one bookmark, Snapshot. About 2 minutes.',
-      films: ['armoryFirefox', 'armoryChrome'],
-      pick: { ios: 'armoryFirefox', android: 'armoryChrome', desktop: 'armoryFirefox' },
+      films: ['armorySafari', 'armoryFirefox', 'armoryChrome'],
+      pick: { ios: 'armorySafari', android: 'armoryChrome', desktop: 'armoryFirefox' },
       skip: {
         hint: 'Already have the Ops Center bookmark? ',
         label: 'Skip to Snapshot →',
         // Seconds from tw-guide-films out/youtube/skip.json (start of the Snapshot chapter).
-        at: { armoryFirefox: 66, armoryChrome: 75 }
+        at: { armorySafari: 85, armoryFirefox: 66, armoryChrome: 75 }
       },
       link: { film: 'opsDesktop', text: 'On a computer? Desktop setup video' },
       collapsed: false
@@ -30,8 +32,8 @@
     ops: {
       title: 'Watch how',
       sub: 'About 1 to 1½ minutes.',
-      films: ['opsFirefox', 'opsChrome', 'opsDesktop'],
-      pick: { ios: 'opsFirefox', android: 'opsChrome', desktop: 'opsDesktop' },
+      films: ['opsSafari', 'opsFirefox', 'opsChrome', 'opsDesktop'],
+      pick: { ios: 'opsSafari', android: 'opsChrome', desktop: 'opsDesktop' },
       collapsed: true
     }
   };

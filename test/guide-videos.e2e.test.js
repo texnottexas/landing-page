@@ -50,13 +50,13 @@ async function open(file, ua, viewport, mobile) {
 }
 const frameSrc = (page) => page.$eval('.guide-videos iframe', (f) => f.src);
 
-test('Ops page on iPhone: no YouTube until opened, then the Firefox film, portrait, allowed by CSP', async () => {
+test('Ops page on iPhone: no YouTube until opened, then the Safari film, portrait, allowed by CSP', async () => {
   const { ctx, page, csp } = await open('rickroll.html', IPHONE, PHONE, true);
   await page.waitForSelector('details.guide-videos');
   assert.equal(await page.$('.guide-videos iframe'), null);           // review focus 4
   await page.click('details.guide-videos summary');
   await page.waitForSelector('.guide-videos iframe');
-  assert.match(await frameSrc(page), new RegExp(G.FILMS.opsFirefox.id));
+  assert.match(await frameSrc(page), new RegExp(G.FILMS.opsSafari.id));
   assert.equal(await page.$eval('.guide-videos iframe', (f) => f.referrerPolicy), 'strict-origin-when-cross-origin');
   const box = await page.$eval('.guide-videos iframe', (f) => f.getBoundingClientRect().toJSON());
   assert.ok(box.height > box.width, 'portrait player');
@@ -82,14 +82,14 @@ test('Ops page defaults: Chrome on Android, Desktop (landscape) on a computer; b
   await ctx.close();
 });
 
-test('Armory card: Firefox film on iPhone, skip link, desktop link, allowed by CSP', async () => {
+test('Armory card: Safari film on iPhone, skip link, desktop link, allowed by CSP', async () => {
   const { ctx, page, csp } = await open('armory-report.html', IPHONE, PHONE, true);
   await page.waitForFunction(() => window.GuideVideos);
   await page.evaluate(() => document.body.prepend(GuideVideos.buildCard('armory')));
   await page.waitForSelector('.guide-videos iframe');
-  assert.match(await frameSrc(page), new RegExp(G.FILMS.armoryFirefox.id));
+  assert.match(await frameSrc(page), new RegExp(G.FILMS.armorySafari.id));
   await page.click('.guide-skip');
-  assert.match(await frameSrc(page), new RegExp('&start=' + G.SETS.armory.skip.at.armoryFirefox + '$'));
+  assert.match(await frameSrc(page), new RegExp('&start=' + G.SETS.armory.skip.at.armorySafari + '$'));
   const link = await page.$eval('.guide-link', (a) => ({ href: a.href, target: a.target, rel: a.rel }));
   assert.deepEqual(link, { href: G.watchUrl(G.FILMS.opsDesktop.id), target: '_blank', rel: 'noopener' });
   await page.waitForTimeout(500);

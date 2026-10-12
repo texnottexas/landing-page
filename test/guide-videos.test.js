@@ -22,9 +22,12 @@ test('platform: iPhone, iPad in desktop mode, Android phone and tablet, desktop'
   assert.equal(G.platform('', 0), 'desktop');
 });
 
-test('defaults: Armory is Chrome on Android, Firefox elsewhere; Ops follows the device', () => {
-  assert.deepEqual(['ios', 'android', 'desktop'].map((p) => G.defaultFilm('armory', p)), ['armoryFirefox', 'armoryChrome', 'armoryFirefox']);
-  assert.deepEqual(['ios', 'android', 'desktop'].map((p) => G.defaultFilm('ops', p)), ['opsFirefox', 'opsChrome', 'opsDesktop']);
+test('defaults: Safari on iPhone, Chrome on Android, Firefox (Armory) or Desktop (Ops) on a computer', () => {
+  // iPhone defaults to Safari (Tex, 2026-10-11: Safari runs bookmarks with Bottom or Top tabs); Firefox one tap away.
+  assert.deepEqual(['ios', 'android', 'desktop'].map((p) => G.defaultFilm('armory', p)), ['armorySafari', 'armoryChrome', 'armoryFirefox']);
+  assert.deepEqual(['ios', 'android', 'desktop'].map((p) => G.defaultFilm('ops', p)), ['opsSafari', 'opsChrome', 'opsDesktop']);
+  assert.deepEqual(G.SETS.armory.films, ['armorySafari', 'armoryFirefox', 'armoryChrome']);
+  assert.deepEqual(G.SETS.ops.films, ['opsSafari', 'opsFirefox', 'opsChrome', 'opsDesktop']);
 });
 
 test('every film has a real-looking, distinct YouTube id, and the old ones are gone', () => {
