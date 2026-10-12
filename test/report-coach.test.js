@@ -59,7 +59,7 @@ test('Rex loses by a wide margin: closeness about 9% and out of reach', () => {
   assert.equal(r.sides.attacker.name, 'Реx'.replace('Р', 'R'), 'name keeps the Cyrillic e');
 });
 
-test('Rex: free moves are Air Force Protection and the empty Offense beast field', () => {
+test('Rex: Air Force Protection is free; the Offense field is locked (79 of 150 field levels)', () => {
   const rex = run(REX).sides.attacker;
   assert.deepEqual(rex.errors, []);
   const prot = find(rex, 'protection');
@@ -69,9 +69,11 @@ test('Rex: free moves are Air Force Protection and the empty Offense beast field
   assert.deepEqual([prot.data.mine, prot.data.theirs], [0, 3]);
   const field = find(rex, 'beast-field-5');
   assert.ok(field, 'offense field move');
-  assert.equal(field.tier, 'free');
-  assert.match(field.title, /Offense/);
-  assert.match(field.detail, /^No beasts in your Offense field\./);
+  assert.equal(field.tier, 'upgrade');
+  assert.equal(field.title, 'Unlock your Offense field');
+  assert.deepEqual([field.data.locked, field.data.have, field.data.need], [true, 79, 150]);
+  assert.match(field.detail, /71 more/);
+  assert.equal(find(rex, 'beast-field-levels'), undefined, 'the unlock move already covers raising field levels');
 });
 
 test('Rex: upgrade move for the two All-Out Surge runes at 0 of 6 stars', () => {
@@ -186,16 +188,35 @@ test('every fixture side reads without errors', () => {
   FIXTURES.forEach((id) => clean(run(id), id));
 });
 
-test('a field with no beasts is Free only when the lower fields are full', () => {
-  const rex = run(REX).sides.attacker;
-  assert.equal(find(rex, 'beast-field-5').tier, 'free'); // fields 1-4 are all full
-  assert.equal(find(run(SHORTY).sides.attacker, 'beast-field-4').tier, 'free'); // fields 1-3 are full
-  // empty a lower field on Rex: the Offense field is no longer a sure free move
+// Fields open by the total level of all beast field slots (game table enigma_field.unlock_condition):
+// Defense at 40, Offense at 150. A field with no beasts is missing from the report, locked or not.
+test('beast fields: locked below their unlock level, free to fill once open', () => {
+  // Shorty is under the Defense unlock level; his move may fall below the six-move cap, but must never be Free
+  const shorty = find(run(SHORTY).sides.attacker, 'beast-field-4');
+  if (shorty) assert.deepEqual([shorty.tier, shorty.data.locked], ['upgrade', true]);
+  // Rex with every slot at level 1 and no Defense field: 27 levels, under 40, so Defense is locked too
+  const low = fixture(REX);
+  const lp = low.battle.attacker.players[0];
+  lp.enigmas.fields = lp.enigmas.fields.filter((f) => f.cfg !== 4);
+  lp.enigmas.fields.forEach((f) => f.slots.forEach((s) => { s.level = 1; }));
+  const def = find(Coach.analyze(low, tables).sides.attacker, 'beast-field-4');
+  assert.equal(def.tier, 'upgrade');
+  assert.deepEqual([def.data.locked, def.data.need], [true, 40]);
+  assert.ok(def.data.have < 40);
+  // Rex with his slots raised past 150 total levels: now the Offense field is open and filling it is free
   const rep = fixture(REX);
-  rep.battle.attacker.players[0].enigmas.fields.find((f) => f.cfg === 2).slots.forEach((s) => { s.beastId = '0'; });
-  const m = find(Coach.analyze(rep, tables).sides.attacker, 'beast-field-5');
-  assert.equal(m.tier, 'upgrade');
-  assert.match(m.title, /^Unlock and fill/);
+  rep.battle.attacker.players[0].enigmas.fields.forEach((f) => f.slots.forEach((s) => { s.level = 6; }));
+  const open = find(Coach.analyze(rep, tables).sides.attacker, 'beast-field-5');
+  assert.equal(open.tier, 'free');
+  assert.equal(open.title, 'Put beasts in your Offense field');
+  assert.equal(open.data.locked, false);
+  // fields 1-3 have no level rule we can read from a report: never claimed free
+  const rep2 = fixture(REX);
+  const ps = rep2.battle.attacker.players[0];
+  ps.enigmas.fields = ps.enigmas.fields.filter((f) => f.cfg !== 3);
+  const m3 = find(Coach.analyze(rep2, tables).sides.attacker, 'beast-field-3');
+  assert.equal(m3.tier, 'upgrade');
+  assert.match(m3.title, /^Unlock and fill/);
 });
 
 test('edge: defender with no players', () => {

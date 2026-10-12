@@ -381,27 +381,37 @@
     });
     return res;
   }
+  // Beast fields 4 and 5 open by the total level of all beast field slots (game table enigma_field.unlock_condition):
+  // Defense at 40, Offense at 150. It splits every player in a 23-report study. Fields 1-3 are gated by something a
+  // report does not show. A field with no beasts is missing from the report whether it is locked or not.
+  var FIELD_UNLOCK_AT = { 4: 40, 5: 150 };
+  function totalFieldLevels(player) {
+    var t = 0;
+    ((player.enigmas && player.enigmas.fields) || []).forEach(function (f) {
+      (f.slots || []).forEach(function (s) { t += num(s.level); });
+    });
+    return t;
+  }
   function enigmaMoves(me, them, tables, G) {
     var out = [];
     if (!me.player.enigmas) return out;
     var mine = fieldBeasts(me.player), theirs = fieldBeasts(them.player);
     var names = G.EB_FIELD_NAMES || {};
-    var expected = G.EB_FIELD_SLOT_COUNTS || {};
-    // A field with no beasts is absent from the report, so locked and empty look the same. It counts as unlocked
-    // only when every lower-numbered field is present and full, a strong sign the next one is open.
-    function lowerFull(cfg) {
-      for (var c = 1; c < cfg; c++) {
-        if (!(expected[c] && mine[c] >= expected[c])) return false;
-      }
-      return true;
-    }
+    var have = totalFieldLevels(me.player), lockedByLevels = false;
     Object.keys(theirs).map(Number).sort(function (a, b) { return b - a; }).forEach(function (cfg) {
       if (theirs[cfg] > 0 && !(mine[cfg] > 0)) {
-        var fname = names[cfg] || ('field ' + cfg);
-        if (lowerFull(cfg)) {
+        var fname = names[cfg] || ('field ' + cfg), need = FIELD_UNLOCK_AT[cfg];
+        if (need && have < need) {
+          lockedByLevels = true;
+          out.push(move('upgrade', 'beast-field-' + cfg, 'Beast fields', 60, 'Unlock your ' + fname + ' field',
+            'Your ' + fname + ' field opens at ' + need + ' total beast field levels. You have ' + have + ', so ' + (need - have) +
+              ' more levels open it. ' + them.name + ' has ' + theirs[cfg] + ' beasts there. The early levels cost the fewest Field Repeaters.',
+            have + ' of ' + need + ' field levels', { field: cfg, fieldName: fname, theirs: theirs[cfg], locked: true, have: have, need: need }));
+        } else if (need) {
           out.push(move('free', 'beast-field-' + cfg, 'Beast fields', cfg === 5 ? 86 : 84, 'Put beasts in your ' + fname + ' field',
-            'No beasts in your ' + fname + ' field. ' + them.name + ' has ' + theirs[cfg] + ' there.',
-            '0 beasts, against ' + theirs[cfg], { field: cfg, fieldName: fname, theirs: theirs[cfg], unlocked: true }));
+            'Your ' + fname + ' field is open (' + have + ' field levels; it opens at ' + need + ') but has no beasts in it. ' +
+              them.name + ' has ' + theirs[cfg] + ' there.',
+            '0 beasts, against ' + theirs[cfg], { field: cfg, fieldName: fname, theirs: theirs[cfg], locked: false, have: have, need: need }));
         } else {
           out.push(move('upgrade', 'beast-field-' + cfg, 'Beast fields', 58, 'Unlock and fill your ' + fname + ' field',
             'No beasts in your ' + fname + ' field, and the report cannot show whether it is unlocked. ' + them.name + ' has ' + theirs[cfg] + ' there.',
@@ -426,7 +436,7 @@
       return { lv: lv, cap: cap };
     }
     var m = slotStats(me.player), t = slotStats(them.player);
-    if (m.cap > 0 && t.cap > 0) {
+    if (!lockedByLevels && m.cap > 0 && t.cap > 0) {
       var mp = Math.round(100 * m.lv / m.cap), tp = Math.round(100 * t.lv / t.cap);
       if (mp < 40 && (tp === null || mp < tp || mp < 25)) {
         out.push(move('upgrade', 'beast-field-levels', 'Beast fields', 55, 'Raise your beast field levels',
