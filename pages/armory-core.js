@@ -69,12 +69,11 @@
         if (p && p.heroId && p.heroId > 0) continue; // equipped, skip
         var rune = ((p && p.buffs) || []).find(function(b) { return b && b.type === 'rune'; });
         if (!rune) continue;
-        var rname = rune.name;
-        var rstar = (rune.star != null) ? rune.star : 0;
-        if (!rname && rune.templateId != null && typeof resolveRune === 'function') {
-          var rr = resolveRune(+rune.templateId);
-          if (rr) { rname = rr.n; if (rune.star == null) rstar = rr.s; }
-        }
+        // The game sends rune names in the player's game language, and the pool is keyed
+        // by the catalog's English family names, so the template id decides the name.
+        var rr = (rune.templateId != null && typeof resolveRune === 'function') ? resolveRune(+rune.templateId) : null;
+        var rname = (rr && rr.n) || rune.name;
+        var rstar = (rune.star != null) ? rune.star : (rr ? rr.s : 0);
         if (!rname) continue;
         bumpPool(rname, rstar, 1);
         gearCounts[rname] = (gearCounts[rname] || 0) + 1;

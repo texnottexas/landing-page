@@ -132,6 +132,26 @@ test('rune pool derivation from inventory + gear supplements', () => {
   same('_ar_planViewBase', f.inv, null, null);
 });
 
+test('rune pool: a non-English game client still counts runes on unequipped gold pieces', () => {
+  // The game sends rune names in the player's game language (a Russian client sends Russian names), and the Rune
+  // Pool only draws the 14 English family names, so those runes vanished. The template id says which rune it is.
+  const rune = (templateId, name, star) => ({ type: 'rune', templateId: templateId, name: name, star: star });
+  const piece = (heroId, r) => ({ heroId: heroId, slot: 1, quality: 5, buffs: [r] });
+  const gear = { goldGear: [
+    piece(0, rune(10205, 'Пробивание брони', 2)),
+    piece(0, rune(302014, 'Тактическая осведомлённость', 4)),
+    piece(0, rune(424242, 'Новая руна', 0)),
+    piece(0, { type: 'rune', name: 'Impact', star: 1 }),
+    piece(7, rune(10205, 'Пробивание брони', 2)),
+  ] };
+  const out = same('_ar_extractRunePool', null, gear, {});
+  assert.deepStrictEqual(Object.keys(out.gearCounts).sort(), ['Armor-Breaking', 'Impact', 'Tactical Awareness', 'Новая руна']);
+  assert.equal(out.pool['Armor-Breaking'][2], 1, 'equipped copy (hero 7) stays out');
+  assert.equal(out.pool['Tactical Awareness'][4], 1);
+  assert.equal(out.pool['Новая руна'][0], 1, 'a template the site does not know keeps the game name');
+  assert.equal(out.pool.Impact[1], 1, 'older snapshots without a template id still count by name');
+});
+
 // ---- advisor ---------------------------------------------------------------------------------------------------------
 test('advisor: rune index + merge cost schedule (every rune, slot, from, to)', () => {
   const cat = FIX.catalog;
