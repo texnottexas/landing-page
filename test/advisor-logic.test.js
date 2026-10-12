@@ -214,12 +214,33 @@ test('M1: the exclusive skill in x[0] is still not mistaken for march size', () 
 // ---- stale-pool warning ----------------------------------------------------------------------------------------
 test('stale-pool warning: a numeric import timestamp does not throw and shows the age', () => {
   const fakeEl = () => ({ style: {}, children: [], appendChild(c) { this.children.push(c); }, textContent: '' });
-  const c = load(['_ar_relativeAge', '_ar_supplementTs', '_ar_stalePoolInfo', '_ar_buildStalePoolWarning'],
+  const c = load(['_ar_relativeAge', '_ar_supplementTs', '_ar_activeSavedPool', '_ar_stalePoolInfo', '_ar_buildStalePoolWarning'],
     { document: { createElement: fakeEl }, svgIcon: () => fakeEl() });
   const now = Date.now();
-  const warn = c._ar_buildStalePoolWarning({ meta: { ts: now - 5 * 86400000 } }, { meta: { ts: now - 3600000 } }, null, false);
+  const warn = c._ar_buildStalePoolWarning({ meta: { ts: now - 5 * 86400000 }, pool: {} }, { meta: { ts: now - 3600000 } }, null, false);
   assert.ok(warn, 'warning built');
   assert.match(warn.children[1].textContent, /imported 1h ago/);
+});
+
+// Tex 2026-10-12: a saved pool counts only until a newer import arrives (the v2 rule, armory-core advBasePool), so a
+// pool saved once no longer hides every rune picked up since.
+test('saved pool: used only while it is newer than the latest import', () => {
+  const c = load(['_ar_supplementTs', '_ar_activeSavedPool', '_ar_stalePoolInfo']);
+  const day = 86400000, now = Date.now();
+  const saved = (t) => ({ meta: { ts: new Date(t).toISOString() }, pool: { Impact: { 0: 1 } }, source: 'manual' });
+  const imp = (t) => ({ meta: { ts: new Date(t).toISOString() } });
+  const older = saved(now - 5 * day), newer = saved(now);
+  assert.equal(c._ar_activeSavedPool(older, imp(now - day), null), null, 'an import after the save wins');
+  assert.equal(c._ar_activeSavedPool(older, null, imp(now - day)), null, 'a gear import counts too');
+  assert.equal(c._ar_activeSavedPool(newer, imp(now - day), imp(now - 2 * day)), newer, 'a save after the import wins');
+  assert.equal(c._ar_activeSavedPool(older, null, null), older, 'no import at all: the saved pool is all there is');
+  assert.equal(c._ar_activeSavedPool(saved(now - day), imp(now - day), null), null, 'same moment: the import wins');
+  assert.equal(c._ar_activeSavedPool({ pool: { Impact: { 0: 1 } } }, imp(now), null), null, 'an undated save loses to an import');
+  assert.equal(c._ar_activeSavedPool({ meta: { ts: new Date(now).toISOString() } }, null, null), null, 'no pool object, nothing to use');
+  assert.equal(c._ar_activeSavedPool(null, imp(now), null), null);
+  assert.ok(c._ar_stalePoolInfo(older, imp(now - day), null), 'the ignored save is reported');
+  assert.equal(c._ar_stalePoolInfo(newer, imp(now - day), null), null);
+  assert.ok(c._ar_stalePoolInfo({ pool: {} }, imp(now), null), 'an undated save that loses is reported too');
 });
 
 // ---- applied plan step list ------------------------------------------------------------------------------------

@@ -22074,51 +22074,52 @@
   // rune the player has available — bag runes plus runes attached to their
   // unequipped gold pieces — across all 14 rune families. The manual editor
   // (Phase 1.4) and the advisor request flow (Phase 2) layer on top of this.
-  // A saved rune pool (manual edit, or one applied from an advisor plan)
-  // permanently outranks the derived inv + gear view. A player who re-runs the
-  // bookmarklet after saving one keeps seeing the older snapshot with nothing
-  // explaining why their fresh runes never appeared. These helpers detect that
-  // case so the pool surfaces can say so and point at "Reset to derived".
+  // A saved rune pool (manual edit, or one applied from an advisor plan) counts
+  // only until a newer import arrives, the same rule as the v2 page
+  // (armory-core.js advBasePool). Before 2026-10-12 a saved pool outranked every
+  // later import, so a player who saved once never saw the runes they picked up
+  // after that. The saved copy is not deleted; it simply stops being used.
   function _ar_supplementTs(o) {
     var raw = o && ((o.meta && o.meta.ts) || o.ts);
     if (raw == null) return 0;
     var t = (typeof raw === 'number') ? raw : Date.parse(raw);
     return isFinite(t) ? t : 0;
   }
-  // Returns { poolTs, importTs, importRaw } when the saved pool is older than
-  // the newest import it is hiding, else null.
+  // The saved pool when it should be used, else null (the pool then comes from inv + gear).
+  function _ar_activeSavedPool(stored, inv, gear) {
+    if (!stored || !stored.pool || typeof stored.pool !== 'object') return null;
+    var importTs = Math.max(_ar_supplementTs(inv), _ar_supplementTs(gear));
+    return (importTs === 0 || _ar_supplementTs(stored) > importTs) ? stored : null;
+  }
+  // Returns { poolTs, importTs, importRaw } when a saved pool exists but a newer
+  // import replaces it, else null.
   function _ar_stalePoolInfo(stored, inv, gear) {
-    if (!stored) return null;
-    var poolTs = _ar_supplementTs(stored);
+    if (!stored || !stored.pool || _ar_activeSavedPool(stored, inv, gear)) return null;
     var invTs = _ar_supplementTs(inv);
     var gearTs = _ar_supplementTs(gear);
-    var importTs = Math.max(invTs, gearTs);
-    if (!poolTs || !importTs || importTs <= poolTs) return null;
     var newer = (invTs >= gearTs) ? inv : gear;
     // _ar_relativeAge takes a string or Date, never a raw number.
     var importRaw = newer && ((newer.meta && newer.meta.ts) || newer.ts);
-    return { poolTs: poolTs, importTs: importTs, importRaw: importRaw };
+    return { poolTs: _ar_supplementTs(stored), importTs: Math.max(invTs, gearTs), importRaw: importRaw };
   }
-  function _ar_buildStalePoolWarning(stored, inv, gear, canReset) {
+  function _ar_buildStalePoolWarning(stored, inv, gear, isOwner) {
     var info = _ar_stalePoolInfo(stored, inv, gear);
     if (!info) return null;
     var warn = document.createElement('div');
     warn.style.cssText = 'display:flex;gap:.5rem;align-items:flex-start;font-size:.72rem;line-height:1.5;'
-      + 'border:1px solid rgba(210,153,34,.5);background:rgba(210,153,34,.12);color:#d29922;'
+      + 'border:1px solid rgba(121,192,255,.35);background:rgba(121,192,255,.08);color:var(--muted);'
       + 'border-radius:6px;padding:.5rem .65rem;margin-bottom:.75rem;';
-    warn.appendChild(svgIcon({ size: 14, stroke: '#d29922', strokeWidth: '2', linecap: 'round', linejoin: 'round', children: [
-      ['path', { 'd': 'M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z' }],
-      ['line', { 'x1': '12', 'y1': '9', 'x2': '12', 'y2': '13' }],
-      ['line', { 'x1': '12', 'y1': '17', 'x2': '12.01', 'y2': '17' }]
+    warn.appendChild(svgIcon({ size: 14, stroke: '#79c0ff', strokeWidth: '2', linecap: 'round', linejoin: 'round', children: [
+      ['circle', { 'cx': '12', 'cy': '12', 'r': '10' }],
+      ['line', { 'x1': '12', 'y1': '16', 'x2': '12', 'y2': '12' }],
+      ['line', { 'x1': '12', 'y1': '8', 'x2': '12.01', 'y2': '8' }]
     ] }));
     var txt = document.createElement('div');
-    var ageStr = _ar_relativeAge(new Date(info.importRaw));
-    txt.textContent = 'This saved pool is older than the imported inventory data'
-      + (ageStr ? ' (imported ' + ageStr + ')' : '')
-      + ', so it is hiding any runes picked up since it was saved. '
-      + (canReset
-          ? 'Open Edit Pool and choose "Reset to derived" to go back to your latest import.'
-          : 'The player needs to open Edit Pool and choose "Reset to derived" to go back to their latest import.');
+    var ageStr = info.importRaw ? _ar_relativeAge(new Date(info.importRaw)) : '';
+    var when = ageStr ? ' (imported ' + ageStr + ')' : '';
+    txt.textContent = isOwner
+      ? 'Showing your latest import' + when + '. Your saved rune pool is older, so it is not used. Edit Pool starts from this import if you want to save a new one.'
+      : "Showing this player's latest import" + when + '. Their saved rune pool is older, so it is not used.';
     warn.appendChild(txt);
     return warn;
   }
@@ -22181,7 +22182,7 @@
           obEdit.disabled = false;
           var lookups = arr[0];
           var catalog = arr[1];
-          var savedNow = ArmoryIdentity.getSupplement('runepool', siteKey);
+          var savedNow = _ar_activeSavedPool(ArmoryIdentity.getSupplement('runepool', siteKey), inv, gear);
           var bagCounts0 = {};
           var gearCounts0 = {};
           if (savedNow && savedNow.pool) {
@@ -22220,7 +22221,7 @@
           editBtn.disabled = false;
           var lookups = arr[0];
           var catalog = arr[1];
-          var savedNow = ArmoryIdentity.getSupplement('runepool', siteKey);
+          var savedNow = _ar_activeSavedPool(ArmoryIdentity.getSupplement('runepool', siteKey), inv, gear);
           var bagCounts0 = {};
           var gearCounts0 = {};
           if (savedNow && savedNow.pool) {
@@ -22342,13 +22343,14 @@
     }
     container.appendChild(toolbar);
 
-    // Source resolution: prefer explicit runepool supplement; fall back to
-    // a derived view from inv + gear when the player hasn't saved one yet.
+    // Source resolution: a saved runepool supplement while it is newer than the
+    // latest import, else a derived view from inv + gear.
     // Bag rune resolution requires data/item-table.json (cfg.t===153 lookup),
     // so we await `_ar_loadItemTable()` before deriving.
-    var stored = siteKey ? ArmoryIdentity.getSupplement('runepool', siteKey) : null;
+    var savedPool = siteKey ? ArmoryIdentity.getSupplement('runepool', siteKey) : null;
     var inv = siteKey ? ArmoryIdentity.getSupplement('inv', siteKey) : null;
     var gear = siteKey ? ArmoryIdentity.getSupplement('gear', siteKey) : null;
+    var stored = _ar_activeSavedPool(savedPool, inv, gear);
     var derived = !stored;
 
     // Status line under the toolbar.
@@ -22371,10 +22373,8 @@
     }
     container.appendChild(status);
 
-    // A saved pool outranks the derived view, so flag it when that saved pool
-    // predates the import it is hiding (otherwise a fresh bookmarklet run looks
-    // like it silently did nothing).
-    var stalePoolWarn = _ar_buildStalePoolWarning(stored, inv, gear, !!isOwnerVerified);
+    // Say why a saved pool isn't shown, so manual edits don't seem to vanish.
+    var stalePoolWarn = _ar_buildStalePoolWarning(savedPool, inv, gear, !!isOwnerVerified);
     if (stalePoolWarn) container.appendChild(stalePoolWarn);
 
     // Body host — replaced once async data resolves.
@@ -24183,7 +24183,7 @@
     modal.appendChild(h);
 
     var p = document.createElement('p');
-    p.textContent = 'Adjust counts to override the derived view. Saving publishes a manual snapshot to the cloud. Reset to derived clears your saved manual pool and falls back to the auto-extracted view.';
+    p.textContent = 'Adjust counts to override the derived view until your next import. Saving publishes a manual snapshot to the cloud. Reset to derived clears your saved manual pool and falls back to the auto-extracted view.';
     modal.appendChild(p);
 
     var listEl = document.createElement('div');
@@ -25719,10 +25719,10 @@
 
       // Establish base state.
       var basePool = (function() {
-        var stored = ArmoryIdentity.getSupplement('runepool', siteKey);
-        if (stored && stored.pool) return JSON.parse(JSON.stringify(stored.pool));
         var inv = ArmoryIdentity.getSupplement('inv', siteKey);
         var gear = ArmoryIdentity.getSupplement('gear', siteKey);
+        var stored = _ar_activeSavedPool(ArmoryIdentity.getSupplement('runepool', siteKey), inv, gear);
+        if (stored) return JSON.parse(JSON.stringify(stored.pool));
         var ext = _ar_extractRunePool(inv, gear, lookups);
         return ext.pool;
       })();
@@ -25761,9 +25761,8 @@
     noteSec.appendChild(noteBody);
     container.appendChild(noteSec);
 
-    // Data-quality flag: if this player saved a rune pool and then re-imported,
-    // the saved pool is what the plan below is built from, not their newer
-    // inventory. Surface it before the advisor plans against stale counts.
+    // If this player saved a rune pool and then re-imported, say the plan below
+    // starts from the newer import, not the saved pool.
     (function () {
       var _sk = (wizardState.player && wizardState.player.siteKey) || null;
       if (!_sk) return;
