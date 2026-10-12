@@ -528,6 +528,30 @@
   @media (max-width: 480px) { .lang-grid { grid-template-columns: 1fr; } }
 
   /* Rockfield panel */
+
+  /* What to work on next (report coach) */
+  .coach { background: var(--card); border: 1px solid var(--border); border-radius: 12px; margin-top: 1.25rem; padding: .85rem; overflow-wrap: anywhere; }
+  .coach-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem; }
+  .coach-head h2 { font-size: .95rem; font-weight: 700; }
+  .coach-toggle { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .coach-toggle button { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: .25rem .7rem; font-size: .78rem; cursor: pointer; max-width: 100%; }
+  .coach-toggle button.on { color: var(--text); border-color: var(--accent); }
+  .coach-line { margin-top: .6rem; font-size: .85rem; color: var(--text); }
+  .coach-sub { margin-top: .9rem; font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+  .coach-gap { margin-top: .5rem; }
+  .coach-gap-name { font-size: .82rem; }
+  .coach-bar { display: flex; align-items: center; gap: .5rem; margin-top: .2rem; font-size: .75rem; color: var(--muted); }
+  .coach-bar i { display: block; height: 6px; border-radius: 3px; background: var(--muted); min-width: 2px; }
+  .coach-bar.me i { background: var(--accent); }
+  .coach-bar span { white-space: nowrap; }
+  .coach-move { margin-top: .55rem; padding-left: .6rem; border-left: 2px solid var(--border); }
+  .coach-move.free { border-left-color: var(--green); }
+  .coach-move.upgrade { border-left-color: var(--accent); }
+  .coach-move.long { border-left-color: var(--yellow); }
+  .coach-move b { font-size: .84rem; font-weight: 600; }
+  .coach-move p { margin-top: .15rem; font-size: .8rem; color: var(--text); }
+  .coach-move small { display: block; margin-top: .1rem; font-size: .74rem; color: var(--muted); }
+  .coach-note { margin-top: .9rem; font-size: .72rem; color: var(--muted); }
   .rf-panel { background: var(--card); border: 1px solid var(--yellow); border-radius: 12px; overflow: hidden; margin-top: 1.25rem; }
   .rf-panel-head { background: rgba(210,153,34,.10); padding: .6rem .85rem; display: flex; align-items: center; gap: .55rem; border-bottom: 1px solid var(--border); }
   .rf-panel-head img { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--yellow); flex-shrink: 0; }
@@ -3867,6 +3891,9 @@
     // 2. VS section
     container.appendChild(buildVSSection(att, def, attPI, defPI, attWins));
 
+    // 2b. What to work on next (loads its tables lazily)
+    injectCoachPanel(data, container);
+
     // 3. March content (with tabs if multiple marches)
     if (marches.length > 1) {
       var tabsWrap = el('div', { className: 'march-tabs' });
@@ -3915,7 +3942,8 @@
   function loadBattleReportFormationRef() {
     if (_battleReportFormationRef) return Promise.resolve(_battleReportFormationRef);
     if (_battleReportFormationRefPromise) return _battleReportFormationRefPromise;
-    _battleReportFormationRefPromise = fetch('data/formation-v2.json').then(function(r) { return r.json(); }).then(function(j) { _battleReportFormationRef = j; return j; });
+    _battleReportFormationRefPromise = fetch('data/formation-v2.json').then(function(r) { return r.json(); }).then(function(j) { _battleReportFormationRef = j; return j; })
+      .catch(function(e) { _battleReportFormationRefPromise = null; throw e; });
     return _battleReportFormationRefPromise;
   }
   var FORMATION_SLOT_ORDER_BR = [1, 2, 3, 11, 12, 13, 21, 22, 23];
@@ -4417,6 +4445,139 @@
   document.getElementById('report-id').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') loadReport();
   });
+
+
+  // ---- What to work on next (report coach) ----
+
+  var _coachTables = null;
+  function loadCoachTables() {
+    if (_coachTables) return _coachTables;
+    function script(src) {
+      return new Promise(function(res, rej) {
+        var s = document.createElement('script');
+        s.src = src; s.onload = res; s.onerror = function() { rej(new Error(src)); };
+        document.head.appendChild(s);
+      });
+    }
+    function json(f) { return fetch('data/' + f).then(function(r) { if (!r.ok) throw new Error(f); return r.json(); }); }
+    _coachTables = Promise.all([
+      script('tw-game-data.js').then(function() { return script('report-coach.js'); }),
+      json('all-heroes.json').catch(function() { return null; }), json('supportive-skills.json').catch(function() { return null; }),
+      json('loot-quest-collectibles.json').catch(function() { return null; }), loadBattleReportFormationRef().catch(function() { return null; })
+    ]).then(function(r) {
+      return { buffGroup: BUFF_GROUP, heroes: r[1], supportive: r[2], collectibles: r[3], formation: r[4], game: window.TWGameData };
+    });
+    _coachTables.catch(function() { _coachTables = null; });
+    return _coachTables;
+  }
+
+  // Text with player names, hero names and numbers wrapped in translate="no" spans (built as nodes, never innerHTML).
+  function coachText(parent, text, names) {
+    var parts = names.filter(function(n) { return n && n.length > 1; })
+      .sort(function(a, b) { return b.length - a.length; })
+      .map(function(n) { return n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+    parts.push('\\d[\\d,.]*%?');
+    var re = new RegExp('(' + parts.join('|') + ')', 'g');
+    var last = 0, m;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var sp = document.createElement('span');
+      sp.setAttribute('translate', 'no'); sp.className = 'notranslate';
+      sp.textContent = m[0];
+      parent.appendChild(sp);
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
+    return parent;
+  }
+
+  function renderCoach(host, result) {
+    while (host.firstChild) host.removeChild(host.firstChild);
+    var sides = result.sides, fight = result.fight;
+    var loserKey = fight.winner === 'attacker' ? 'defender' : 'attacker';
+    var winnerKey = fight.winner;
+    var names = [sides.attacker.name, sides.defender.name].concat(sides.attacker.heroes, sides.defender.heroes);
+    var head = el('div', { className: 'coach-head' }, [el('h2', null, 'What to work on next')]);
+    var toggle = el('div', { className: 'coach-toggle' });
+    head.appendChild(toggle);
+    host.appendChild(head);
+    var body = el('div');
+    host.appendChild(body);
+
+    function show(key) {
+      var me = sides[key], other = sides[key === 'attacker' ? 'defender' : 'attacker'];
+      Array.prototype.forEach.call(toggle.children, function(b) { b.className = b.getAttribute('data-side') === key ? 'on' : ''; });
+      while (body.firstChild) body.removeChild(body.firstChild);
+
+      if (fight.closeness) {
+        var pct = Math.round(fight.closeness.loserProgress * 100);
+        var pctText = pct < 1 ? 'under 1%' : pct + '%';
+        var line = el('div', { className: 'coach-line' });
+        var L = sides[loserKey].name, W = sides[winnerKey].name;
+        var t = fight.closeness.label === 'close' ? 'Close fight: ' + L + ' got ' + pctText + ' of the way to winning.'
+          : fight.closeness.label === 'out-of-reach' ? 'Out of reach this time: ' + L + ' did ' + pctText + ' of the damage needed to win.'
+          : 'Clear win for ' + W + ': ' + L + ' got ' + pctText + ' of the way to winning.';
+        coachText(line, t, names);
+        body.appendChild(line);
+      }
+
+      if (me.gaps.length) {
+        body.appendChild(el('div', { className: 'coach-sub' }, "Where you're behind"));
+        body.appendChild(el('div', { className: 'coach-note', style: 'margin-top:.15rem;' }, 'Stat bonus totals from each source (attack, HP and damage, in % points, for your troop types).'));
+        var max = Math.max.apply(null, me.gaps.map(function(g) { return Math.max(g.mine, g.theirs); })) || 1;
+        me.gaps.forEach(function(g) {
+          var row = el('div', { className: 'coach-gap' }, [el('div', { className: 'coach-gap-name' }, g.label)]);
+          [['me', 'You', g.mine], ['', other.name, g.theirs]].forEach(function(b) {
+            var bar = el('div', { className: 'coach-bar ' + b[0] });
+            var fill = el('i'); fill.style.width = Math.max(1, Math.round(60 * b[2] / max)) + '%';
+            var lab = el('span');
+            coachText(lab, b[1] + ' ' + b[2].toLocaleString('en-US'), names);
+            bar.appendChild(fill); bar.appendChild(lab);
+            row.appendChild(bar);
+          });
+          body.appendChild(row);
+        });
+      }
+
+      if (me.moves.length) {
+        body.appendChild(el('div', { className: 'coach-sub' }, 'Next steps'));
+        var groups = { free: 'Free', upgrade: 'Upgrade', long: 'Long term' }, lastTier = null;
+        me.moves.forEach(function(mv) {
+          if (mv.tier !== lastTier) {
+            lastTier = mv.tier;
+            body.appendChild(el('div', { className: 'coach-sub', style: 'margin-top:.7rem;text-transform:none;letter-spacing:0;font-size:.78rem;' }, groups[mv.tier]));
+          }
+          var d = el('div', { className: 'coach-move ' + mv.tier });
+          d.appendChild(coachText(el('b'), mv.title, names));
+          d.appendChild(coachText(el('p'), mv.detail, names));
+          d.appendChild(coachText(el('small'), mv.evidence, names));
+          body.appendChild(d);
+        });
+      }
+      body.appendChild(el('div', { className: 'coach-note' }, 'This reads one battle report. It does not check what you can afford; the armory can, with a Snapshot.'));
+    }
+
+    [loserKey, winnerKey].forEach(function(key) {
+      var b = el('button', { type: 'button', 'data-side': key, onclick: function() { show(key); } });
+      b.appendChild(coachText(el('span'), sides[key].name + (key === 'attacker' ? ' (attacker)' : ' (defender)'), [sides[key].name]));
+      toggle.appendChild(b);
+    });
+    show(loserKey);
+  }
+
+  function injectCoachPanel(data, mountEl) {
+    var host = el('div', { className: 'coach' }, [el('div', { className: 'coach-line' }, 'Reading your report...')]);
+    mountEl.appendChild(host);
+    loadCoachTables().then(function(tables) {
+      var result = window.ReportCoach.analyze(data, tables);
+      if (!result.sides.attacker.moves.length && !result.sides.defender.moves.length && !result.sides.attacker.gaps.length && !result.sides.defender.gaps.length) {
+        if (host.parentNode) host.parentNode.removeChild(host);
+        return;
+      }
+      renderCoach(host, result);
+    }).catch(function() { if (host.parentNode) host.parentNode.removeChild(host); });
+  }
 
   // ---- Rockfield panel injection ----
 
