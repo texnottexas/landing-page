@@ -139,6 +139,39 @@ test('Crimson Warrior Statue (6044) shard costs follow the game: 180, 540, 1620 
   assert.deepEqual(LOOKUPS.PL['6044'].sc, fu);
 });
 
+test('group 6043 shard costs follow the game the same way (2026-10-11 building table): 180, 540, 1620 ... in both data files', () => {
+  const fu = [0, 180, 540, 1620, 4860, 14580, 43740, 131220, 393660, 1180980, 3542940, 10628820, 31886460, 95659380, 286978140];
+  assert.deepEqual(LEVELS['6043'].levels.map((l) => l.fu), fu);
+  assert.deepEqual(LOOKUPS.PL['6043'].sc, fu);
+});
+
+test('the 34 newest decoration groups carry the game\'s q/s/ml/me/fi (2026-10-11), so the advisor no longer skips them', () => {
+  const G = [5625, 5990, 5991, 5992, 5993, 5994, 5995, 5996, 5997, 6015, 6016, 6017, 6018, 6020, 6021, 6022, 6023, 6024, 6025, 6026, 6027, 6028, 6029, 6030, 6031, 6032, 6034, 6035, 6038, 6039, 6040, 6041, 6042, 6043];
+  for (const g of G) for (const k of ['q', 's', 'ml', 'me', 'fi']) assert.ok(k in LEVELS[g], g + ' ' + k);
+  assert.equal(G.filter((g) => LEVELS[g].fi === 20213232).length, 31);
+  assert.deepEqual([LEVELS[5996].fi, LEVELS[5997].fi, LEVELS[5625].fi], [260119001, 260119001, 0]);
+  assert.deepEqual([LEVELS[6020].me, LEVELS[5996].me], ['5861', '5857']);
+  assert.deepEqual([LOOKUPS.UT['5996'], LOOKUPS.UT['5997']], [1, 1], 'Supreme Crystal: unique fragments, like 5857/5860');
+});
+
+test('skins and city skills from the 2026-10-11 skin table: chains 1087/1088, Omega Tower in 1072, Masquerade Carnival\'s skill', () => {
+  const T = require('../pages/tw-game-data-base.js');
+  assert.deepEqual(T.SKIN_GROUPS['1087'], [2011000, 2012000]); assert.deepEqual(T.SKIN_GROUPS['1088'], [2013000, 2014000]);
+  assert.deepEqual(T.SKIN_GROUPS['1072'], [1971000, 1972000, 1973000]);
+  assert.deepEqual(T.CITY_SKILL_DB['2015000'].slice(0, 2), ['Psychedelic Soundfield', 5]); assert.equal(T.SKIN_SD['2015000'][4], 'Psychedelic Soundfield');
+  for (const v of ['SKIN_GROUPS', 'CITY_SKILL_DB', 'SKIN_SD']) {
+    const re = new RegExp('var ' + v + ' = (\\{.*?\\});\\n', 's');
+    assert.equal(ARMORY.match(re)[1], read('pages/tw-game-data-base.js').match(re)[1], v + ': the classic page and tw-game-data-base.js agree');
+  }
+});
+
+test('army-icon-map has the 20 units added to the game\'s army table (2026-10-11)', () => {
+  const A = JSON.parse(read('data/army-icon-map.json'));
+  const ids = [26070301, 26070302, 26070303, 26070304, 26070305].concat([641, 642, 643].flatMap((p) => [1, 2, 3, 4, 5].map((i) => p * 100 + 10 + i)));
+  for (const id of ids) assert.equal(A[id].type, 201, String(id));
+  assert.equal(Object.keys(A).length, 8070);
+});
+
 test('Valkyrie Warrior, Signal Tower and Crimson Warrior Statue take Universal Decor Shards (fi 20213232, 15 levels)', () => {
   for (const g of ['6033', '6036', '6044']) {
     assert.equal(LEVELS[g].fi, 20213232, g);

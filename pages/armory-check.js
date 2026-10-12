@@ -59,7 +59,7 @@ function cyrb53(str) {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
 }
 
-/* Hand-derived for Rex's fixture data (siteKey c3c6f3200a4ec1fb, game data of 2026-10-10), not read back from nextMoves().
+/* Hand-derived for Rex's fixture data (siteKey c3c6f3200a4ec1fb, game data of 2026-10-10, decor upgrade data of 2026-10-11), not read back from nextMoves().
    Inputs: the three heroes in the battle reports with gold gear are Carna 904,010, Joan Mature 852,210, Heid 837,210 (hero power, strongest first, so
           weights 1.0 / 0.9 / 0.8). Every rune slot is filled, so no "Place" move. The bag holds 507 universal decor shards and 4 Tactical Awareness,
           1 Stealth Hologram, 5 Magnetic Field, 10 Magnetize.
@@ -68,9 +68,11 @@ function cyrb53(str) {
           Heid's Magnetic Field (0.4) is behind both. "Uses 1 \u00B7 4 in bag".
    decor: one score for every stat (the Beast Optimizer's weights: March Size 30, Defense 20, DMG increase / Decreased DMG Taken 9, HP 1.05, Attack 1 per point), per raw
           shard. No marches and no saved Optimizer units in this fixture, so every unit type counts (weights 1,1,1): an all-units buff counts 3 times. Meowjesty
-          Lv.2 to 3 (+3% all-units Attack, 240 shards) scores 3 x 1 x 3 = 9, 0.0375 per shard. Thanksgiving Feast Lv.2 to 3 (+1.5% all-units Decreased DMG Taken, 450
-          raw, no credit) scores 1.5 x 9 x 3 = 40.5, 0.09 per shard; Spring Festival Float and the other +2% / 600-shard damage decorations tie at 54 / 600 = 0.09, and the
-          cheaper net cost (450) puts Thanksgiving Feast first. The line is 61 characters, one over the 60 limit, so the name loses its last two letters ("Thanksgiving Fea…"). The 507 shards cover it. March Size needs at least 1,440 shards on every placed item (30 x 3 / 1,440 = 0.0625 per shard at best): out
+          Lv.2 to 3 (+3% all-units Attack, 240 shards) scores 3 x 1 x 3 = 9, 0.0375 per shard. Phantom Dancer Statue (group 6039, one of the 34 groups the game data of
+          2026-10-11 gave their Universal Decor Shard fi) is placed at Lv.1: Lv.1 to 2 adds +2.5% all-units Decreased DMG Taken for 375 x 2/3 = 250 shards, so
+          2.5 x 9 x 3 = 67.5, 0.27 per shard. Every other placed decoration is at Lv.2 or higher and gives at most 0.09 per shard (Thanksgiving Feast Lv.2 to 3: 1.5 x 9 x 3
+          / 450; Star Wanderer, Recovered Rocket, Rematch, Dragon Boat Regatta and Iron Mask Angel Statue Lv.2 to 3: 67.5 / 750), so Phantom Dancer Statue goes first.
+          The line is 64 characters, four over the 60 limit, so the name loses five letters ("Phantom Dancer S…"). The 507 shards cover it. March Size needs at least 1,440 shards on every placed item (30 x 3 / 1,440 = 0.0625 per shard at best): out
           of reach and not 3 times better, so no Save-for. Decor is class 2, so it follows the merge.
    refine: Carna is the strongest hero, so every refine pick is hers (a weaker hero's piece never beats hers). All six of her pieces have stats under 70%.
           The piece whose lowest stat is closest to 70% goes first: Portable GPS (slot 5, stats 54/52, lowest 52) and Power Boots (slot 6, one stat 52) tie
@@ -84,7 +86,7 @@ function cyrb53(str) {
 var REX = 'c3c6f3200a4ec1fb';
 var EXPECTED = [
   ['Uses what you have', 'Merge Tactical Awareness on Carna slot 1 to 1 star', 'Uses 1 \u00B7 4 in bag'],
-  ['Uses what you have', 'Upgrade Thanksgiving Fea\u2026 to Lv.3: +1.5% Decreased DMG Taken', '450 shards'],
+  ['Uses what you have', 'Upgrade Phantom Dancer S\u2026 to Lv.2: +2.5% Decreased DMG Taken', '250 shards'],
   ['Costs resources', 'Refine Portable GPS on Carna', '2 stats under 70% (52-54%)']
 ];
 
@@ -174,7 +176,7 @@ var EXPECTED = [
     var base = core.nextMoves(S.vm.movesInput, { max: 3 }).picks.map(function (m) { return m.text; });
     var mut = JSON.parse(JSON.stringify(S.vm.movesInput)); mut.decor.shards = 0;
     var mt = core.nextMoves(mut, { max: 3 }).picks.map(function (m) { return m.text; });
-    log(mt.length > 0 && !mt.some(function (x) { return /Thanksgiving/.test(x); }) && mt.join('|') !== base.join('|'), 'mutation 1: with 0 shards the Thanksgiving Feast move goes away', mt.join(' | '));
+    log(mt.length > 0 && !mt.some(function (x) { return /Phantom Dancer/.test(x); }) && mt.join('|') !== base.join('|'), 'mutation 1: with 0 shards the Phantom Dancer Statue move goes away', mt.join(' | '));
     var m2 = JSON.parse(JSON.stringify(S.vm.movesInput));
     m2.heroes.forEach(function (h) { if (h.name === 'Carna') h.gear.forEach(function (g) { if (g.slot === 5) g.stats.forEach(function (x) { x.v = x.m; }); }); });
     var mt2 = core.nextMoves(m2, { max: 3 }).picks.map(function (x) { return x.text; });
