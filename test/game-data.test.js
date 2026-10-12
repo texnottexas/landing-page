@@ -100,6 +100,16 @@ test('the seven newest heroes have a branch in HERO_TYPE_MAP (game hero table)',
   assert.equal(M[101], 1);
 });
 
+test('Megatron (126) and Flora (134) are Army: game hero table hero_type 0, the item_hero_Type1 sprite (2026-10-11)', () => {
+  const m = ARMORY.match(/var HERO_TYPE_MAP\s*=\s*(\{.*?\});/);
+  const M = JSON.parse(JSON.stringify(vm.runInNewContext('(' + m[1] + ')')));
+  const G = require('../pages/tw-game-data.js');
+  for (const id of [126, 134]) { assert.equal(M[id], 1, 'page ' + id); assert.equal(G.HERO_TYPE_MAP[id], 1, 'tw-game-data ' + id); }
+  assert.equal(M[146], 2, 'Shaquille stays Navy');
+  const heroes = JSON.parse(read('data/all-heroes.json'));
+  for (const id of [126, 134]) assert.equal(heroes.find((h) => h.heroId === id).typeName, 'Army', 'all-heroes ' + id);
+});
+
 test('heroBranch falls back to the supplement hero_type for a hero the map lacks', () => {
   const m = ARMORY.match(/var HERO_TYPE_MAP\s*=\s*(\{.*?\});/);
   const heroBranch = fn(ARMORY, 'heroBranch', {

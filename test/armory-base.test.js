@@ -279,7 +279,7 @@ test('the Overview decoration move counts the unit types the marches use: an Arm
   const { core, merged } = placedFor(specs);
   assert.deepEqual(VM.marchBranches([{ heroIds: [101, 301] }, { heroIds: [102] }], null, core), ['Army', 'Air Force']);
   assert.deepEqual(VM.marchBranches([], null, core), []); assert.deepEqual(VM.marchBranches(null, null, core), []);
-  assert.deepEqual(VM.marchBranches([{ heroIds: [126] }], { list: [] }, core), ['Navy']);
+  assert.deepEqual(VM.marchBranches([{ heroIds: [201] }], { list: [] }, core), ['Navy']);
   assert.deepEqual(vmOf(core, merged, inv, [{ heroIds: [101, 301] }]).movesInput.decor.branches, ['Army', 'Air Force']);
   // Lv.2 -> Lv.3 costs 144 (Hold The Fort, +2% Army), 36 (Umbrella, +0.5%), 36 (Timer, +0.5%), 60 (Christmas, +0.5% all units). Attack weighs 1; an all-units buff counts once per unit type.
   // No marches (three unit types): Fort 2/144 = 0.0139, Umbrella 0.5/36 = 0.0139, Timer 0.0139, Christmas 0.5 x 3 / 60 = 0.025
@@ -293,7 +293,7 @@ test('the Overview decoration move counts the unit types the marches use: an Arm
   const only = placedFor([[5426, 2]]);
   const a0 = dMove(vmOf(only.core, only.merged, inv, [])); assert.match(a0.text, /^Upgrade Hold The Fort to Lv\.3: \+2% Army Attack/);
   const army = dMove(vmOf(only.core, only.merged, inv, [{ heroIds: [101] }])); assert.match(army.text, /^Upgrade Hold The Fort to Lv\.3/); assert.match(army.text, /Army Attack/);
-  assert.equal(dMove(vmOf(only.core, only.merged, inv, [{ heroIds: [126] }])), undefined, 'a Navy player does not count Army Attack');
+  assert.equal(dMove(vmOf(only.core, only.merged, inv, [{ heroIds: [201] }])), undefined, 'a Navy player does not count Army Attack');
   // the panel opens on the same ranking: its top ready row is the move
   for (const mg of [[], [{ heroIds: [101] }], [{ heroIds: [101, 301] }]]) { const vm = vmOf(core, merged, inv, mg); agree(vm, spendOf(core, inv, merged, vm), JSON.stringify(mg)); }
 });
@@ -306,8 +306,8 @@ test('whose units count: the Beast Optimizer\'s saved choice, else the real marc
   assert.equal(P({ mode: 'dual', units: [2, 2] }).source, 'marches', 'an invalid saved choice (a duplicate unit) is ignored'); assert.equal(P({ mode: 'dual', units: [1] }).source, 'marches'); assert.equal(P('x').source, 'marches');
   // the same decorations, three sources: Hold The Fort (+2% Army Attack, 144) vs Beach Umbrella (+0.5% Navy Attack, 36) vs Timer (+0.5% Air Force Attack, 36), Lv.2 -> Lv.3
   const { core, merged } = placedFor([[5426, 2], [4320, 2], [4360, 2]]), inv = bag(100000), top = (mg, pf) => dMove(vmOf(core, merged, inv, mg, undefined, pf)).text;
-  assert.match(top([{ heroIds: [126] }]), /^Upgrade Beach Umbrella/, 'a Navy march: only the Navy decoration counts');
-  assert.match(top([{ heroIds: [126] }], { mode: 'mono', units: [1] }), /^Upgrade Hold The Fort/, 'prefs say Army: Army counts, Navy does not, whatever the march');
+  assert.match(top([{ heroIds: [201] }]), /^Upgrade Beach Umbrella/, 'a Navy march: only the Navy decoration counts');
+  assert.match(top([{ heroIds: [201] }], { mode: 'mono', units: [1] }), /^Upgrade Hold The Fort/, 'prefs say Army: Army counts, Navy does not, whatever the march');
   assert.match(top([], { mode: 'dual', units: [2, 3], weights: [0.5, 1] }), /^Upgrade Timer/, 'prefs Navy 0.5 + Air Force 1: Timer 0.5 / 36 = 0.0139 against Umbrella 0.5 x 0.5 / 36 and Fort 0 (not a chosen unit)');
 });
 test('an affordable damage-reduction decoration beats saving thousands of shards for March Size (the 8960mr case); the old rule said Save', () => {
