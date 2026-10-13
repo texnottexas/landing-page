@@ -81,7 +81,8 @@
     // a disco ball on its string, with a sparkle (Rickroll, 2026-10-09)
     disco: ['M12 2v4.5', 'M12 6.5a7 7 0 1 0 0 14a7 7 0 1 0 0-14', 'M12 6.5c-2.6 2-2.6 12 0 14', 'M12 6.5c2.6 2 2.6 12 0 14', 'M5.5 11h13', 'M5.5 16h13', 'M19.5 2.5v3', 'M18 4h3'],
     // a crosshair (Angel Attacks, 2026-10-13)
-    target: ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18', 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8', 'M12 1v4', 'M12 19v4', 'M1 12h4', 'M19 12h4']
+    target: ['M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18', 'M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8', 'M12 1v4', 'M12 19v4', 'M1 12h4', 'M19 12h4'],
+    tent: ['M12 3L2 21h20L12 3', 'M12 13l-3.5 8', 'M12 13l3.5 8']
   };
 
   function ensureStyle() {

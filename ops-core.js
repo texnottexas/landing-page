@@ -4,7 +4,7 @@
 (function (root) {
   'use strict';
 
-  var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid', 'map', 'gift', 'smile', 'disco', 'target'];
+  var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid', 'map', 'gift', 'smile', 'disco', 'target', 'tent'];
   var READY_IDS = ['game', 'base', 'defender', 'r4'];
   var GATES = ['member', 'code'];
   var READY_TEXT = {
