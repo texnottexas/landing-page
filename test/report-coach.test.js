@@ -190,7 +190,7 @@ test('every fixture side reads without errors', () => {
 
 // Fields open by the total level of all beast field slots (game table enigma_field.unlock_condition):
 // Defense at 40, Offense at 150. A field with no beasts is missing from the report, locked or not.
-test('beast fields: locked below their unlock level, free to fill once open', () => {
+test('beast fields: locked below their unlock level; once open, filling needs qualifying beasts (an upgrade)', () => {
   // Shorty is under the Defense unlock level; his move may fall below the six-move cap, but must never be Free
   const shorty = find(run(SHORTY).sides.attacker, 'beast-field-4');
   if (shorty) assert.deepEqual([shorty.tier, shorty.data.locked], ['upgrade', true]);
@@ -207,8 +207,9 @@ test('beast fields: locked below their unlock level, free to fill once open', ()
   const rep = fixture(REX);
   rep.battle.attacker.players[0].enigmas.fields.forEach((f) => f.slots.forEach((s) => { s.level = 6; }));
   const open = find(Coach.analyze(rep, tables).sides.attacker, 'beast-field-5');
-  assert.equal(open.tier, 'free');
-  assert.equal(open.title, 'Put beasts in your Offense field');
+  assert.equal(open.tier, 'upgrade'); // each slot needs an Epic or better beast of a set type; a report can't see spare beasts
+  assert.equal(open.title, 'Fill your Offense field');
+  assert.match(open.detail, /Epic or better/);
   assert.equal(open.data.locked, false);
   // fields 1-3 have no level rule we can read from a report: never claimed free
   const rep2 = fixture(REX);
@@ -271,4 +272,16 @@ test('edge: different troop types do not say the opponent runs the same skill', 
 test('edge: slot levels compare the fields both sides have', () => {
   const m = find(run(REX).sides.attacker, 'beast-field-levels');
   if (m) assert.match(m.detail, /fields you both have/);
+});
+
+test('protection: a Protection skill for another branch reads as a swap', () => {
+  const rep = fixture(REX);
+  const h = rep.battle.attacker.players[0].heroList[0];
+  const sk = h.nonActiveSkills.find((x) => x.skillId === 21116);
+  sk.skillId = 21120; // Army Protection on an Air Force march
+  const m = find(Coach.analyze(rep, tables).sides.attacker, 'protection');
+  assert.equal(m.tier, 'free');
+  assert.equal(m.title, 'Swap to Air Force Protection');
+  assert.match(m.detail, /Army Protection/);
+  assert.equal(m.data.otherBranch, 1);
 });

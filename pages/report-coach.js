@@ -252,10 +252,20 @@
       if (mine === 0 && theirs > 0) {
         var sameBr = them.branch === me.branch;
         var theirBr = BRANCH_LABEL[them.branch] || '';
-        out.push(move('free', 'protection', 'Hero skills', 100, 'Equip ' + br + ' Protection skills',
-          'None of your heroes carries ' + br + ' Protection. ' + them.name + ' runs ' + (sameBr ? 'it' : theirBr + ' Protection') + ' on ' + theirs + ' of ' + them.heroes.length + ' heroes.',
+        var other = {}, otherN = 0;
+        me.heroes.forEach(function (h) {
+          var hit = h.equipped.filter(function (s) { return s.protection && s.branch && s.branch !== me.branch; });
+          if (hit.length) { otherN++; hit.forEach(function (s) { other[BRANCH_LABEL[s.branch]] = 1; }); }
+        });
+        var otherNames = Object.keys(other);
+        var theirPart = them.name + ' runs ' + (sameBr ? br : theirBr) + ' Protection on ' + theirs + ' of ' + them.heroes.length + ' heroes.';
+        out.push(move('free', 'protection', 'Hero skills', 100, otherN ? 'Swap to ' + br + ' Protection' : 'Equip ' + br + ' Protection skills',
+          otherN
+            ? otherN + (otherN === 1 ? ' of your heroes carries ' : ' of your heroes carry ') + nameList(otherNames.map(function (n) { return n + ' Protection'; })) +
+              ', but your march is ' + br + '. ' + theirPart
+            : 'None of your heroes carries ' + br + ' Protection. ' + them.name + ' runs ' + (sameBr ? 'it' : theirBr + ' Protection') + ' on ' + theirs + ' of ' + them.heroes.length + ' heroes.',
           '0 of ' + me.heroes.length + ' heroes, against ' + theirs + ' of ' + them.heroes.length,
-          { mine: mine, theirs: theirs, branch: me.branch, theirBranch: them.branch }));
+          { mine: mine, theirs: theirs, branch: me.branch, theirBranch: them.branch, otherBranch: otherN }));
       }
       var wrong = [];
       me.heroes.forEach(function (h) { h.equipped.forEach(function (s) { if (s.branch && s.branch !== me.branch) wrong.push({ hero: h.name, skill: s.name }); }); });
@@ -408,8 +418,10 @@
               ' more levels open it. ' + them.name + ' has ' + theirs[cfg] + ' beasts there. The early levels cost the fewest Field Repeaters.',
             have + ' of ' + need + ' field levels', { field: cfg, fieldName: fname, theirs: theirs[cfg], locked: true, have: have, need: need }));
         } else if (need) {
-          out.push(move('free', 'beast-field-' + cfg, 'Beast fields', cfg === 5 ? 86 : 84, 'Put beasts in your ' + fname + ' field',
-            'Your ' + fname + ' field is open (' + have + ' field levels; it opens at ' + need + ') but has no beasts in it. ' +
+          // Open, but every slot takes an Epic or better beast of a set type and element (data/enigma-platforms.json),
+          // and a report doesn't show spare beasts, so this is not a sure free move. The armory checks the bench.
+          out.push(move('upgrade', 'beast-field-' + cfg, 'Beast fields', 62, 'Fill your ' + fname + ' field',
+            'You have ' + have + ' field levels, past the ' + need + ' it needs to open, but no beasts in it. Each of its slots takes an Epic or better beast of a set type and element. ' +
               them.name + ' has ' + theirs[cfg] + ' there.',
             '0 beasts, against ' + theirs[cfg], { field: cfg, fieldName: fname, theirs: theirs[cfg], locked: false, have: have, need: need }));
         } else {
