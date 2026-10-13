@@ -15,7 +15,7 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-13';
+  var VERSION = '2026-10-13.2';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
@@ -85,6 +85,33 @@
     return call(function (cb) { return NET().send(VIEW, { x: b.x, y: b.y, k: b.server, rid: 0, width: 25, height: 30, marchInfo: true, viewLevel: 0 }, TARGET, cb); });
   }
   function sendCollect(pid) { return call(function (cb) { return NET().sendPBV2(COLLECT, { targetUidStr: pid }, TARGET, cb); }); }
+  // Angel Attacks in this same tab (Tex, 2026-10-13): loaded the way the Ops Center loads it, at the version the
+  // registry names; the two share the request clock. Off stops it.
+  var angLoading = false, angFailed = false;
+  function angelsOn() { return !!(window.__ANG && window.__ANG.running); }
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src; s.setAttribute('data-ops', '1');
+      s.onload = function () { s.remove(); resolve(); };
+      s.onerror = function () { s.remove(); reject(new Error('load failed')); };
+      (document.head || document.documentElement).appendChild(s);
+    });
+  }
+  function toggleAngels() {
+    if (angelsOn()) { window.__ANG.stop(); paint(); return; }
+    if (angLoading) return;
+    angLoading = true; paint();
+    var base = window.__OPS_BASE || 'https://2864tw.com/';
+    fetch(base + 'ops-tools.json?_=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (reg) {
+        var t = (reg && Array.isArray(reg.tools) ? reg.tools : []).filter(function (x) { return x && x.id === 'angels'; })[0];
+        if (!t || !Array.isArray(t.scripts)) throw new Error('not listed');
+        return t.scripts.reduce(function (p, f) { return p.then(function () { return loadScript(base + f + '?v=' + encodeURIComponent(t.version)); }); }, Promise.resolve());
+      })
+      .then(function () { angLoading = false; angFailed = false; paint(); }, function () { angLoading = false; angFailed = true; paint(); });
+  }
   // One request clock for every Ops tool in this tab (Map Collector too).
   function pace() {
     var P = window.__opsPace || (window.__opsPace = { at: 0 });
@@ -389,9 +416,10 @@
     '#mbx-root .mbx-foot,#mbx-root .mbx-src,#mbx-root .mbx-last,#mbx-root .mbx-shared{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '#mbx-root .mbx-shared{color:#79c0ff;font-size:12px;margin-top:2px}#mbx-root .mbx-shared:empty{display:none}',
     '#mbx-root .mbx-btns button#mbx-share[aria-pressed="true"]{border-color:#3fb950;color:#3fb950}',
+    '#mbx-root .mbx-btns button#mbx-angels[aria-pressed="true"]{border-color:#388bfd;color:#79c0ff}',
     '#mbx-root .mbx-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#mbx-root .mbx-last{color:#3fb950;font-size:12px;margin-top:2px}#mbx-root .mbx-last:empty{display:none}',
     '#mbx-root .mbx-msg{margin:4px 0 2px}#mbx-root .mbx-btns{display:flex;gap:6px;margin-top:8px}',
-    '#mbx-root .mbx-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#mbx-root .mbx-btns button:hover{border-color:#79c0ff}'
+    '#mbx-root .mbx-btns button{flex:1;min-width:0;min-height:44px;padding:0 4px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#mbx-root .mbx-btns button:hover{border-color:#79c0ff}'
   ].join('\n');
   var root = null, card = null, body = null;
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
@@ -442,7 +470,10 @@
     var last = el('div', 'mbx-last'); last.id = 'mbx-last'; body.appendChild(last);
     var sh = el('div', 'mbx-shared'); sh.id = 'mbx-shared'; body.appendChild(sh);
     var btns = el('div', 'mbx-btns');
-    btns.appendChild(button('mbx-share', 'Share: off', toggleShare));
+    // one row of three short buttons, on or off shown by the border (like the type toggles): the card must stay
+    // short enough to sit beside Map Collector's on a phone
+    btns.appendChild(button('mbx-share', 'Share', toggleShare));
+    btns.appendChild(button('mbx-angels', 'Angels', toggleAngels));
     btns.appendChild(button('mbx-stop', 'Stop', function () { stop('stopped by you'); }));
     body.appendChild(btns);
     paint();
@@ -473,7 +504,9 @@
     var n = sharedIds().length, shText = S.shareMsg ? S.shareMsg : S.shareStopped ? 'Sharing stopped: ' + S.shareStopped : n || S.share ? 'Shared ' + n + (S.lastShare ? ' · last ' + S.lastShare : '') : '';
     var shl = document.getElementById('mbx-shared'); if (shl && shl.textContent !== shText) { shl.textContent = shText; shl.title = shText; }
     var sb = document.getElementById('mbx-share');
-    if (sb) { var on = String(!!S.share); if (sb.getAttribute('aria-pressed') !== on) sb.setAttribute('aria-pressed', on); var st = S.shareBusy ? 'Share: ...' : S.share ? 'Share: on' : 'Share: off'; if (sb.textContent !== st) sb.textContent = st; sb.title = 'Share collected boxes to world chat'; }
+    if (sb) { var on = String(!!S.share); if (sb.getAttribute('aria-pressed') !== on) sb.setAttribute('aria-pressed', on); var st = S.shareBusy ? 'Share...' : 'Share'; if (sb.textContent !== st) sb.textContent = st; sb.title = 'Share collected boxes to world chat: ' + (S.share ? 'on' : 'off'); }
+    var ab = document.getElementById('mbx-angels');
+    if (ab) { var aon = angelsOn(), at = angLoading ? 'Angels...' : angFailed ? 'Retry' : 'Angels'; if (ab.textContent !== at) ab.textContent = at; if (ab.getAttribute('aria-pressed') !== String(aon)) ab.setAttribute('aria-pressed', String(aon)); ab.title = angFailed ? 'Angel Attacks did not load. Tap to try again.' : 'Attack each Heavy Mothership Angel once (carrier, no normal march): ' + (aon ? 'on' : 'off'); }
     card.className = 'mbx-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
   }
 

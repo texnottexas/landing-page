@@ -169,7 +169,7 @@
       var r = C.classifyAttack(await call(function (cb) { return N.send(I.march, { isAirCraftCarrier: true, marchType: I.type, x: t.x, y: t.y }, TARGET, cb); }));
       if (r.kind === 'ok') {
         S.silent = 0; S.sentRun++; sent++; bump();
-        S.last = 'Attacked the Angel at ' + t.x + ', ' + t.y + ' (found by S' + t.serverId + ')';
+        S.last = 'Attacked ' + t.x + ', ' + t.y + ' · S' + t.serverId;   // short: the card is 190 px wide
         reportUsage(); refreshCounts(); paint();
         continue;
       }
@@ -207,7 +207,7 @@
     '#ang-root button#ang-min:hover{color:#e6edf3;background:#1c2128}#ang-root #ang-min svg{transition:transform .2s}#ang-root .min #ang-min svg{transform:rotate(180deg)}',
     '#ang-root .ang-card.min{width:auto;padding:0 4px 0 12px}#ang-root .min .ang-body{display:none}#ang-root .min .ang-head{margin:0;height:44px;cursor:pointer}',
     '#ang-root .ang-stat{font-variant-numeric:tabular-nums}#ang-root .ang-sub{color:#8b949e;font-size:12px;font-variant-numeric:tabular-nums}',
-    '#ang-root .ang-foot,#ang-root .ang-last,#ang-root .ang-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+    '#ang-root .ang-last,#ang-root .ang-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',   // the foot wraps: it carries why a check paused
     '#ang-root .ang-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#ang-root .ang-last{color:#79c0ff;font-size:12px;margin-top:2px}#ang-root .ang-last:empty{display:none}',
     '#ang-root .ang-msg{margin:4px 0 2px}#ang-root .ang-btns{display:flex;gap:6px;margin-top:8px}',
     '#ang-root .ang-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#ang-root .ang-btns button:hover{border-color:#79c0ff}'
@@ -245,7 +245,10 @@
     var mb = document.getElementById('ang-min');
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show Angel Attacks' : 'Minimize Angel Attacks'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
-  function toggleMin() { S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint(); }
+  function toggleMin() {
+    if (!S.min && layout().fold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
+  }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
     var st = el('div', 'ang-stat'); st.id = 'ang-stat'; body.appendChild(st);
@@ -264,22 +267,40 @@
     card.className = 'ang-card';
   }
   function put(id, text) { var e = document.getElementById(id); if (e && e.textContent !== text) { e.textContent = text; e.title = text; } }
-  // Under the Mask Boxes card when that card is open, so the two never cover each other.
-  function place() {
+  // Where the card goes, so it never covers the Mask Boxes or Map Collector card: under the Mask Boxes card when the
+  // full card fits there; else to its right; else (a phone) folded to its bar at the right edge. A fold made for
+  // room isn't saved as the player's choice, and tapping the bar opens the card anyway.
+  var fullH = 200, forceOpen = false;
+  function rectOf(id) { var e = document.getElementById(id); if (!e || !e.isConnected) return null; var r = (e.firstElementChild || e).getBoundingClientRect(); return r.height > 0 ? r : null; }
+  function layout() {
+    var m = rectOf('mbx-root'), mc = rectOf('mapc-root'), vw = window.innerWidth, vh = window.innerHeight;
+    if (!m) return { top: '', left: '', right: '', fold: false };
+    var below = Math.round(m.bottom + 8), limit = (mc && mc.top > m.top ? mc.top : vh) - 8;
+    if (below + fullH <= limit) return { top: below + 'px', left: '', right: '', fold: false };
+    if (m.right + 16 + 190 <= vw - 8) return { top: Math.round(m.top) + 'px', left: Math.round(m.right + 8) + 'px', right: '', fold: false };
+    return { top: Math.round(m.top) + 'px', left: 'auto', right: 'calc(8px + env(safe-area-inset-right))', fold: true };
+  }
+  function place(L) {
     if (!root) return;
-    var m = document.getElementById('mbx-root'), top = '';
-    if (m && m.isConnected) { var r = m.getBoundingClientRect(); if (r.height > 0) top = Math.round(r.bottom + 8) + 'px'; }
-    if (root.style.top !== top) root.style.top = top;
+    if (root.style.top !== L.top) root.style.top = L.top;
+    if (root.style.left !== L.left) root.style.left = L.left;
+    if (root.style.right !== L.right) root.style.right = L.right;
   }
   function paint() {
     if (!card || S.view !== 'run') return;
     put('ang-stat', S.eventId ? 'Attacked ' + S.attackedRound + ' this round' : 'Angel Attacks');
-    put('ang-sub', 'On the way ' + S.onWay + ' · Sent ' + S.sentRun + ' this run');
+    put('ang-sub', 'On the way ' + S.onWay + ' · Sent ' + S.sentRun);
     put('ang-foot', S.foot);
     put('ang-last', S.last);
     put('ang-mini', String(S.attackedRound));
-    card.className = 'ang-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
-    place();
+    var L = layout(), folded = S.min || (L.fold && !forceOpen);
+    var tt = card.querySelector('.ang-title'), tx = folded ? 'Angels' : 'Angel Attacks';
+    if (tt && tt.textContent !== tx) tt.textContent = tx;
+    card.className = 'ang-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');
+    if (!folded) fullH = Math.max(120, Math.round(card.getBoundingClientRect().height));
+    var mb = document.getElementById('ang-min');
+    if (mb) { mb.setAttribute('aria-label', folded ? 'Show Angel Attacks' : 'Minimize Angel Attacks'); mb.setAttribute('aria-expanded', String(!folded)); }
+    place(L);
   }
 
   // ---------------------------------------------------------------- start

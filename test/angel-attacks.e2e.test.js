@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['angel-attacks.js', 'angel-attacks-core.js', 'mask-boxes.js', 'mask-boxes-core.js', 'ops-tools.json'];
+const OWN = ['angel-attacks.js', 'angel-attacks-core.js', 'mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json'];
 const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 
@@ -25,6 +25,14 @@ test.before(async () => {
         let j = null; try { j = JSON.parse(b); } catch (e) {}
         usageLog.push({ body: j, raw: b, type: req.headers['content-type'] });
         res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors)); res.end('{"ok":true}');
+      });
+      return;
+    }
+    if (name === 'mapcollector/report') {                 // Map Collector's worker, just enough to run
+      if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
+      let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+        res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors));
+        res.end(JSON.stringify({ ok: true, settings: { speedOn: false, gemReserve: 100, gemCap: 1000 }, spentToday: 0, now: Date.now() }));
       });
       return;
     }
@@ -85,8 +93,10 @@ test('ANG-1: one carrier attack at each Angel, in the list\'s order, with the ga
   assert.deepEqual(a.map((s) => s.p), [{ isAirCraftCarrier: true, marchType: 189, x: 10, y: 11 }, { isAirCraftCarrier: true, marchType: 189, x: 60, y: 61 }]);
   assert.deepEqual((await lists(page))[0].p, { aid: 83000151, type: 2 });
   await waitText(page, '#ang-stat', /Attacked 3 this round/);            // '2' plus the two that landed
-  await waitText(page, '#ang-sub', /Sent 2 this run/);
-  await waitText(page, '#ang-last', /60, 61/);
+  await waitText(page, '#ang-sub', /^On the way \d+ · Sent 2$/);
+  await waitText(page, '#ang-last', /^Attacked 60, 61 · S2691$/);
+  const cut = await page.evaluate(() => ['ang-stat', 'ang-sub', 'ang-last'].filter((id) => { const e = document.getElementById(id); return e.scrollWidth > e.clientWidth; }));
+  assert.deepEqual(cut, [], 'no line is cut off on the 190 px card');
   assert.ok(!/—/.test(await page.$eval('#ang-root', (e) => e.textContent)), 'no em dash');
   await ctx.close();
 });
@@ -155,6 +165,7 @@ test('ANG-7: at most 10 attacks a minute, the rest wait (50 Angels)', async () =
   await page.evaluate(event, Array.from({ length: 50 }, () => ({})));
   await launch(page);
   await waitText(page, '#ang-foot', /Paused: 10 attacks in a minute/, 25000);
+  assert.ok(await page.$eval('#ang-foot', (e) => e.scrollWidth <= e.clientWidth), 'the reason is shown in full, not cut off');
   await page.waitForTimeout(1500);
   assert.equal((await attacks(page)).length, 10);
   await ctx.close();
@@ -211,5 +222,60 @@ test('ANG-11: the march type is the one the game names (read live, not hard-code
   await launch(page);
   await page.waitForFunction(() => __fake.sent.some((s) => s.rid === 902));
   assert.equal((await attacks(page))[0].p.marchType, 203);
+  await ctx.close();
+});
+
+test('MBX-ANG-1: the Mask Boxes card\'s Angels switch loads Angel Attacks at the registry\'s version and turns it off; both tools keep 1.1 s apart', async () => {
+  const { ctx, page } = await open();
+  await page.evaluate(event, [{}, {}, {}]);
+  await page.evaluate(() => {                                       // a Mask box in chat, so both tools have work at once
+    __fake.cities['619:404:612'] = { pid: '22', itemId: 260617002, instanceId: 'm1', endMs: Date.now() + 600000 };
+    __fake.card('w', 619, 404, 612, 1, Date.now() + 600000);
+  });
+  await page.addScriptTag({ url: base + 'mask-boxes-core.js' });
+  await page.addScriptTag({ url: base + 'mask-boxes.js' });
+  await page.waitForSelector('#mbx-angels');
+  assert.equal(await page.getAttribute('#mbx-angels', 'aria-pressed'), 'false');
+  // one row of three short buttons, so the card is no taller (it must still fit beside Map Collector's on a phone)
+  const row = await page.evaluate(() => { const b = ['mbx-share', 'mbx-angels', 'mbx-stop'].map((id) => document.getElementById(id));
+    return { same: b.every((x) => x.parentNode === b[0].parentNode), fits: b.every((x) => x.scrollWidth <= x.clientWidth), tall: b.every((x) => x.getBoundingClientRect().height >= 44), text: b.map((x) => x.textContent) }; });
+  assert.deepEqual(row, { same: true, fits: true, tall: true, text: ['Share', 'Angels', 'Stop'] });
+  await page.click('#mbx-angels');
+  await page.waitForFunction(() => window.__ANG && window.__ANG.running);
+  await page.waitForFunction(() => document.getElementById('mbx-angels').getAttribute('aria-pressed') === 'true');
+  await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 902).length >= 3);
+  await page.waitForFunction(() => __fake.sent.some((s) => s.rid === 2503));
+  const rids = await page.evaluate(() => __fake.sent.map((s) => s.rid));
+  assert.ok(rids.includes(901) && rids.includes(902), 'both tools sent: ' + rids.join(','));
+  const gaps = await page.evaluate(() => { const s = __fake.sent; return s.slice(1).map((x, i) => x.at - s[i].at); });
+  assert.ok(gaps.every((g) => g >= 1050), 'every request from the two tools 1.1 s apart: ' + gaps.join(','));
+  const pos = await page.evaluate(() => [document.getElementById('mbx-root').getBoundingClientRect().bottom, document.getElementById('ang-root').getBoundingClientRect().top]);
+  assert.ok(pos[1] >= pos[0], 'the Angels card sits under the Mask Boxes card');
+  await page.click('#mbx-angels');
+  await page.waitForFunction(() => !window.__ANG.running && document.getElementById('mbx-angels').getAttribute('aria-pressed') === 'false');
+  assert.equal(await page.$('#ang-root'), null);
+  await ctx.close();
+});
+
+test('MBX-ANG-2: Map Collector, Mask Boxes and Angel Attacks all open on a phone: no card covers another, all on screen', async () => {
+  const { ctx, page } = await open((b) => { window.__MAPC_WORKER = b.replace(/\/$/, ''); window.__MAPC_REPORT_MS = 1000; localStorage.setItem('mapc_pw_v1', 'good pass'); }, base);
+  await page.evaluate(event, [{}]);
+  await page.addScriptTag({ url: base + 'mask-boxes-core.js' });
+  await page.addScriptTag({ url: base + 'map-collector-core.js' });
+  await page.addScriptTag({ url: base + 'map-collector.js' });
+  await page.waitForSelector('#mapc-mbx');
+  await page.click('#mapc-mbx');
+  await page.waitForSelector('#mbx-angels');
+  await page.click('#mbx-angels');
+  await page.waitForFunction(() => window.__ANG && window.__ANG.running && document.getElementById('ang-stat'));
+  await page.waitForTimeout(600);
+  const r = await page.evaluate(() => ['mapc-root', 'mbx-root', 'ang-root'].map((id) => document.getElementById(id).querySelector('div').getBoundingClientRect().toJSON()));
+  const over = (a, b) => !(a.bottom <= b.top || b.bottom <= a.top || a.right <= b.left || b.right <= a.left);
+  assert.ok(!over(r[0], r[1]) && !over(r[0], r[2]) && !over(r[1], r[2]), 'no overlap: ' + JSON.stringify(r.map((x) => [x.left, x.top, x.right, x.bottom].map(Math.round))));
+  r.forEach((x) => assert.ok(x.left >= 0 && x.right <= 375 && x.top >= 0 && x.bottom <= 740, 'on screen'));
+  assert.equal(await page.evaluate(() => localStorage.getItem('ang_min_v1')), null, 'a fold made for room is not saved as the player\'s choice');
+  await page.click('#ang-root .ang-head');                          // the player can still open it
+  await page.waitForFunction(() => !document.querySelector('#ang-root .ang-card').classList.contains('min'));
+  assert.equal(await page.evaluate(() => localStorage.getItem('ang_min_v1')), null);
   await ctx.close();
 });
