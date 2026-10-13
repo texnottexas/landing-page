@@ -179,8 +179,9 @@
     return list[0] || null;
   }
   // A spot pasted from FunCC on mask-spots.html (Tex, 2026-10-11): a good lead with no type or end time. Newest first,
-  // untried, unremembered; at most 6 looks in 10 minutes so a burst of bad pastes can't hammer the account.
-  var PASTE_PER_10MIN = 6, PASTE_TTL_MS = 3600000;
+  // untried, unremembered. At most 30 looks in 10 minutes (6 left real HT boxes unchecked after reset, Tex 2026-10-13);
+  // the gate's 10 a minute and 50 per 10 minutes still cap every look, and each spot gets one look ever.
+  var PASTE_PER_10MIN = 30, PASTE_TTL_MS = 3600000;
   function pastedCandidate(spots, o) {
     var recent = (o.pasteLog || []).filter(function (t) { return t > o.now - 600000; });
     if (recent.length >= PASTE_PER_10MIN) return null;

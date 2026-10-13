@@ -4,7 +4,7 @@
 // owner's city (901), then collect its box (2503). No march, no camera move. Launched from the Ops Center.
 // A checked spot is remembered until its box ends (30 min when there was none), whoever shares it again.
 // Spots players paste from FunCC on 2864tw.com/mask-spots.html come with the list (the boxes FunCC lists that the worker
-// can't read, mostly far servers): looked at after the listed boxes, at most 6 in 10 minutes, and never shared.
+// can't read, mostly far servers): looked at after the listed boxes, at most 30 in 10 minutes, and never shared.
 // Sharing mode (off by default): after a collect, the game's own box card goes to world chat unless world chat
 // already has it, at least 10 s after the last share, through the chat controller's sendToWorldChannel.
 // Rules live in mask-boxes-core.js (window.MaskBoxesCore); this file talks to the game, the worker and the page.
@@ -15,7 +15,7 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-11';
+  var VERSION = '2026-10-13';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long

@@ -854,13 +854,13 @@ test('PASTE-3: an empty pasted spot is looked at once, and not again after a rel
   await ctx.close();
 });
 
-test('PASTE-4: at most 6 pasted-spot looks in 10 minutes, so a burst of bad pastes cannot hammer the account', async () => {
+test('PASTE-4: a burst of 9 pasted spots is looked at in full, one look each (6 per 10 minutes left real boxes unchecked; Tex, 2026-10-13)', async () => {
   pasted = Array.from({ length: 9 }, (_, i) => ps(3000 + i, 452, 422, i * 1000));
   const { ctx, page } = await open();
   await launch(page);
-  await waitSent(page, 6);
+  await waitSent(page, 9, 20000);                                  // 9 looks on the shared request clock take ~11 s
   await page.waitForTimeout(2500);
-  assert.equal((await sent(page)).filter((x) => x.rid === 901).length, 6);
+  assert.deepEqual((await sent(page)).filter((x) => x.rid === 901).map((x) => x.p.k).sort(), Array.from({ length: 9 }, (_, i) => 3000 + i), 'each spot once');
   await ctx.close();
 });
 

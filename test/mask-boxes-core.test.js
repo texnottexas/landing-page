@@ -204,15 +204,16 @@ test('REVIEW #3: shareCheck fails closed when world chat could not be read', () 
 });
 
 // Spots players pasted from FunCC on 2864tw.com/mask-spots.html (Tex, 2026-10-11), handed out with the box list.
-test('pastedCandidate: newest first, skips tried and remembered spots, at most 6 looks in 10 minutes', () => {
-  assert.equal(M.PASTE_PER_10MIN, 6);
+test('pastedCandidate: newest first, skips tried and remembered spots, at most 30 looks in 10 minutes', () => {
+  assert.equal(M.PASTE_PER_10MIN, 30);   // 6 left real pasted HT boxes unchecked after reset (Tex, 2026-10-13); the gate still caps every look
   const sp = (server, addedAt) => ({ server, x: 452, y: 422, addedAt });
   const list = [sp(1, NOW - 5000), sp(2, NOW - 1000), sp(3, NOW - 3000)];
   assert.equal(M.pastedCandidate(list, { now: NOW, tried: {}, spots: {}, pasteLog: [] }).server, 2);
   const tried = {}; tried[M.cityKey(sp(2))] = 1;
   const spots = {}; spots[M.cityKey(sp(3))] = NOW + 60000;
   assert.equal(M.pastedCandidate(list, { now: NOW, tried, spots, pasteLog: [] }).server, 1);
-  const log = [1, 2, 3, 4, 5, 6].map((i) => NOW - i * 60000);
+  const log = Array.from({ length: 30 }, (_, i) => NOW - (i + 1) * 15000);
+  assert.equal(M.pastedCandidate(list, { now: NOW, tried: {}, spots: {}, pasteLog: log.slice(1) }).server, 2, '29 looks: one more is fine');
   assert.equal(M.pastedCandidate(list, { now: NOW, tried: {}, spots: {}, pasteLog: log }), null);
   assert.equal(M.pastedCandidate(list, { now: NOW, tried: {}, spots: {}, pasteLog: log.map((t) => t - 600000) }).server, 2, 'older looks no longer count');
   assert.equal(M.pastedCandidate(null, { now: NOW, tried: {}, spots: {}, pasteLog: [] }), null);
