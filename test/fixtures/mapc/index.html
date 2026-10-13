@@ -12,6 +12,7 @@
 // For the Alliance Defense Skipper: the siege state (activity type 26, alMonsterSiege), server time, alliance rank and
 // the skip request (sendPB 3700): a window opens, a skip marches the boss, the wave resolves battleMs later.
 // For Angel Attacks: an Angel event (activity with extra.attackMonsterIds + groupId), the Angel list (sendPBV2 8802), carrier attacks (send 902 with isAirCraftCarrier) that land after landMs and join attackMonsterIds, and the march list (NWorldMapData).
+// For Refugee Camps: "Help Me" Letters (815) that put a camp by the base, the camp list (1021), the VIT buy (801), VIT capsules (815), rallies (1201) that hold heroes, units and a march for rallyMs, and Quick Deploy's inputs (heroes, units, slot sizes).
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
   cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false,
@@ -20,6 +21,14 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   known: { emotion_new: [192, 193, 303], emoji_gif: [10005] },   // ids the game's tables hold
   siege: null, rank: 5, battleMs: 500, waitSec: 60, loseAt: 0, refuseSkip: false, opens: {},
   angelEvent: null, angels: [], carrier: {}, angelMode: 'ok', landMs: 300, marchType189: 189,
+  // Refugee Camps: letters and capsules in the bag, VIT, marches, camps by the base, heroes and units at home
+  rfc: { letters: 20, small: 5, large: 2, vit: 100, vitMax: 327, buys: 0, used: 0, max: 7, camps: [], seq: 0, noCamp: false, rallyMode: 'ok', rallyMs: 3000,
+    positions: 9, armyAdd: 30, heroMax: 3, heroAddBuff: 1, gemDrift: 0, func: { mecha: true, monster_battle_replace: true, refugee_v2: false },
+    heroes: [{ Id: 338, Power: 9852, HeroType: 2 }, { Id: 115, Power: 4794, HeroType: 0 }, { Id: 117, Power: 4875, HeroType: 0 }, { Id: 169, Power: 12820, HeroType: 0 },
+      { Id: 174, Power: 10142, HeroType: 0 }, { Id: 170, Power: 10142, HeroType: 0 }, { Id: 172, Power: 11414, HeroType: 0 }, { Id: 333, Power: 11214, HeroType: 2 }, { Id: 334, Power: 10840, HeroType: 2 }],
+    units: [{ armyID: 901103, type: 101, level: 103, power: 300, n: 60 }, { armyID: 905103, type: 301, level: 103, power: 300, n: 60 },
+      { armyID: 10102, type: 101, level: 102, power: 200, n: 200 }, { armyID: 30102, type: 301, level: 102, power: 200, n: 200 }],
+    heroOut: {}, unitOut: {}, mechas: [] },
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -76,6 +85,47 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         });
         setTimeout(function () { cb({ c: 901, o: String(n), d: JSON.stringify({ rtype: 2, pointList: pts }) }); }, 20);
         return true;
+      } else if (rid === 815) {                            // use an item: a letter puts a camp by the base; capsules add VIT
+        var RF = F.rfc, it = p.itemid;
+        if (it === 1700039) {
+          if (RF.letters < 1) ans = { s: 3, d: 'item_not_enough' };
+          else { RF.letters--; if (!RF.noCamp) { RF.seq++; RF.camps.push({ x: 400 + RF.seq, y: 600 + RF.seq }); } ans = { s: 0, d: JSON.stringify({ itemId: it, amount: RF.letters }) }; }
+        } else if (it === 600001 || it === 600002) {
+          var kind = it === 600001 ? 'small' : 'large';
+          if (RF[kind] < 1) ans = { s: 3, d: 'item_not_enough' };
+          else if (RF.vit >= RF.vitMax) ans = { s: 3, d: 'energy_full' };
+          else { RF[kind]--; RF.vit += it === 600001 ? 10 : 50; ans = { s: 0, d: JSON.stringify({ itemId: it, amount: RF[kind] }) }; }
+        } else ans = { s: 3, d: 'item_error' };
+      } else if (rid === 801) {                            // the VIT buy: 50|200|500|500|1000 gems by buys today
+        var RB = F.rfc, price = [50, 200, 500, 500, 1000][Math.min(RB.buys, 4)];
+        if (RB.vit >= RB.vitMax) ans = { s: 3, d: 'energy_full' };
+        else if (F.gems < price) ans = { s: 3, d: 'gem_not_enough' };
+        else { F.gems -= price + RB.gemDrift; RB.buys++; RB.vit += 50; ans = { s: 0, d: '{}' }; }
+      } else if (rid === 1021) {                           // the camps found (the event panel's list)
+        ans = { s: 0, d: JSON.stringify({ points: F.rfc.camps.map(function (c) { return { x: c.x, y: c.y }; }) }) };
+      } else if (rid === 1201) {                           // start a rally: like the game, it holds the heroes, units and a march
+        var RR = F.rfc;
+        if (RR.rallyMode === 'silent') return true;
+        if (RR.rallyMode === 'refuse') ans = { s: 3, d: 'assembly_error_1' };
+        else {
+          var camp = RR.camps.filter(function (c) { return c.x === p.x && c.y === p.y && !c.rallied; })[0];
+          var need = {}; (p.armyList || []).forEach(function (a) { need[a.armyId] = (need[a.armyId] || 0) + a.armyNum; });
+          var short = Object.keys(need).some(function (id) { var g = RR.units.filter(function (u) { return String(u.armyID) === id; })[0]; return !g || g.n - (RR.unitOut[id] || 0) < need[id]; });
+          var bad = !camp ? 'no_camp' : (p.marchType !== 8 || p.time !== 180 || JSON.stringify(p.armyList) !== JSON.stringify(p.armyListNew)) ? 'bad_rally' : RR.used >= RR.max ? 'no_march'
+            : RR.vit < 5 ? 'no_vit' : (p.heroList || []).some(function (h) { return RR.heroOut[h]; }) ? 'hero_busy' : short ? 'no_units' : '';
+          if (bad) ans = { s: 3, d: bad };
+          else {
+            camp.rallied = true; RR.used++; RR.vit -= p.heroList.indexOf(115) >= 0 ? 4 : 5;   // Diana cuts the cost
+            p.heroList.forEach(function (h) { RR.heroOut[h] = 1; });
+            Object.keys(need).forEach(function (id) { RR.unitOut[id] = (RR.unitOut[id] || 0) + need[id]; });
+            setTimeout(function () {                          // the rally is over: everything comes home, the camp is gone
+              RR.used--; p.heroList.forEach(function (h) { delete RR.heroOut[h]; });
+              Object.keys(need).forEach(function (id) { RR.unitOut[id] -= need[id]; });
+              RR.camps = RR.camps.filter(function (c) { return c !== camp; });
+            }, RR.rallyMs);
+            ans = { s: 0, d: JSON.stringify({ marchInfo: { marchId: 'r' + n } }) };
+          }
+        }
       } else {
         var nowSec = Math.floor(Date.now() / 1000);
         ans = F.answers.length ? F.answers.shift() : { s: 0, d: JSON.stringify({ marchInfo: { marchStartTime: nowSec, marchArrive: nowSec + F.marchSecs, marchId: 'm' + n } }) };
@@ -157,11 +207,21 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   var PARTY = { 2: 1, 3: 2, 4: 3 };
   window.__require = function (name) {
     if (name === 'DataCenter') return { DATA: { get ServerTime() { return nowSec(); }, UserData: { Name: F.name, StrUid: F.uid, get UID() { return F.uid; }, _resourceData: { get _gold() { return F.gems; } },
-      getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; }, get Level() { return F.level; }, get Alliance() { return { Rank: F.rank }; }, OriginServerId: 2864, ServerId: 2864,
+      getItemAmount: function (id) { return id === 520002 ? F.bag : id === 1700039 ? F.rfc.letters : id === 600001 ? F.rfc.small : id === 600002 ? F.rfc.large : 0; },
+      getEnergy: function () { return { Point: F.rfc.vit, PointMax: F.rfc.vitMax, BuyTimes: F.rfc.buys }; },
+      get myMarchNum() { return F.rfc.used; }, get myMarchNumMAX() { return F.rfc.max; }, Heros: {},
+      FunctionOn: function (k) { return !!F.rfc.func[k]; }, Buff: { getBuffAddValue: function (k) { return k === 'BattleHeroAddNum' ? F.rfc.heroAddBuff : 0; } },
+      get VipLevel() { return F.vip; }, get Level() { return F.level; }, get Alliance() { return { Rank: F.rank }; }, OriginServerId: 2864, ServerId: 2864,
       get itemCityRewardReceivedNum() { return F.serverNum; }, get itemCityRewardReceivedInstIds() { return F.serverIds; } } } };
     if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
     if (name === 'NetMgr') return { NET: NET };
-    if (name === 'GameTools') return { default: { getDataConfigData: function (id) { return id === 630051 ? F.gifLevel : null; } } };
+    if (name === 'GameTools') return { default: {
+      getDataConfigData: function (id) { return ({ 630051: F.gifLevel, 2021116: '115|117|1117', 2021115: '3', 5041: '50|200|500|500|1000' })[id] || null; },
+      getAttackerMyArmys: function () {                 // one entry per unit at home
+        var out = [];
+        F.rfc.units.forEach(function (g) { for (var i = g.n - (F.rfc.unitOut[g.armyID] || 0); i > 0; i--) out.push({ armyID: g.armyID, armyNum: 0, ArmyData: { type: g.type, level: g.level, power: g.power, mecha_id: g.mecha || 0 }, battleMechaData: g.mecha ? { mechaId: g.mecha } : null }); });
+        return out;
+      } } };
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
     if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: (F.activity ? [activity] : []).concat(F.angelEvent ? [F.angelEvent] : []),
       getActivityByActivitytype: function (t) { return t === 26 && F.siege ? { id: 153, alMonsterSiege: F.siege } : null; } } } };
@@ -172,12 +232,23 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       if ((t === 'emotion_new' || t === 'emoji_gif') && F.known[t].indexOf(Number(id)) >= 0) return { id: Number(id) };
       if (t === 'mask_mystery_party' && PARTY[id]) { var ty = PARTY[id]; return { id: id, type: ty, item_id: 260617001 + ty, msg_banner: 'shareIcon' + (ty + 1), share_msg_key: 'JMR_bs_00' + ty, msg_type: 62 + ty, daily_limit: 20 }; }
       if (t === 'item' && id >= 260604017 && id <= 260604019) return { name: 'mask_reward_' + (id - 260604016) };
+      if (t === 'hero') { var hh = F.rfc.heroes.filter(function (h) { return h.Id === Number(id); })[0]; return hh ? { hero_type: hh.HeroType, exclude: hh.exclude || 0 } : null; }
+      if (t === 'item' && Number(id) === 1700039) return { para1: '12', para2: '14' };
+      if (t === 'monster_group' && Number(id) === 12) return { cost_energy: 5 };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
     if (name === 'NRequestIdV2') return { NRequestIdV2: { PINK_MECHA_MONSTER_LIST: 8802 } };
-    if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902 } };
+    if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902, ITEM_USE: 815, BuyEnergry: 801, GetRefugee: 1021, ALLIANCE_Assembly_Create: 1201 } };
     if (name === 'NWorldMapMarchCommon') return { NMarchType: { MECHA_TREASURE_BOSS: F.marchType189 } };
     if (name === 'NWorldMapData') return { default: { instance: { get marches() { return F.carrier; } } } };
-    var TEXT = { equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
+    if (name === 'GameDefine') return { FunctionKey: { mecha: 'mecha', refugee_v2: 'refugee_v2', monster_battle_replace: 'monster_battle_replace' }, BuffType: { BattleHeroAddNum: 'BattleHeroAddNum' } };
+    if (name === 'HeroTools') return { default: { getAllEnabledHero: function () { return F.rfc.heroes.filter(function (h) { return !F.rfc.heroOut[h.Id]; }).map(function (h) { return Object.assign({ Quality: 5, Star: 5, Level: 120, TryOut: 0 }, h); }); } } };
+    if (name === 'HeroData') return { HeroQuality: { Orange: 5 } };
+    if (name === 'HeroController') return { HeroController: { getInstance: function () { return { checkHeroExclude: function () { return false; } }; } }, HeroState: { March: 2 } };
+    if (name === 'NBattleModel') return { NBattleModel: { instance: { myMaxArmysNum: 9, getMarchHeroNumMax: function () { return F.rfc.heroMax; } } } };
+    if (name === 'NBattlePositionBiz') return { NBattlePositionBiz: { getPositionCount: function () { return F.rfc.positions; } } };
+    if (name === 'MarchStorageController') return { MarchStorageController: { getInstance: function () { return { getMaxCoutByPos: function (y) { var a = F.rfc.armyAdd; return 1 + Math.floor(a / 9) + (a % 9 > y ? 1 : 0); } }; } } };
+    if (name === 'MechaController') return { MechaController: { getInstance: function () { return { getMyMechaList: function () { return F.rfc.mechas; } }; } } };
+    var TEXT = { assembly_error_1: 'The rally could not start.', equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
       pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached', view_too_fast: 'Too frequent',
       backup_mecha_lottery_21: 'March failed! A commander can only attack the same Heavy Mothership Angel once!' };
     if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return TEXT[k] || k; } } };
