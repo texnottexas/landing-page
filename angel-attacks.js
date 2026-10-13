@@ -155,6 +155,7 @@
     for (var i = 0; i < targets.length && S.running; i++) {
       var g = C.gate(S.log, Date.now());
       if (!g.ok) { note('Paused: ' + g.reason + '.', 'warn'); return; }
+      if (Object.keys(marchTiles(I.type)).length >= C.MAX_ON_WAY) { refreshCounts(); note(C.MAX_ON_WAY + ' attacks on the way. The rest when they land.', 'ok'); return; }
       setFoot('Attacking ' + (i + 1) + ' of ' + targets.length + '...', 'ok');
       await delay(FAST ? 0 : 3000 + Math.floor(Math.random() * 2000));
       if (!(await turn())) return;
@@ -163,7 +164,12 @@
       var t = targets[i];
       if (C.pickTargets([monsters[t.at]], ctx()).length !== 1) continue;
       var N = NET();
-      if (typeof N.checkRequestIdNoRes === 'function' && N.checkRequestIdNoRes(I.march)) { note('The game is busy with a march.', 'warn'); return; }
+      if (typeof N.checkRequestIdNoRes === 'function' && N.checkRequestIdNoRes(I.march)) {
+        // the game still waits for an answer to a march request. If that is our own unanswered attack, it counts
+        // toward the stop (the real game keeps it pending); another tool's request is no strike against us
+        if (S.silent > 0 && ++S.silent >= C.SILENT_STOP) { stop('the game stopped answering attacks'); return; }
+        note('The game is busy with a march.', 'warn'); return;
+      }
       remember(t.uuid);                                       // before the request: a lost answer never brings a second attack
       S.log.push(Date.now()); if (S.log.length > 100) S.log.shift();
       var r = C.classifyAttack(await call(function (cb) { return N.send(I.march, { isAirCraftCarrier: true, marchType: I.type, x: t.x, y: t.y }, TARGET, cb); }));
@@ -175,7 +181,7 @@
       }
       if (r.kind === 'silent') {
         S.silent++;
-        if (S.silent >= C.SILENT_STOP) { stop('the game did not answer 3 attacks in a row'); return; }
+        if (S.silent >= C.SILENT_STOP) { stop('the game stopped answering attacks'); return; }
         continue;
       }
       stop(gameText(r.key) || ('the game answered ' + r.s + (r.key ? ' (' + r.key + ')' : '')));

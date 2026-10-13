@@ -130,12 +130,12 @@ test('ANG-3: a refusal stops the run with the game\'s text; nothing more is sent
   await ctx.close();
 });
 
-test('ANG-4: three attacks in a row with no answer stop the run', async () => {
+test('ANG-4: an attack the game never answers stays pending in the game: no second attack goes out, and the run stops saying so', async () => {
   const { ctx, page } = await open(() => { __fake.angelMode = 'silent'; });
   await page.evaluate(event, [{}, {}, {}, {}, {}]);
   await launch(page);
-  await waitText(page, '#ang-root', /stopped: the game did not answer 3 attacks in a row/, 12000);
-  assert.equal((await attacks(page)).length, 3);
+  await waitText(page, '#ang-root', /stopped: the game stopped answering attacks/, 15000);
+  assert.equal((await attacks(page)).length, 1, 'nothing more while the game still waits for the first');
   await ctx.close();
 });
 
@@ -236,10 +236,10 @@ test('MBX-ANG-1: the Mask Boxes card\'s Angels switch loads Angel Attacks at the
   await page.addScriptTag({ url: base + 'mask-boxes.js' });
   await page.waitForSelector('#mbx-angels');
   assert.equal(await page.getAttribute('#mbx-angels', 'aria-pressed'), 'false');
-  // one row of three short buttons, so the card is no taller (it must still fit beside Map Collector's on a phone)
+  // one row of three buttons, so the card is no taller (it must still fit beside Map Collector's on a phone); Share keeps its words
   const row = await page.evaluate(() => { const b = ['mbx-share', 'mbx-angels', 'mbx-stop'].map((id) => document.getElementById(id));
     return { same: b.every((x) => x.parentNode === b[0].parentNode), fits: b.every((x) => x.scrollWidth <= x.clientWidth), tall: b.every((x) => x.getBoundingClientRect().height >= 44), text: b.map((x) => x.textContent) }; });
-  assert.deepEqual(row, { same: true, fits: true, tall: true, text: ['Share', 'Angels', 'Stop'] });
+  assert.deepEqual(row, { same: true, fits: true, tall: true, text: ['Share: off', 'Angels: off', 'Stop'] });
   await page.click('#mbx-angels');
   await page.waitForFunction(() => window.__ANG && window.__ANG.running);
   await page.waitForFunction(() => document.getElementById('mbx-angels').getAttribute('aria-pressed') === 'true');
@@ -277,5 +277,31 @@ test('MBX-ANG-2: Map Collector, Mask Boxes and Angel Attacks all open on a phone
   await page.click('#ang-root .ang-head');                          // the player can still open it
   await page.waitForFunction(() => !document.querySelector('#ang-root .ang-card').classList.contains('min'));
   assert.equal(await page.evaluate(() => localStorage.getItem('ang_min_v1')), null);
+  await ctx.close();
+});
+
+test('ANG-12: another tool\'s march request still waiting (the game says busy): no attack, no strike against us, and it goes out once the game is free', async () => {
+  const { ctx, page } = await open(() => { __fake.pending.push(902); });
+  await page.evaluate(event, [{}]);
+  await launch(page);
+  await waitText(page, '#ang-foot', /The game is busy with a march/);
+  await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 8802).length >= 4, null, { timeout: 12000 });   // several checks, all busy
+  assert.equal((await attacks(page)).length, 0);
+  assert.equal(await page.evaluate(() => window.__ANG.running), true, 'busy because of someone else is not a reason to stop');
+  await page.evaluate(() => { __fake.pending = []; });
+  await page.waitForFunction(() => __fake.sent.some((s) => s.rid === 902), null, { timeout: 8000 });
+  await ctx.close();
+});
+
+test('ANG-13: at most 8 attacks on the way at once (8 is what the game was seen to take); the rest go when some have landed', async () => {
+  const { ctx, page } = await open(() => { __fake.landMs = 12000; });   // live marches take minutes; 8 must be out together
+  await page.evaluate(event, Array.from({ length: 10 }, () => ({})));
+  await launch(page);
+  await waitText(page, '#ang-foot', /8 attacks on the way/, 20000);
+  assert.equal((await attacks(page)).length, 8);
+  assert.match(await page.textContent('#ang-sub'), /On the way 8/);
+  await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 902).length >= 10, null, { timeout: 25000 });   // after landing, the rest
+  const xy = (await attacks(page)).map((s) => s.p.x + ',' + s.p.y);
+  assert.equal(new Set(xy).size, xy.length, 'each Angel once');
   await ctx.close();
 });

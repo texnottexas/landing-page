@@ -4,6 +4,7 @@
 (function (root) {
   'use strict';
   var MIN_LEFT_MS = 120000, MAX_PER_MIN = 10, MAX_PER_10MIN = 40, SILENT_STOP = 3;
+  var MAX_ON_WAY = 8;                                   // carrier attacks out at once: the game took 8 live (2026-10-13), more is untried
 
   var ET_FMT = null;
   function etParts(ms) {
@@ -71,7 +72,7 @@
   }
 
   var AngelAttacksCore = {
-    MIN_LEFT_MS: MIN_LEFT_MS, MAX_PER_MIN: MAX_PER_MIN, MAX_PER_10MIN: MAX_PER_10MIN, SILENT_STOP: SILENT_STOP,
+    MIN_LEFT_MS: MIN_LEFT_MS, MAX_PER_MIN: MAX_PER_MIN, MAX_PER_10MIN: MAX_PER_10MIN, SILENT_STOP: SILENT_STOP, MAX_ON_WAY: MAX_ON_WAY,
     num: num, gameDay: gameDay, findEvent: findEvent, pickTargets: pickTargets, gate: gate, classifyAttack: classifyAttack, sentFor: sentFor
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = AngelAttacksCore;

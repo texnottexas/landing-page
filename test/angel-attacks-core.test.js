@@ -62,6 +62,7 @@ test('classifyAttack: s 0 is sent; no answer, a timeout or a blocked send is sil
   assert.deepEqual(A.classifyAttack({ s: 3, d: 'backup_mecha_lottery_21' }), { kind: 'refused', s: 3, key: 'backup_mecha_lottery_21' });
   assert.deepEqual(A.classifyAttack({ s: 7 }), { kind: 'refused', s: 7, key: '' });
   assert.equal(A.SILENT_STOP, 3);
+  assert.equal(A.MAX_ON_WAY, 8);
 });
 
 test('sentFor: the same event keeps its sent list; a new round starts empty', () => {

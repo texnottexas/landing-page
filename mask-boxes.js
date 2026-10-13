@@ -417,9 +417,10 @@
     '#mbx-root .mbx-shared{color:#79c0ff;font-size:12px;margin-top:2px}#mbx-root .mbx-shared:empty{display:none}',
     '#mbx-root .mbx-btns button#mbx-share[aria-pressed="true"]{border-color:#3fb950;color:#3fb950}',
     '#mbx-root .mbx-btns button#mbx-angels[aria-pressed="true"]{border-color:#388bfd;color:#79c0ff}',
+    '#mbx-root .mbx-btns.mbx-row3 button{flex:1 1 auto;min-width:0;padding:0 3px;font-size:11px;white-space:nowrap}',   // beats the plain .mbx-btns rule below
     '#mbx-root .mbx-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#mbx-root .mbx-last{color:#3fb950;font-size:12px;margin-top:2px}#mbx-root .mbx-last:empty{display:none}',
     '#mbx-root .mbx-msg{margin:4px 0 2px}#mbx-root .mbx-btns{display:flex;gap:6px;margin-top:8px}',
-    '#mbx-root .mbx-btns button{flex:1;min-width:0;min-height:44px;padding:0 4px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#mbx-root .mbx-btns button:hover{border-color:#79c0ff}'
+    '#mbx-root .mbx-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#mbx-root .mbx-btns button:hover{border-color:#79c0ff}'
   ].join('\n');
   var root = null, card = null, body = null;
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
@@ -470,10 +471,11 @@
     var last = el('div', 'mbx-last'); last.id = 'mbx-last'; body.appendChild(last);
     var sh = el('div', 'mbx-shared'); sh.id = 'mbx-shared'; body.appendChild(sh);
     var btns = el('div', 'mbx-btns');
-    // one row of three short buttons, on or off shown by the border (like the type toggles): the card must stay
-    // short enough to sit beside Map Collector's on a phone
-    btns.appendChild(button('mbx-share', 'Share', toggleShare));
-    btns.appendChild(button('mbx-angels', 'Angels', toggleAngels));
+    // Share, Angels and Stop share one row at 11 px, so the card is no taller and still sits beside Map Collector's
+    // on a phone
+    btns.className = 'mbx-btns mbx-row3';
+    btns.appendChild(button('mbx-share', 'Share: off', toggleShare));
+    btns.appendChild(button('mbx-angels', 'Angels: off', toggleAngels));
     btns.appendChild(button('mbx-stop', 'Stop', function () { stop('stopped by you'); }));
     body.appendChild(btns);
     paint();
@@ -504,9 +506,9 @@
     var n = sharedIds().length, shText = S.shareMsg ? S.shareMsg : S.shareStopped ? 'Sharing stopped: ' + S.shareStopped : n || S.share ? 'Shared ' + n + (S.lastShare ? ' · last ' + S.lastShare : '') : '';
     var shl = document.getElementById('mbx-shared'); if (shl && shl.textContent !== shText) { shl.textContent = shText; shl.title = shText; }
     var sb = document.getElementById('mbx-share');
-    if (sb) { var on = String(!!S.share); if (sb.getAttribute('aria-pressed') !== on) sb.setAttribute('aria-pressed', on); var st = S.shareBusy ? 'Share...' : 'Share'; if (sb.textContent !== st) sb.textContent = st; sb.title = 'Share collected boxes to world chat: ' + (S.share ? 'on' : 'off'); }
+    if (sb) { var on = String(!!S.share); if (sb.getAttribute('aria-pressed') !== on) sb.setAttribute('aria-pressed', on); var st = S.shareBusy ? 'Share: ...' : S.share ? 'Share: on' : 'Share: off'; if (sb.textContent !== st) sb.textContent = st; sb.title = 'Share collected boxes to world chat'; }
     var ab = document.getElementById('mbx-angels');
-    if (ab) { var aon = angelsOn(), at = angLoading ? 'Angels...' : angFailed ? 'Retry' : 'Angels'; if (ab.textContent !== at) ab.textContent = at; if (ab.getAttribute('aria-pressed') !== String(aon)) ab.setAttribute('aria-pressed', String(aon)); ab.title = angFailed ? 'Angel Attacks did not load. Tap to try again.' : 'Attack each Heavy Mothership Angel once (carrier, no normal march): ' + (aon ? 'on' : 'off'); }
+    if (ab) { var aon = angelsOn(), at = angLoading ? 'Angels: ...' : aon ? 'Angels: on' : angFailed ? 'Retry' : 'Angels: off'; if (ab.textContent !== at) ab.textContent = at; if (ab.getAttribute('aria-pressed') !== String(aon)) ab.setAttribute('aria-pressed', String(aon)); ab.title = angFailed ? 'Angel Attacks did not load. Tap to try again.' : 'Attack each Heavy Mothership Angel once (carrier, no normal march): ' + (aon ? 'on' : 'off'); }
     card.className = 'mbx-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
   }
 
