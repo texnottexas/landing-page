@@ -635,7 +635,172 @@
     };
   }
 
-  var api = { analyze: analyze, armyType: armyType, KILL_FACTOR: KILL_FACTOR };
+  // ---- Snapshot enrichment ----------------------------------------------------------------------------------------
+  // withSnapshot(side, snap, tables) -> a copy of one side whose moves may carry `extra` (one short sentence about what the player
+  // holds) and `extraNames` (the hero names in it, for the caller to mark translate="no"). `analyze` is not touched and a move
+  // that the snapshot says nothing about is copied as it is. snap = the supplements the armory already holds, all optional:
+  //   inv      Snapshot inventory ({tabs:{item:[{id,a}]}})        enigma  {fields:[{holes:[{hid,lv,beastId}]}], beasts:[{id}], beast2field}
+  //   bench    bench beasts ({kept, beasts})                      heroes  {list:[{id, p1:{x,b}, p2:{x,b}}]} (skill slots by preset)
+  //   runeBag  {family name: loose runes in the bag}, worked out by the caller from inv + the item table
+  // tables: heroes (names), enhance (data/enigma-platform-enhance.json) as for analyze, platforms (data/enigma-platforms.json, the slot rules).
+  // snap.decode(cfgId) -> {type, faction, quality} is the game-data decoder, for beasts that carry no attributes of their own.
+  // A move about filling an OPEN field turns Free only when the spare beasts fill every slot; a locked field never changes tier.
+  var REPEATER_ID = 47007002, UNIVERSAL_SHARD_ID = 20213232;
+  var PROTECTION = { army: [21120, 20120], navy: [21121, 20121], af: [21122, 20122] };
+  function bagCount(inv, id) {
+    var list = inv && inv.tabs && inv.tabs.item;
+    if (!Array.isArray(list)) return null;
+    var n = 0;
+    list.forEach(function (it) { if (it && num(it.id) === id) n += num(it.a); });
+    return n;
+  }
+  // The beasts not deployed, each with the quality / type / faction the slot rules read: the beast's own q, type, fac,
+  // else the bench entry of the same id, else snap.decode(cfgId) (the game-data decoder). A beast whose attributes are unknown is left out.
+  function spareBeasts(snap) {
+    var e = snap.enigma, bench = {};
+    ((snap.bench && snap.bench.beasts) || []).forEach(function (b) { if (b && b.id != null) bench[b.id] = b; });
+    function attrs(b) {
+      var o = bench[b.id] || {}, dc = null;
+      function pick(k, alt) { return b[k] != null ? num(b[k]) : (o[k] != null ? num(o[k]) : null); }
+      var q = pick('q'), t = pick('type'), f = pick('fac');
+      if ((q === null || t === null || f === null) && typeof snap.decode === 'function' && b.cfgId != null) {
+        try { dc = snap.decode(b.cfgId); } catch (err) { dc = null; }
+        if (dc) { if (q === null && dc.quality != null) q = num(dc.quality); if (t === null && dc.type != null) t = num(dc.type); if (f === null && dc.faction != null) f = num(dc.faction); }
+      }
+      return { q: q, type: t, fac: f };
+    }
+    var list = null;
+    if (e && Array.isArray(e.beasts)) {
+      var used = {};
+      Object.keys(e.beast2field || {}).forEach(function (k) { used[k] = 1; });
+      (e.fields || []).forEach(function (f) { (f.holes || []).forEach(function (h) { if (h && h.beastId) used[h.beastId] = 1; }); });
+      list = e.beasts.filter(function (b) { return b && !used[b.id]; });
+    } else if (snap.bench && Array.isArray(snap.bench.beasts)) list = snap.bench.beasts.filter(function (b) { return b; });
+    if (!list) return null;
+    return list.map(attrs);
+  }
+  // how many of a field's slots the spare beasts can fill (a largest matching, slots against beasts)
+  function slotsFilled(field, spare, platforms) {
+    var holes = ((platforms && platforms.holes) || []).filter(function (h) { return h.fieldType === field; });
+    if (!holes.length) return null;
+    function fits(h, b) {
+      return b.q !== null && b.type !== null && b.fac !== null && b.q >= num(h.minQuality) && (!h.faction || h.faction === b.fac) &&
+        (!(h.beastTypeIds && h.beastTypeIds.length) || h.beastTypeIds.indexOf(b.type) >= 0);
+    }
+    var owner = {};
+    function place(hi, seen) {
+      for (var bi = 0; bi < spare.length; bi++) {
+        if (seen[bi] || !fits(holes[hi], spare[bi])) continue;
+        seen[bi] = 1;
+        if (owner[bi] === undefined || place(owner[bi], seen)) { owner[bi] = hi; return true; }
+      }
+      return false;
+    }
+    var n = 0;
+    for (var hi = 0; hi < holes.length; hi++) if (place(hi, {})) n++;
+    return { filled: n, slots: holes.length, used: Object.keys(owner).map(Number) };
+  }
+  // levels the repeaters buy: always the cheapest next level of any slot first
+  function repeaterLevels(enigma, enhance, have) {
+    var plats = enhance && enhance.platforms;
+    if (!plats || !enigma || !Array.isArray(enigma.fields)) return null;
+    var heads = [];
+    enigma.fields.forEach(function (f) {
+      (f.holes || []).forEach(function (h) {
+        var pl = plats[h.hid];
+        if (pl && Array.isArray(pl.levels)) heads.push({ lv: num(h.lv), levels: pl.levels, max: num(pl.maxLevel) || pl.levels.length });
+      });
+    });
+    if (!heads.length) return null;
+    function cost(x) {
+      if (x.lv >= x.max) return Infinity;
+      var row = x.levels[x.lv];
+      return row && row.cost ? num(row.cost.count) : Infinity;
+    }
+    var left = have, n = 0, guard = 0;
+    for (;;) {
+      var best = null, bc = Infinity;
+      heads.forEach(function (x) { var c = cost(x); if (c < bc) { bc = c; best = x; } });
+      if (!best || bc > left || ++guard > 5000) return { levels: n, next: bc === Infinity ? null : bc };
+      left -= bc; n++; best.lv++;
+    }
+  }
+  function heroNameOf(tables, id) {
+    var list = (tables && tables.heroes) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].heroId === id) return list[i].displayName || list[i].name || null;
+    return null;
+  }
+  function protectionExtra(mv, snap, tables) {
+    var ids = PROTECTION[mv.data && mv.data.branch];
+    var list = snap.heroes && snap.heroes.list;
+    if (!ids || !Array.isArray(list)) return null;
+    var found = [];
+    list.forEach(function (h) {
+      [['p1', 'first'], ['p2', 'second']].forEach(function (pp) {
+        var slots = (h[pp[0]] && ((h[pp[0]].x || []).concat(h[pp[0]].b || []))) || [];
+        var hit = slots.filter(function (s) { return s && (num(s.id) === ids[0] || num(s.id) === ids[1]); })[0];
+        var nm = heroNameOf(tables, h.id);
+        if (hit && nm) found.push({ name: nm, preset: pp[1], low: num(hit.id) === ids[1] });
+      });
+    });
+    if (!found.length) return null;
+    found.sort(function (a, b) { return (a.low ? 1 : 0) - (b.low ? 1 : 0); });
+    var top = found.slice(0, 2), names = top.map(function (f) { return f.name; });
+    var parts = top.map(function (f) { return f.name + "'s " + f.preset + ' preset'; });
+    var low = top.every(function (f) { return f.low; });
+    var text = found.length === 1 ? (low ? 'A lower quality copy is on ' : 'One copy is on ') + parts[0] + '.'
+      : (low ? 'Lower quality copies are on ' : found.length + ' copies are on ') + parts.join(' and ') + (found.length > 2 ? ' and ' + (found.length - 2) + ' more' : '') + '.';
+    return { text: text, names: names };
+  }
+  function extraFor(mv, snap, tables, ctx) {
+    var d = mv.data || {}, n;
+    if (mv.id === 'protection') return protectionExtra(mv, snap, tables);
+    if (/^beast-field-\d+$/.test(mv.id) && d.field != null && d.locked === false) {   // only a move about filling a field that is open
+      if (ctx.spare === undefined) ctx.spare = spareBeasts(snap);
+      // beasts a field already filled are taken, so two open fields can't both be filled with the same spares
+      var spare = ctx.spare ? ctx.spare.filter(function (b) { return !b.taken; }) : null;
+      var fit = spare ? slotsFilled(d.field, spare, tables && tables.platforms) : null;
+      if (!fit) return null;
+      var all = fit.filled === fit.slots;
+      if (all) fit.used.forEach(function (i) { spare[i].taken = true; });
+      return { text: all ? 'Your spare beasts fill all ' + fit.slots + ' of its slots.' : fit.filled > 0 ? 'Your spare beasts fit ' + fit.filled + ' of its ' + fit.slots + ' slots.' : 'Your spare beasts fit none of its ' + fit.slots + ' slots.',
+        tier: all ? 'free' : null };
+    }
+    if (mv.id === 'runes-stars' && d.weakest && snap.runeBag && typeof snap.runeBag === 'object') {
+      n = num(snap.runeBag[d.weakest.name]);
+      return { text: n > 0 ? 'You have ' + n + ' ' + d.weakest.name + (n === 1 ? ' rune' : ' runes') + ' in the bag.' : 'You have no ' + d.weakest.name + ' runes in the bag.' };
+    }
+    if (mv.id === 'beast-field-levels') {
+      n = bagCount(snap.inv, REPEATER_ID);
+      if (n === null) return null;
+      var r = repeaterLevels(snap.enigma, tables && tables.enhance, n);
+      if (!r) return null;
+      if (r.levels > 0) return { text: plural(n, 'repeater') + ': enough for about ' + plural(r.levels, 'level') + '.' };
+      return { text: 'You have ' + plural(n, 'repeater') + (r.next ? '. The cheapest next level costs ' + r.next + '.' : '.') };
+    }
+    if (mv.id === 'decoration-suits') {
+      n = bagCount(snap.inv, UNIVERSAL_SHARD_ID);
+      if (n === null) return null;
+      return { text: 'You have ' + plural(n, 'universal decor shard') + ' in the bag.' };
+    }
+    return null;
+  }
+  function withSnapshot(side, snap, tables) {
+    var out = {};
+    Object.keys(side || {}).forEach(function (k) { out[k] = side[k]; });
+    var ctx = {};
+    out.moves = ((side && side.moves) || []).map(function (mv) {
+      var copy = {};
+      Object.keys(mv).forEach(function (k) { copy[k] = mv[k]; });
+      var x = null;
+      try { x = snap && typeof snap === 'object' ? extraFor(mv, snap, tables || {}, ctx) : null; } catch (e) { x = null; }
+      if (x && x.text) { copy.extra = x.text; copy.extraNames = x.names || []; if (x.tier) copy.tier = x.tier; }
+      return copy;
+    });
+    return out;
+  }
+
+  var api = { analyze: analyze, withSnapshot: withSnapshot, armyType: armyType, KILL_FACTOR: KILL_FACTOR };
   if (typeof window !== 'undefined') window.ReportCoach = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })();

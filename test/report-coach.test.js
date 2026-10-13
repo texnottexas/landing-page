@@ -285,3 +285,142 @@ test('protection: a Protection skill for another branch reads as a swap', () => 
   assert.match(m.detail, /Army Protection/);
   assert.equal(m.data.otherBranch, 1);
 });
+
+
+// ---- withSnapshot: the armory adds what the player holds (synthetic snapshots, no player data) ----
+const enhance = data('enigma-platform-enhance.json');
+const heroList = data('all-heroes.json');
+const PLATFORMS = { holes: [
+  { fieldType: 4, minQuality: 4, faction: 0, beastTypeIds: [2, 3] },
+  { fieldType: 4, minQuality: 4, faction: 1, beastTypeIds: [1, 2, 9] }] };
+const T2 = Object.assign({}, tables, { enhance: enhance, platforms: PLATFORMS });
+const mkSnap = (o) => Object.assign({
+  inv: { tabs: { item: [{ id: 47007002, a: 43 }, { id: 20213232, a: 507 }] } },
+  enigma: { fields: [{ fid: 1, holes: [{ hid: 1, lv: 8, beastId: 'a' }, { hid: 2, lv: 5, beastId: 'b' }] }, { fid: 2, holes: [{ hid: 6, lv: 1, beastId: 'c' }] }],
+    beasts: [{ id: 'a' }, { id: 'b' }, { id: 'c' }, { id: 'd', q: 5, type: 2, fac: 1 }, { id: 'e', q: 3, type: 1, fac: 1 }], beast2field: { a: { fid: 1, hid: 1 }, b: { fid: 1, hid: 2 } } },
+  heroes: { list: [{ id: heroList[0].heroId, p1: { x: [{ id: 0, lv: 0 }], b: [] }, p2: { x: [{ id: 21122, lv: 7 }], b: [] } }] },
+  runeBag: { 'All-Out Surge': 3 }
+}, o || {});
+// Rex's real moves, plus two the fixture no longer produces: filling an open field, and raising field levels
+const rexSide = () => {
+  const side = run(REX, T2).sides.attacker;
+  return Object.assign({}, side, { moves: side.moves.concat([
+    { tier: 'upgrade', id: 'beast-field-4', data: { field: 4, locked: false } },
+    { tier: 'upgrade', id: 'beast-field-levels', data: {} }]) });
+};
+
+test('withSnapshot leaves analyze alone and does not mutate its input', () => {
+  const side = rexSide(), before = JSON.stringify(side);
+  const out = Coach.withSnapshot(side, mkSnap(), T2);
+  assert.equal(JSON.stringify(side), before);
+  assert.equal(out.moves.length, side.moves.length);
+  assert.deepEqual(out.moves.map((m) => m.id), side.moves.map((m) => m.id));
+  assert.deepEqual(out.gaps, side.gaps);
+});
+
+test('withSnapshot: a locked field gets no spare-beast line and keeps its tier', () => {
+  const out = Coach.withSnapshot(rexSide(), mkSnap(), T2), locked = find(out, 'beast-field-5');
+  assert.equal(locked.extra, undefined);
+  assert.equal(locked.tier, 'upgrade');
+});
+
+test('withSnapshot: spare beasts, runes, repeaters and the Protection copy', () => {
+  const out = Coach.withSnapshot(rexSide(), mkSnap(), T2);
+  const x = (id) => find(out, id).extra;
+  assert.equal(x('beast-field-4'), 'Your spare beasts fit 1 of its 2 slots.');
+  assert.equal(find(out, 'beast-field-4').tier, 'upgrade', 'a part fit does not promote');
+  assert.equal(x('runes-stars'), 'You have 3 All-Out Surge runes in the bag.');
+  assert.match(x('protection'), /^One copy is on .+'s second preset\.$/);
+  assert.equal(find(out, 'protection').extraNames[0], heroList[0].displayName || heroList[0].name);
+  assert.match(x('beast-field-levels'), /^43 repeaters: enough for about \d+ levels?\.$/);
+});
+
+test('withSnapshot: repeater levels spend the cheapest next level first', () => {
+  const snap = mkSnap({ inv: { tabs: { item: [{ id: 47007002, a: 12 }] } }, enigma: { fields: [{ holes: [{ hid: 1, lv: 0 }] }] } });
+  const out = Coach.withSnapshot(rexSide(), snap, T2);
+  const lv = enhance.platforms[1].levels;   // costs 5, 10, ...
+  assert.equal(lv[0].cost.count + lv[1].cost.count > 12, true);
+  assert.equal(find(out, 'beast-field-levels').extra, '12 repeaters: enough for about 1 level.');
+  const few = Coach.withSnapshot(rexSide(), mkSnap({ inv: { tabs: { item: [{ id: 47007002, a: 2 }] } }, enigma: { fields: [{ holes: [{ hid: 1, lv: 0 }] }] } }), T2);
+  assert.equal(find(few, 'beast-field-levels').extra, 'You have 2 repeaters. The cheapest next level costs 5.');
+});
+
+test('withSnapshot: an open field turns Free only when the spare beasts fill every slot', () => {
+  const full = mkSnap(); full.enigma.beasts.push({ id: 'f', q: 4, type: 3, fac: 2 });
+  const out = Coach.withSnapshot(rexSide(), full, T2);
+  assert.equal(find(out, 'beast-field-4').extra, 'Your spare beasts fill all 2 of its slots.');
+  assert.equal(find(out, 'beast-field-4').tier, 'free');
+  assert.equal(find(out, 'beast-field-5').tier, 'upgrade', 'a locked field never changes tier');
+  // a beast with no attributes of its own is read from the bench entry, then the decoder
+  const viaBench = mkSnap({ bench: { beasts: [{ id: 'g', q: 5, type: 3, fac: 2 }] } }); viaBench.enigma.beasts.push({ id: 'g', cfgId: 7 }, { id: 'h', cfgId: 8 });
+  viaBench.decode = (c) => (c === 8 ? { type: 2, faction: 1, quality: 5 } : null);
+  assert.equal(find(Coach.withSnapshot(rexSide(), viaBench, T2), 'beast-field-4').tier, 'free');
+  const unknown = mkSnap(); unknown.enigma.beasts = [{ id: 'z', cfgId: 9 }];
+  assert.equal(find(Coach.withSnapshot(rexSide(), unknown, T2), 'beast-field-4').extra, 'Your spare beasts fit none of its 2 slots.');
+});
+
+test('withSnapshot: no spare beasts, no copy elsewhere, a lower quality copy', () => {
+  const none = Coach.withSnapshot(rexSide(), mkSnap({ enigma: { fields: [], beasts: [{ id: 'a' }], beast2field: { a: { fid: 1, hid: 1 } } }, heroes: { list: [] } }), T2);
+  assert.equal(find(none, 'beast-field-4').extra, 'Your spare beasts fit none of its 2 slots.');
+  assert.equal(find(none, 'protection').extra, undefined, 'no copy found: nothing said');
+  const low = Coach.withSnapshot(rexSide(), mkSnap({ heroes: { list: [{ id: heroList[0].heroId, p1: { x: [{ id: 20122, lv: 3 }] }, p2: { x: [] } }] } }), T2);
+  assert.match(find(low, 'protection').extra, /^A lower quality copy is on .+'s first preset\.$/);
+});
+
+test('withSnapshot: missing or private supplements say nothing', () => {
+  for (const snap of [null, undefined, {}, { inv: null, enigma: null, heroes: null }]) {
+    const out = Coach.withSnapshot(rexSide(), snap, T2);
+    assert.equal(out.moves.every((m) => m.extra === undefined), true);
+  }
+  const noEnh = Coach.withSnapshot(rexSide(), mkSnap(), tables);
+  assert.equal(find(noEnh, 'beast-field-levels').extra, undefined, 'no repeater table: nothing said');
+  assert.equal(find(noEnh, 'beast-field-4').extra, undefined, 'no slot rules: nothing said');
+  const noBag = Coach.withSnapshot(rexSide(), mkSnap({ inv: null }), T2);
+  assert.equal(find(noBag, 'beast-field-levels').extra, undefined);
+});
+
+test('withSnapshot: decoration suits move reads the universal shards', () => {
+  const side = { moves: [{ tier: 'long', id: 'decoration-suits', data: {} }] };
+  assert.equal(Coach.withSnapshot(side, mkSnap(), T2).moves[0].extra, 'You have 507 universal decor shards in the bag.');
+  assert.equal(Coach.withSnapshot(side, mkSnap({ inv: { tabs: { item: [] } } }), T2).moves[0].extra, 'You have 0 universal decor shards in the bag.');
+});
+
+test('withSnapshot copy has no em dashes', () => {
+  const out = Coach.withSnapshot(rexSide(), mkSnap(), T2);
+  out.moves.forEach((m) => assert.equal(/[—–]/.test(m.extra || ''), false));
+});
+
+test('data/buff-group.json is the table battle-report.html uses', () => {
+  assert.equal(JSON.stringify(JSON.parse(fs.readFileSync(path.join(ROOT, 'data', 'buff-group.json'), 'utf8'))), JSON.stringify(tables.buffGroup));
+});
+
+// Slots the spare beasts DO fit in fields 3, 4 and 5, so the tier rules are exercised, not skipped for lack of holes.
+const PLATFORMS_ALL = { holes: [
+  { fieldType: 3, minQuality: 4, faction: 0, beastTypeIds: [2, 3] },
+  { fieldType: 4, minQuality: 4, faction: 0, beastTypeIds: [2, 3] }, { fieldType: 4, minQuality: 4, faction: 1, beastTypeIds: [1, 2, 9] },
+  { fieldType: 5, minQuality: 4, faction: 0, beastTypeIds: [2, 3] }, { fieldType: 5, minQuality: 4, faction: 1, beastTypeIds: [1, 2, 9] }] };
+const T3 = Object.assign({}, T2, { platforms: PLATFORMS_ALL });
+const fullSnap = () => { const s = mkSnap(); s.enigma.beasts.push({ id: 'f', q: 4, type: 3, fac: 2 }); return s; };
+
+test('withSnapshot: a locked field and a fields 1-3 move never turn Free, even when spare beasts fit their slots', () => {
+  const side = run(REX, T3).sides.attacker;
+  const locked = side.moves.find((m) => m.id === 'beast-field-5');
+  assert.equal(locked.data.locked, true);
+  const withThree = Object.assign({}, side, { moves: side.moves.concat([{ tier: 'upgrade', id: 'beast-field-3', data: { field: 3, unlocked: false } }]) });
+  const out = Coach.withSnapshot(withThree, fullSnap(), T3);
+  for (const id of ['beast-field-5', 'beast-field-3']) {
+    assert.equal(find(out, id).tier, 'upgrade', id);
+    assert.equal(find(out, id).extra, undefined, id);
+  }
+});
+
+test('withSnapshot: two open fields cannot both be filled with the same spare beasts', () => {
+  const side = run(REX, T3).sides.attacker;
+  const two = Object.assign({}, side, { moves: side.moves.filter((m) => !/^beast-field/.test(m.id)).concat([
+    { tier: 'upgrade', id: 'beast-field-4', data: { field: 4, locked: false } },
+    { tier: 'upgrade', id: 'beast-field-5', data: { field: 5, locked: false } }]) });
+  const out = Coach.withSnapshot(two, fullSnap(), T3);   // two spares fit either field, not both
+  assert.equal(find(out, 'beast-field-4').tier, 'free');
+  assert.equal(find(out, 'beast-field-5').tier, 'upgrade');
+  assert.equal(find(out, 'beast-field-5').extra, 'Your spare beasts fit none of its 2 slots.');
+});

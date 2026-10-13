@@ -190,7 +190,7 @@ var EXPECTED = [
 
   /* 6. no emoji, no external stylesheet or font, CSP identical to the classic page */
   var em = [], re = /\p{Extended_Pictographic}/u;
-  textNodes().forEach(function (n) { if (re.test(n.nodeValue)) em.push(n.nodeValue.trim().slice(0, 20)); });
+  textNodes().forEach(function (n) { if (re.test(n.nodeValue) && !(n.parentElement && n.parentElement.closest('#coachCard [translate="no"]'))) em.push(n.nodeValue.trim().slice(0, 20)); });   /* another player's name (the opponent in the battle card) may carry a symbol such as a trademark sign */
   log(em.length === 0, 'no emoji code points in text nodes', em.slice(0, 3).join(' | '));
   var GOOG = /^https:\/\/[^/]*(google|gstatic|googleapis)\./;
   var ext = $$('link[rel~="stylesheet"], link[rel~="preload"], link[rel~="preconnect"]').filter(function (l) { return !GOOG.test(l.href); }).length, ff = 0, imp = 0, nonInline = 0;
@@ -271,7 +271,7 @@ var EXPECTED = [
   /* the Google Translate widget's own logo (gstatic) is third-party markup, same exclusion as the size checks; our images stay strict */
   var imgs = $$('img').filter(function (m) { return !third(m); }), imgBad = imgs.filter(function (m) { return !/^https:\/\/(raw\.githubusercontent\.com|h5\.topwargame\.com|knight-cdn\.akamaized\.net)\//.test(m.src); });
   log(imgBad.length === 0, 'images only from origins the live CSP allows', imgs.length + ' images' + (imgBad.length ? ', bad: ' + imgBad[0].src : ''));
-  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|tw-game-data-base|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-awaken|armory-base|armory-bag|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-check|feedback-widget|guide-videos)\.js$|^https:\/\/translate\.googleapis\.com\/|^https:\/\/www\.clarity\.ms\/tag\/won9zormpi$/.test(s); });
+  var scripts = $$('script[src]').map(function (s) { return s.getAttribute('src'); }), badSrc = scripts.filter(function (s) { return !/^(tw-game-data|tw-game-data-base|armory-core|armory-data|armory-vm|armory-app|armory-more|armory-ht|armory-awaken|armory-base|armory-bag|armory-beasts|armory-beasts-opt|armory-advice|armory-advice-flows|armory-coach|report-coach|armory-check|feedback-widget|guide-videos)\.js$|^https:\/\/translate\.googleapis\.com\/|^https:\/\/www\.clarity\.ms\/tag\/won9zormpi$/.test(s); });
   log(badSrc.length === 0, 'scripts only from this site, Google Translate and the classic page\u2019s Clarity project', scripts.length + ' script tags' + (badSrc.length ? ', unexpected: ' + badSrc.join(', ') : ''));
   S.all.gear = false; S.all.roster = false;
   A.applyRoute(false);

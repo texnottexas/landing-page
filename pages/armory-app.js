@@ -78,7 +78,7 @@ var toastT;
 function toast(msg) { var t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { t.classList.remove('show'); }, 3000); }
 
 /* ---------- the lazy half ---------- */
-var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = {}, BS = {}, BG = {};
+var M = null, moreQ = null, H = null, Av = null, advQ = null, HT = {}, BT = {}, AWK = {}, BS = {}, BG = {}, CO = {};
 function more(cb) {
   if (M) return cb(M);
   if (moreQ) { moreQ.push(cb); return; }
@@ -110,6 +110,12 @@ function bag(cb) { lz(BG, 'armory-bag.js', function () { return window.ArmoryBag
 function bst(cb) { lz(BT, 'armory-beasts.js', function () { return window.ArmoryBeasts(H); }, 'beasts', cb); }
 /* the awakening module (skill names, the order, the Raise move): a failed load never blanks a screen, the blocks say so */
 function awk(cb) { lz(AWK, 'armory-awaken.js', function () { return window.ArmoryAwaken(H); }, 'heroes', cb, awkFail); }
+/* the From your last battle card (own armory only): loaded after first paint, never on the way to it; a failed load leaves the Overview as it was */
+function coach(cb) { lz(CO, 'armory-coach.js', function () { return window.ArmoryCoach(H); }, 'overview', cb, function () {}); }
+function coachMove() {
+  if (S.advise || S.res.readOnly || !S.res.reports || !S.res.reports.length) return;
+  (window.requestIdleCallback || setTimeout)(function () { coach(function (m) { m.start(); }); });
+}
 function awkFail() { $$('.awk-slot').forEach(function (el) { el.classList.add('awk-bk'); el.innerHTML = '<p class="awk-note">Could not load the awakening details. Check your connection and reload the page.</p>'; }); }
 function advice(cb) {
   if (Av) return cb(Av);
@@ -281,6 +287,7 @@ function setReady(res) {
   if (again) refreshSheet();
   beastMove();
   awakenMove();
+  coachMove();
   if (!S.advise && sk() && res.identity && res.identity.isOwn && !res.readOnly) advIndex();
 }
 var runSeq = 0;   /* a load that was overtaken by a newer one (Undo during a load) paints nothing */
@@ -506,7 +513,8 @@ function renderOverview() {
     '<a class="area bagrow" href="#bag" data-open="bag" data-numwrap><span class="area-n" data-num translate="no">' + fmtInt(vm.decor.shards) + '</span><div class="area-b"><div class="l lbl">Bag</div><div class="s src">decor shards in bag</div></div>' + ic('chev') + '</a>' +
     '</div></section>';
 
-  $('#v-overview').innerHTML = '<div class="vb"><div class="ov"><div class="ov-col">' + header + moves + shareRow() + '</div><div class="ov-col">' + band + areas + '</div></div></div>';
+  $('#v-overview').innerHTML = '<div class="vb"><div class="ov"><div class="ov-col">' + header + moves + '<div id="coachSlot" hidden></div>' + shareRow() + '</div><div class="ov-col">' + band + areas + '</div></div></div>';
+  if (CO.m) CO.m.paint();
 }
 function shareRow() {
   if (S.advise) return '';
