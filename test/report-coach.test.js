@@ -125,7 +125,7 @@ test('Shorty: top moves include unlearned talents and no runes', () => {
   const ids = s.moves.map((m) => m.id);
   assert.ok(ids.includes('talents'), ids.join());
   assert.ok(ids.includes('runes-empty'), ids.join());
-  assert.equal(find(s, 'runes-empty').data.empty, 17);
+  assert.equal(find(s, 'runes-empty').data.empty, 14, 'gold pieces only');
   assert.equal(find(s, 'talents').data.notMaxed, 9);
   // wrong-branch skills and empty slots are free moves
   assert.equal(find(s, 'wrong-branch-skills').tier, 'free');
@@ -423,4 +423,122 @@ test('withSnapshot: two open fields cannot both be filled with the same spare be
   assert.equal(find(out, 'beast-field-4').tier, 'free');
   assert.equal(find(out, 'beast-field-5').tier, 'upgrade');
   assert.equal(find(out, 'beast-field-5').extra, 'Your spare beasts fit none of its 2 slots.');
+});
+
+// ---- gold gear only, hero names, tap-to-see stats ----------------------------------------------------------------
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const G = require('../pages/tw-game-data.js');
+const heroesOf = (rep, key) => rep.battle[key].players[0].heroList;
+const setSuffix = (rep, key, suffix) => heroesOf(rep, key).forEach((h) => h.heroEquips.forEach((e) => { e.equipId = Math.floor(e.equipId / 100) * 100 + suffix; }));
+const weaken = (rep, key, pick) => heroesOf(rep, key).forEach((h, idx) => h.heroEquips.forEach((e) => (e.infos || []).forEach((i) => {
+  if (i.type !== 1) return;
+  const t = G.GEAR_TEMPLATE[i.templateId];
+  if (t) i.buffValue = pick(idx) ? 1 : t.m;
+})));
+
+test('gold filter: purple pieces are not rune-less and the rune count is gold only', () => {
+  const s = run(SHORTY).sides.attacker;
+  const m = find(s, 'runes-empty');
+  assert.equal(m.data.pieces, 14, '17 pieces, 3 purple');
+  assert.match(m.detail, /^14 of 14 gold gear pieces have no rune \(on /);
+  const lv = find(s, 'gear-levels');
+  assert.ok(lv, 'gear-levels');
+  assert.equal(lv.data.nonGold, 3);
+  assert.match(lv.detail, /3 slots hold non-gold gear, which can't take a rune \(on /);
+  assert.match(lv.detail, /1 gear slot empty/);
+});
+
+test('gold filter: a purple piece with weak stats does not trigger refine, a gold one does', () => {
+  const rep = clone(fixture(REX));
+  weaken(rep, 'attacker', () => true);
+  setSuffix(rep, 'attacker', 3);
+  const purple = Coach.analyze(rep, tables).sides.attacker;
+  assert.equal(find(purple, 'gear-refine'), undefined);
+  assert.equal(find(purple, 'runes-empty'), undefined, 'no gold piece, no rune talk');
+  assert.ok(find(purple, 'gear-levels'), 'the slots hold non-gold gear');
+  setSuffix(rep, 'attacker', 4);
+  const gold = find(Coach.analyze(rep, tables).sides.attacker, 'gear-refine');
+  assert.ok(gold);
+  assert.equal(gold.data.under70, gold.data.stats, 'all stats weak');
+});
+
+test('hero naming: refine says whose gold gear it is, worst first', () => {
+  const rep = clone(fixture(REX));
+  weaken(rep, 'attacker', () => true);
+  const side = Coach.analyze(rep, tables).sides.attacker, m = find(side, 'gear-refine');
+  assert.ok(m);
+  assert.match(m.detail, /^On .+'s gold gear, \d+ of \d+ random stats are under 70% of their maximum roll\./);
+  side.heroes.forEach((n) => assert.ok(m.detail.indexOf(n) >= 0, n + ' named'));
+  assert.deepEqual(m.data.heroes.slice().sort(), side.heroes.slice().sort());
+  // the first hero's stats are fine: only the other two are named
+  const rep2 = clone(fixture(REX));
+  weaken(rep2, 'attacker', (idx) => idx !== 0);
+  const s2 = Coach.analyze(rep2, tables).sides.attacker, m2 = find(s2, 'gear-refine');
+  assert.ok(m2, 'refine move');
+  assert.deepEqual(m2.data.heroes.slice().sort(), [s2.heroes[1], s2.heroes[2]].sort());
+  assert.equal(m2.detail.indexOf(s2.heroes[0]), -1, 'the hero with good stats is not named');
+  // worst first: the second hero has more weak stats than the first
+  const rep3 = clone(fixture(REX));
+  heroesOf(rep3, 'attacker').forEach((h, idx) => h.heroEquips.forEach((e, ei) => (e.infos || []).forEach((i) => {
+    if (i.type !== 1) return;
+    const t = G.GEAR_TEMPLATE[i.templateId];
+    if (t) i.buffValue = idx === 1 || idx === 2 || (idx === 0 && ei === 0) ? (idx === 2 && ei > 1 ? t.m : 1) : t.m;
+  })));
+  const s3 = Coach.analyze(rep3, tables).sides.attacker;
+  assert.deepEqual(find(s3, 'gear-refine').data.heroes, [s3.heroes[1], s3.heroes[2], s3.heroes[0]], 'worst first: 18, 6, 3 weak stats');
+});
+
+test('hero naming: rune moves name the heroes that hold the rune-less or weakest pieces', () => {
+  assert.match(find(run(REX).sides.attacker, 'runes-stars').detail, /\(on Vivian and Jett\)/);
+  assert.ok(find(run(SHORTY).sides.attacker, 'runes-empty').data.heroes.length >= 1);
+});
+
+test('gaps[].stats: shape, sorting, core stats add up to the area, march size is a troop count', () => {
+  let seen = 0;
+  const labels = new Set();
+  for (const id of [REX, LIVV, SHORTY]) {
+    for (const key of ['attacker', 'defender']) {
+      for (const g of run(id).sides[key].gaps) {
+        seen++;
+        assert.ok(Array.isArray(g.stats) && g.stats.length > 0, id + ' ' + g.area);
+        g.stats.forEach((r) => {
+          assert.deepEqual(Object.keys(r).sort(), ['key', 'label', 'mine', 'theirs', 'unit']);
+          assert.ok(typeof r.mine === 'number' && typeof r.theirs === 'number');
+          assert.ok(r.mine !== 0 || r.theirs !== 0, 'non-zero for either side');
+          labels.add(r.label);
+        });
+        const pct = g.stats.filter((r) => r.unit === '%');
+        const gaps = pct.map((r) => Math.abs(r.theirs - r.mine));
+        assert.deepEqual(gaps, gaps.slice().sort((a, b) => b - a), 'biggest gap first');
+        const ti = g.stats.findIndex((r) => r.unit === 'troops');
+        if (ti >= 0) assert.equal(ti, g.stats.length - 1, 'march size last');
+        const core = ['ATK', 'HP', 'DMGInc', 'DMGTaken'];
+        const sum = (f) => g.stats.filter((r) => core.indexOf(r.key) >= 0).reduce((a, r) => a + r[f], 0);
+        assert.ok(Math.abs(sum('mine') - g.mine) <= 1, id + ' ' + g.area + ' mine ' + sum('mine') + ' vs ' + g.mine);
+        assert.ok(Math.abs(sum('theirs') - g.theirs) <= 1, id + ' ' + g.area + ' theirs ' + sum('theirs') + ' vs ' + g.theirs);
+      }
+    }
+  }
+  assert.ok(seen >= 6);
+  ['Attack', 'HP', 'Damage increase', 'Damage taken reduction', 'March size'].forEach((l) => assert.ok(labels.has(l), l));
+  const march = [].concat(...run(REX).sides.attacker.gaps.map((g) => g.stats)).find((r) => r.key === 'March');
+  assert.equal(march.unit, 'troops');
+  assert.ok(Number.isInteger(march.mine) && Number.isInteger(march.theirs), 'a troop count, not a percentage');
+});
+
+test('gaps[].stats: percentages have one decimal and raw 100 is 1%', () => {
+  const atk = run(REX).sides.attacker.gaps[0].stats.find((r) => r.key === 'ATK');
+  assert.ok(atk.mine > 0 && atk.mine === Math.round(atk.mine * 10) / 10);
+});
+
+test('gear levels: only gold pieces count as below level 20; a purple piece counts as non-gold instead', () => {
+  const rep = fixture(REX);
+  const eq = rep.battle.attacker.players[0].heroList[0].heroEquips;
+  eq[0].equipId = Math.floor(eq[0].equipId / 100) * 100 + 3; eq[0].level = 5;   // purple, level 5
+  let m = find(Coach.analyze(rep, tables).sides.attacker, 'gear-levels');
+  assert.ok(m, 'the non-gold slot is reported');
+  assert.deepEqual([m.data.below20, m.data.nonGold], [0, 1]);
+  eq[1].level = 5;                                                                    // a gold piece below 20
+  m = find(Coach.analyze(rep, tables).sides.attacker, 'gear-levels');
+  assert.deepEqual([m.data.below20, m.data.nonGold], [1, 1]);
 });

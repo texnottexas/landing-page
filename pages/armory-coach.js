@@ -1,5 +1,6 @@
-/* armory-coach.js: the "From your last battle" card of the Armory v2 Overview (below Next moves), loaded after first paint
- * (armory-app.js coach()), never on the way to it. It reads the player's newest loaded battle report with report-coach.js
+/* armory-coach.js: the "From your main march's last battle" card of the Armory v2 Overview (below Next moves), loaded after first
+ * paint (armory-app.js coach()), never on the way to it. Of the player's 8 newest loaded battle reports it reads the one where their
+ * own side had the highest Combat Power (their main march; a tie goes to the newer) with report-coach.js
  * (the same logic as the Battle Reports page), then adds what the player's Snapshot holds (ReportCoach.withSnapshot).
  * Same-origin script, no CSP change. Report and supplement strings reach the page only through textContent.
  * The rules sit in ArmoryCoachLogic (no DOM, node-testable); ArmoryCoach(H) is the view.
@@ -15,14 +16,42 @@ var isNode = typeof module === 'object' && module.exports;
 /* ---------- logic (no DOM) ---------- */
 function num(v) { v = +v; return isFinite(v) ? v : 0; }
 
-/* the newest loaded report: [{id, extracted:{logtime}}] -> the entry with the highest logtime (the first of equals) */
-function newest(reports) {
+var MAX_READ = 8;   /* the newest reports read to find the main march */
+/* the loaded reports [{id, extracted:{logtime}}] worth reading: usable ones, newest first, at most MAX_READ */
+function recentReports(reports) {
+  return (reports || []).filter(function (r) { return r && r.id && r.extracted; })
+    .sort(function (a, b) { return num(b.extracted.logtime) - num(a.extracted.logtime); }).slice(0, MAX_READ);
+}
+
+/* the player's main march: of the analysed candidates [{id, logtime, cp}] (cp = the player's own side Combat Power in that report),
+   the highest cp wins, a tie goes to the newest logtime, then to the first listed. null for no candidates. */
+function pickMain(cands) {
   var best = null;
-  (reports || []).forEach(function (r) {
-    if (!r || !r.id || !r.extracted) return;
-    if (!best || num(r.extracted.logtime) > num(best.extracted.logtime)) best = r;
+  (cands || []).forEach(function (c) {
+    if (!c) return;
+    if (!best || num(c.cp) > num(best.cp) || (num(c.cp) === num(best.cp) && num(c.logtime) > num(best.logtime))) best = c;
   });
   return best;
+}
+
+/* the player's side Combat Power in a raw report (the same field report-coach reads for side.cp), 0 when absent */
+function sideCp(raw, key) {
+  var fm = raw && raw.battle && raw.battle.fightMarches && raw.battle.fightMarches[0];
+  return fm ? num(fm[(key === 'attacker' ? 'att' : 'def') + 'BattlePowerVal']) : 0;
+}
+
+/* one report as a main-march candidate {id, logtime, cp, raw, key}, or null when it can't be read or the player is on neither side.
+   hashes = {attacker, defender}: the 16-hex sha256 prefix of each side's uid */
+function candidate(rep, raw, hashes, sk, name) {
+  if (!rep || !raw || !raw.battle) return null;
+  var key = matchSide(hashes, sidePlayers(raw), sk, name);
+  return key ? { id: rep.id, logtime: raw.logtime || (rep.extracted && rep.extracted.logtime), cp: sideCp(raw, key), raw: raw, key: key } : null;
+}
+
+/* "Your Vivian, Franziska and Jett march against J™ on Oct 10" as one string */
+function marchLine(heroes, opp, date) {
+  var list = (heroes || []).filter(Boolean), txt = list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list.join('');
+  return 'Your ' + (txt ? txt + ' march' : 'march') + ' against ' + opp + (date ? ' on ' + date : '');
 }
 
 /* each side's first player: {uid: String, name: trimmed username}, or null for a side with none */
@@ -77,13 +106,13 @@ function cardModel(result, key, snapSide, logtime, hasSnap) {
     [dd.weakest && dd.weakest.name, dd.theme, dd.missing, dd.buff].forEach(function (n) { if (n) names.push(n); });
   });
   return {
-    line: closenessText(result.fight, result.sides), opp: other.name, won: !!me.won, time: num(logtime),
+    heroes: (me.heroes || []).slice(), line: closenessText(result.fight, result.sides), opp: other.name, won: !!me.won, time: num(logtime),
     gaps: (me.gaps || []).slice(0, MAX_GAPS), moves: moves, names: names,
     snap: moves.some(function (m) { return !!m.extra; }), hasSnap: !!hasSnap
   };
 }
 
-var LOGIC = { newest: newest, sidePlayers: sidePlayers, matchSide: matchSide, closenessText: closenessText, cardModel: cardModel, TIER: TIER, MAX_GAPS: MAX_GAPS, MAX_MOVES: MAX_MOVES };
+var LOGIC = { recentReports: recentReports, candidate: candidate, MAX_READ: MAX_READ, pickMain: pickMain, sideCp: sideCp, marchLine: marchLine, sidePlayers: sidePlayers, matchSide: matchSide, closenessText: closenessText, cardModel: cardModel, TIER: TIER, MAX_GAPS: MAX_GAPS, MAX_MOVES: MAX_MOVES };
 if (isNode) module.exports = LOGIC; else root.ArmoryCoachLogic = LOGIC;
 if (isNode) return;
 
@@ -142,32 +171,72 @@ function snapshot(res, wantRunes) {
   }, function () { return snap; });
 }
 
+/* one report's JSON, or null on failure or after 10 s (a hung CDN request must not hold the card back) */
+function fetchRaw(id) {
+  var got = d.fetchReportResponse(id).then(function (r) { return r && r.ok ? r.json() : null; }).catch(function () { return null; });
+  return Promise.race([got, new Promise(function (res) { setTimeout(function () { res(null); }, 10000); })]);
+}
+/* the player's main march among the newest reports; resolves the pick {id, logtime, cp, raw, key} or null */
+function pickReport(res, sk, name) {
+  return Promise.all(LOGIC.recentReports(res.reports).map(function (rep) {
+    return fetchRaw(rep.id).then(function (raw) {
+      if (!raw || !raw.battle) return null;
+      var players = LOGIC.sidePlayers(raw);
+      return Promise.all([sha16(players.attacker ? players.attacker.uid : ''), sha16(players.defender ? players.defender.uid : '')]).then(function (h) {
+        return LOGIC.candidate(rep, raw, { attacker: h[0], defender: h[1] }, sk, name);
+      });
+    });
+  })).then(function (c) { return LOGIC.pickMain(c.filter(Boolean)); });
+}
+
 function analyse(res) {
-  var rep = LOGIC.newest(res.reports);
-  if (!rep) return Promise.resolve(null);
   var sk = H.sk(), name = H.stateName();
   return Promise.all([
     script('report-coach.js'),
     Promise.all(TABLES.map(function (f) { return d.fetchJson('data/' + f).catch(function () { return null; }); })),
-    d.fetchReportResponse(rep.id).then(function (r) { return r && r.ok ? r.json() : null; })
+    pickReport(res, sk, name)
   ]).then(function (p) {
-    var raw = p[2];
-    if (!raw || !raw.battle) return null;
+    var pk = p[2];
+    if (!pk) return null;
     var t = p[1], tables = { heroes: t[0], supportive: t[1], collectibles: t[2], formation: t[3], enhance: t[4], buffGroup: t[5], platforms: t[6], game: window.TWGameData };
     if (!tables.heroes || !tables.supportive || !tables.buffGroup) return null;
-    var players = LOGIC.sidePlayers(raw);
-    return Promise.all([sha16(players.attacker ? players.attacker.uid : ''), sha16(players.defender ? players.defender.uid : '')]).then(function (h) {
-      var key = LOGIC.matchSide({ attacker: h[0], defender: h[1] }, players, sk, name);
-      if (!key) return null;
-      var result = window.ReportCoach.analyze(raw, tables), side = result.sides[key];
-      if (!side || (!side.moves.length && !side.gaps.length)) return null;
-      var wantRunes = side.moves.some(function (m) { return m.id === 'runes-stars'; });
-      return snapshot(res, wantRunes).then(function (snap) {
-        var hasSnap = !!(snap.inv || snap.enigma || snap.bench || snap.heroes);
-        return LOGIC.cardModel(result, key, window.ReportCoach.withSnapshot(side, snap, tables), raw.logtime || rep.extracted.logtime, hasSnap);
-      });
+    var key = pk.key, result = window.ReportCoach.analyze(pk.raw, tables), side = result.sides[key];
+    if (!side || (!side.moves.length && !side.gaps.length)) return null;
+    var wantRunes = side.moves.some(function (m) { return m.id === 'runes-stars'; });
+    return snapshot(res, wantRunes).then(function (snap) {
+      var hasSnap = !!(snap.inv || snap.enigma || snap.bench || snap.heroes);
+      return LOGIC.cardModel(result, key, window.ReportCoach.withSnapshot(side, snap, tables), pk.logtime, hasSnap);
     });
   });
+}
+
+/* the stats behind one area: a small table, stat / you / them, built as nodes */
+function fmtStat(v, unit) {
+  var n = Math.abs(v) >= 100 ? Math.round(v).toLocaleString('en-US') : (Math.round(v * 10) / 10).toFixed(1);
+  return unit === 'troops' ? Math.round(v).toLocaleString('en-US') + ' troops' : n + '%';
+}
+function statsPanel(g, m) {
+  var box = el('div', 'co-st');
+  var rows = g.stats || [];
+  if (!rows.length) { box.appendChild(el('p', 'co-note', 'No stat detail for this source.')); return box; }
+  var t = el('table', 'co-stt'), cap = el('caption', 'co-cap', 'Stats from ' + g.label + ', each side for the troops it fielded');
+  t.appendChild(cap);
+  var hr = el('tr');
+  [['Stat', 'th'], ['You', 'th'], [m.opp, 'th']].forEach(function (c, i) { var th = el('th', i ? 'num' : null); th.scope = 'col'; marked(th, c[0], m.names); hr.appendChild(th); });
+  var hd = el('thead'); hd.appendChild(hr); t.appendChild(hd);
+  var tb = el('tbody');
+  rows.forEach(function (r) {
+    var tr = el('tr'), behind = r.theirs > r.mine;
+    tr.appendChild(el('th', 'sl', r.label)); tr.lastChild.scope = 'row';
+    [r.mine, r.theirs].forEach(function (v, i) {
+      var td = el('td', 'num' + (i === 1 && behind ? ' lead' : ''));
+      var sp = el('span', null, fmtStat(v, r.unit)); sp.setAttribute('translate', 'no');
+      td.appendChild(sp); tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  });
+  t.appendChild(tb); box.appendChild(t);
+  return box;
 }
 
 function paint() {
@@ -178,28 +247,45 @@ function paint() {
   var m = CARD.model;
   slot.hidden = false;
   var card = el('section', 'card'); card.id = 'coachCard'; card.setAttribute('aria-labelledby', 'coT');
-  var head = el('div', 'sechead'), h2 = el('h2', 'title', 'From your last battle'); h2.id = 'coT';
+  var head = el('div', 'sechead'), h2 = el('h2', 'title', "From your main march's last battle"); h2.id = 'coT';
   head.appendChild(h2); card.appendChild(head);
 
   var sub = el('p', 'co-sub');
-  marked(sub, 'Against ' + m.opp + (m.time ? ' on ' + dateText(m.time) : ''), m.names.concat(dateText(m.time)));
+  marked(sub, LOGIC.marchLine(m.heroes, m.opp, dateText(m.time)), m.names.concat(dateText(m.time)));
   card.appendChild(sub);
   if (m.line) card.appendChild(marked(el('p', 'co-line'), m.line, m.names));
 
   if (m.gaps.length) {
     card.appendChild(el('h3', 'co-h', 'Where you are behind'));
-    card.appendChild(el('p', 'co-note', 'Stat bonus from each source, in % points, for your troop types.'));
+    card.appendChild(el('p', 'co-note', 'Stat bonus from each source, in % points, each side for the troops it fielded. Tap a source to see the stats behind it.'));
     var max = Math.max.apply(null, m.gaps.map(function (g) { return Math.max(g.mine, g.theirs); })) || 1;
     var list = el('div', 'co-gaps'); list.setAttribute('role', 'list');
-    m.gaps.forEach(function (g) {
+    m.gaps.forEach(function (g, gi) {
       var row = el('div', 'co-gap'); row.setAttribute('role', 'listitem');
-      row.appendChild(el('div', 'co-gl', g.label));
+      var btn = el('button', 'co-gb'); btn.type = 'button';
+      btn.setAttribute('aria-expanded', 'false');
+      var pid = 'coGapStats' + gi;
+      btn.setAttribute('aria-controls', pid);
+      var top = el('span', 'co-gt');
+      top.appendChild(el('span', 'co-gl', g.label));
+      var chev = el('span', 'co-chev', '\u25be'); chev.setAttribute('aria-hidden', 'true');   /* not part of the button's name */
+      top.appendChild(chev);
+      btn.appendChild(top);
       [['me', 'You', g.mine], ['them', m.opp, g.theirs]].forEach(function (b) {
-        var line = el('div', 'co-bar ' + b[0]), meter = el('div', 'meter'), fill = el('i');
+        var line = el('span', 'co-bar ' + b[0]), meter = el('span', 'meter'), fill = el('i');
         fill.style.width = Math.max(1, Math.round(100 * b[2] / max)) + '%';
         meter.appendChild(fill); line.appendChild(meter);
         line.appendChild(marked(el('span', 'co-bn'), b[1] + ' ' + b[2].toLocaleString('en-US'), m.names));
-        row.appendChild(line);
+        btn.appendChild(line);
+      });
+      row.appendChild(btn);
+      var panel = statsPanel(g, m); panel.id = pid; panel.hidden = true;
+      row.appendChild(panel);
+      btn.addEventListener('click', function () {
+        var open = panel.hidden;
+        panel.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        row.classList.toggle('open', open);
       });
       list.appendChild(row);
     });

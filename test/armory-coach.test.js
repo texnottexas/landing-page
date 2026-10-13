@@ -1,5 +1,5 @@
 'use strict';
-// Armory v2 "From your last battle" card: the rules in pages/armory-coach.js (no DOM). Run: node --test test/armory-coach.test.js
+// Armory v2 "From your main march's last battle" card: the rules in pages/armory-coach.js (no DOM). Run: node --test test/armory-coach.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -13,12 +13,13 @@ const fixture = (id) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixture
 const data = (f) => JSON.parse(fs.readFileSync(path.join(ROOT, 'data', f), 'utf8'));
 const REX = '4879270942306885632';
 
-test('newest picks the highest logtime, the first of equals, and skips unusable entries', () => {
-  const a = { id: 'a', extracted: { logtime: 5 } }, b = { id: 'b', extracted: { logtime: 9 } }, c = { id: 'c', extracted: { logtime: 9 } };
-  assert.equal(L.newest([a, b, c]).id, 'b');
-  assert.equal(L.newest([{ id: 'x', extracted: null }, a]).id, 'a');
-  assert.equal(L.newest([]), null);
-  assert.equal(L.newest(null), null);
+test('recentReports: usable entries only, newest first, at most MAX_READ', () => {
+  const r = (id, t) => ({ id, extracted: { logtime: t } });
+  const list = Array.from({ length: 12 }, (_, i) => r('r' + i, i));
+  const got = L.recentReports(list.concat([{ id: 'x', extracted: null }, null]));
+  assert.equal(L.MAX_READ, 8);
+  assert.deepEqual(got.map((x) => x.id), ['r11', 'r10', 'r9', 'r8', 'r7', 'r6', 'r5', 'r4']);
+  assert.deepEqual(L.recentReports(null), []);
 });
 
 const mk = (aUid, aName, dUid, dName) => ({ battle: {
@@ -96,4 +97,58 @@ test('the view never puts report or supplement text into innerHTML, and the copy
 test('the pages workflow ships the card, its tables and its tests', () => {
   const y = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'pages.yml'), 'utf8');
   for (const f of ['pages/armory-coach.js', 'pages/report-coach.js', 'data/buff-group.json', 'test/armory-coach.test.js']) assert.ok(y.includes(f), f + ' missing from pages.yml');
+});
+
+test('pickMain: the highest own Combat Power wins over the newest report; a tie goes to the newest', () => {
+  const c = (id, logtime, cp) => ({ id, logtime, cp });
+  assert.equal(L.pickMain([c('new-weak', 90, 100), c('old-main', 10, 300), c('mid', 50, 200)]).id, 'old-main');
+  assert.equal(L.pickMain([c('a', 10, 300), c('b', 90, 300), c('c', 50, 300)]).id, 'b', 'tie: newest');
+  assert.equal(L.pickMain([c('a', 10, 300), c('b', 10, 300)]).id, 'a', 'full tie: the first');
+  assert.equal(L.pickMain([c('a', 10, 0), c('b', 90, 0)]).id, 'b', 'no Combat Power anywhere: newest');
+  assert.equal(L.pickMain([null, c('a', 1, 1)]).id, 'a');
+  assert.equal(L.pickMain([]), null);
+  assert.equal(L.pickMain(null), null);
+});
+
+test('sideCp reads the player side Combat Power from the first march', () => {
+  const rex = fixture(REX);
+  assert.equal(L.sideCp(rex, 'attacker'), Coach.analyze(rex, { buffGroup: {} }).sides.attacker.cp);
+  assert.equal(L.sideCp(rex, 'defender'), Coach.analyze(rex, { buffGroup: {} }).sides.defender.cp);
+  assert.ok(L.sideCp(rex, 'defender') > L.sideCp(rex, 'attacker'));
+  assert.equal(L.sideCp({ battle: {} }, 'attacker'), 0);
+  assert.equal(L.sideCp(null, 'attacker'), 0);
+});
+
+test('marchLine says which march the card is about', () => {
+  assert.equal(L.marchLine(['Vivian', 'Franziska', 'Jett'], 'J™', 'Oct 10, 2026'), 'Your Vivian, Franziska and Jett march against J™ on Oct 10, 2026');
+  assert.equal(L.marchLine(['Heid', 'Joan Mature'], 'X', ''), 'Your Heid and Joan Mature march against X');
+  assert.equal(L.marchLine([], 'X', ''), 'Your march against X');
+});
+
+test('cardModel carries the march heroes and every area keeps its stats for the tap-to-open table', () => {
+  const tables = { buffGroup: data('buff-group.json'), heroes: data('all-heroes.json'), supportive: data('supportive-skills.json'), collectibles: data('loot-quest-collectibles.json'), formation: data('formation-v2.json'), enhance: data('enigma-platform-enhance.json') };
+  const result = Coach.analyze(fixture(REX), tables);
+  const m = L.cardModel(result, 'attacker', result.sides.attacker, 1791652817);
+  assert.deepEqual(m.heroes, ['Vivian', 'Franziska', 'Jett']);
+  assert.ok(m.gaps.every((g) => g.stats && g.stats.length));
+});
+
+test('the view makes each area a button that opens a table, and no DOM string building', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'pages', 'armory-coach.js'), 'utf8');
+  assert.match(src, /aria-expanded/);
+  assert.match(src, /Tap a source to see the stats behind it/);
+});
+
+// The card follows the player's main march: an older report with a stronger own side beats the newest one.
+test('candidate + pickMain: an older main-march report wins; unreadable reports and ones the player is not in drop out', () => {
+  const sha = (u) => crypto.createHash('sha256').update(String(u)).digest('hex').slice(0, 16);
+  const raw = (cp, t, aUid) => { const x = mk(aUid, 'Alpha', 222, 'Beta'); x.logtime = t; x.battle.fightMarches = [{ attBattlePowerVal: cp, defBattlePowerVal: 1 }]; return x; };
+  const me = sha(111), hashesOf = (x) => ({ attacker: sha(x.battle.attacker.players[0].uid), defender: sha(222) });
+  const reps = [{ id: 'new-weak', extracted: { logtime: 90 } }, { id: 'old-main', extracted: { logtime: 10 } }, { id: 'not-mine', extracted: { logtime: 95 } }, { id: 'broken', extracted: { logtime: 99 } }];
+  const raws = { 'new-weak': raw(72, 90, 111), 'old-main': raw(112, 10, 111), 'not-mine': raw(500, 95, 999), broken: null };
+  const cands = L.recentReports(reps).map((r) => L.candidate(r, raws[r.id], raws[r.id] ? hashesOf(raws[r.id]) : {}, me, 'Alpha'));
+  assert.equal(cands.filter(Boolean).length, 2, 'the broken report and the one the player is not in are dropped');
+  const pick = L.pickMain(cands.filter(Boolean));
+  assert.equal(pick.id, 'old-main');
+  assert.deepEqual([pick.key, pick.cp], ['attacker', 112]);
 });

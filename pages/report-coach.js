@@ -7,8 +7,13 @@
  *     { fight: { rounds, winner: 'attacker'|'defender',
  *                closeness: { loserProgress, label: 'close'|'clear'|'out-of-reach' } | null },
  *       sides: { attacker: Side, defender: Side } }
- *   Side = { name, won, cp, troops, heroes, gaps: [{area, label, mine, theirs, share}],
+ *   Side = { name, won, cp, troops, heroes, gaps: [{area, label, mine, theirs, share, stats}],
  *            moves: [{tier: 'free'|'upgrade'|'long', id, area, title, detail, evidence, data}], errors }
+ *
+ *   gaps[].stats = [{key, label, unit: '%'|'troops', mine, theirs}] for that source: Attack, HP, Damage increase, Damage taken reduction, Crit rate,
+ *   Crit damage, Hit, Dodge, Defense (percent points, 1 decimal) and March size (a troop count, last). Non-zero for either side, biggest gap first.
+ *   ATK + HP + Damage increase + Damage taken add up to the area's mine / theirs (within rounding).
+ *   Gear moves judge gold gear only (equipId % 100 === 4, the only gear that takes a rune) and name the heroes involved, worst first.
  *
  *   closeness.loserProgress = loser total_hurt / (2.7 x winner maxPower), as a fraction (0.09 = 9%).
  *   2.7 is the median of winner damage / loser maxPower over 21 wiped-out duels (docs 04-outcome S2).
@@ -92,9 +97,19 @@
     990563: [930001, 930002, 930003]
   };
   var STAT = {};
-  [['HP', 930001], ['ATK', 930101], ['DMGInc', 980101], ['DMGTaken', 980201]].forEach(function (f) {
+  [['HP', 930001], ['ATK', 930101], ['DMGInc', 980101], ['DMGTaken', 980201],
+   ['CritRate', 930201], ['CritDmg', 980301], ['Hit', 980501], ['Dodge', 930301], ['Defense', 990203]].forEach(function (f) {
     ['army', 'navy', 'af'].forEach(function (t, i) { STAT[f[1] + i] = [f[0], t]; });
   });
+  STAT[960012] = ['March', 'all'];
+  ALL_UNITS[990202] = [990203, 990204, 990205];
+  // the four stats whose sum is the area total, and the table the tap-to-see breakdown reads (label, unit)
+  var CORE = { HP: 1, ATK: 1, DMGInc: 1, DMGTaken: 1 };
+  var STAT_INFO = [
+    ['ATK', 'Attack', '%'], ['HP', 'HP', '%'], ['DMGInc', 'Damage increase', '%'], ['DMGTaken', 'Damage taken reduction', '%'],
+    ['CritRate', 'Crit rate', '%'], ['CritDmg', 'Crit damage', '%'], ['Hit', 'Hit', '%'], ['Dodge', 'Dodge', '%'],
+    ['Defense', 'Defense', '%'], ['March', 'March size', 'troops']
+  ];
 
   // trace source (type_small) -> area. Names follow the lead's checks of the trace against the game's own tables.
   var AREAS = {
@@ -151,11 +166,13 @@
       var area = AREAS[t.s] || (HERO_AREAS[t.s] && withHeroAreas ? HERO_AREAS[t.s] : null);
       if (!area && HERO_AREAS[t.s]) return;
       expand(buffGroup, t.id, num(t.val)).forEach(function (e) {
-        var pts = e.val * wt[e.troop] / 100;
-        total += pts;
+        // March size is a troop count (raw value), every other stat is a percentage (raw 100 = 1%) weighted by the troops fielded
+        var pts = e.stat === 'March' ? e.val : e.val * wt[e.troop] / 100;
+        if (CORE[e.stat]) total += pts;
         if (area) {
-          var a = byArea[area.id] || (byArea[area.id] = { id: area.id, label: area.label, pts: 0 });
-          a.pts += pts;
+          var a = byArea[area.id] || (byArea[area.id] = { id: area.id, label: area.label, pts: 0, stats: {} });
+          if (CORE[e.stat]) a.pts += pts;
+          a.stats[e.stat] = (a.stats[e.stat] || 0) + pts;
         }
       });
     });
@@ -318,30 +335,56 @@
       below.length + ' of ' + all.length + ' talents under 100%', { notMaxed: below.length, total: all.length, learnedPct: learned })];
   }
 
+  // Only legendary (gold) gear takes a rune: in a report a gold piece has equipId % 100 === 4 (suffix 3 is purple, 1-2 lower).
+  // Checked on 560 reports: runes sit on suffix-4 pieces only. So runes, rune stars and refining are judged on gold pieces.
+  function isGold(e) { return num(e && e.equipId) % 100 === 4; }
+  // "A, B and C's" for a list of hero names; the heroes with the biggest number come first
+  function possessive(names) { return nameList(names) + "'s"; }
+  function topNames(list, key) {   // list of {name, <key>}: worst (largest) first, only those above 0
+    return list.filter(function (x) { return x[key] > 0; }).sort(function (a, b) { return b[key] - a[key]; }).map(function (x) { return x.name; });
+  }
+
   function gearMoves(me, them, G) {
-    var out = [], pieces = [], heroCount = me.heroes.length;
-    me.heroes.forEach(function (h) { (h.raw.heroEquips || []).forEach(function (e) { pieces.push(e); }); });
+    var out = [], heroCount = me.heroes.length;
     if (!heroCount) return out;
-    var missing = 6 * heroCount - pieces.length;
-    var low = pieces.filter(function (e) { return num(e.level) < 20; }).length;
-    if (low || missing > 0) {
-      var parts = [];
-      if (low) parts.push(plural(low, 'piece') + ' below level 20');
-      if (missing > 0) parts.push(plural(missing, 'gear slot') + ' empty');
-      out.push(move('upgrade', 'gear-levels', 'Titan gear', 80, 'Finish your Titan gear',
-        'Gear base stats rise with level, and every slot should hold a piece: ' + parts.join(', ') + '.', parts.join(', '), { below20: low, missing: missing }));
-    }
-    // runes
-    var runes = [], noRune = 0;
-    pieces.forEach(function (e) {
-      var r = null;
-      (e.infos || []).forEach(function (i) { if (i.type === 2 && G.resolveRune) { var x = G.resolveRune(i.templateId); if (x) r = x; } });
-      if (r) runes.push(r); else noRune++;
+    // per hero: gold pieces, pieces that are not gold, empty slots
+    var hs = me.heroes.map(function (h) {
+      var all = h.raw.heroEquips || [], gold = all.filter(isGold);
+      return { name: h.name, gold: gold, nonGold: all.length - gold.length, missing: Math.max(0, 6 - all.length), pieces: all.length };
     });
-    if (pieces.length && noRune > 0) {
+    var gold = [];
+    hs.forEach(function (h) { h.gold.forEach(function (e) { gold.push({ e: e, h: h }); }); });
+    hs.forEach(function (h) { h.low = h.gold.filter(function (e) { return num(e.level) < 20; }).length; });
+    var low = hs.reduce(function (a, h) { return a + h.low; }, 0);
+    var nonGold = hs.reduce(function (a, h) { return a + h.nonGold; }, 0);
+    var missing = hs.reduce(function (a, h) { return a + h.missing; }, 0);
+    if (low || missing > 0 || nonGold > 0) {
+      var parts = [];
+      if (low) { parts.push(plural(low, 'gold piece') + ' below level 20'); }
+      if (nonGold) { parts.push(plural(nonGold, 'slot') + ' ' + (nonGold === 1 ? 'holds' : 'hold') + " non-gold gear, which can't take a rune") }
+      if (missing > 0) parts.push(plural(missing, 'gear slot') + ' empty');
+      var who = function (key) { return ' (on ' + nameList(topNames(hs, key)) + ')'; };
+      var texts = [];
+      if (low) texts.push(plural(low, 'gold piece') + ' below level 20' + who('low'));
+      if (nonGold) texts.push(plural(nonGold, 'slot') + ' ' + (nonGold === 1 ? 'holds' : 'hold') + " non-gold gear, which can't take a rune" + who('nonGold'));
+      if (missing > 0) texts.push(plural(missing, 'gear slot') + ' empty' + who('missing'));
+      out.push(move('upgrade', 'gear-levels', 'Titan gear', 80, 'Finish your Titan gear',
+        'Every slot should hold a gold piece, the only gear that takes a rune, and base stats rise with level: ' + texts.join(', ') + '.',
+        parts.join(', '), { below20: low, missing: missing, nonGold: nonGold, heroes: topNames(hs.map(function (h) { return { name: h.name, n: h.low + h.nonGold + h.missing }; }), 'n') }));
+    }
+    // runes (gold pieces only)
+    var runes = [], noRune = 0;
+    hs.forEach(function (h) { h.noRune = 0; h.runes = []; });
+    gold.forEach(function (x) {
+      var r = null;
+      (x.e.infos || []).forEach(function (i) { if (i.type === 2 && G.resolveRune) { var y = G.resolveRune(i.templateId); if (y) r = y; } });
+      if (r) { runes.push(r); x.h.runes.push(r); } else { noRune++; x.h.noRune++; }
+    });
+    if (gold.length && noRune > 0) {
+      var rn = topNames(hs, 'noRune');
       out.push(move('upgrade', 'runes-empty', 'Titan gear runes', 85, 'Put runes on your gear',
-        noRune + ' of ' + pieces.length + ' gear pieces have no rune. A rune adds a percentage to the gear effect it boosts.',
-        (pieces.length - noRune) + ' of ' + pieces.length + ' slots hold a rune', { empty: noRune, pieces: pieces.length }));
+        noRune + ' of ' + gold.length + ' gold gear pieces have no rune (on ' + nameList(rn) + '). A rune adds a percentage to the gear effect it boosts.',
+        (gold.length - noRune) + ' of ' + gold.length + ' gold pieces hold a rune', { empty: noRune, pieces: gold.length, heroes: rn }));
     }
     var belowMax = runes.filter(function (r) { return r.s < r.sm; });
     if (belowMax.length) {
@@ -356,29 +399,36 @@
       var starsNow = runes.reduce(function (a, r) { return a + r.s; }, 0), starsMax = runes.reduce(function (a, r) { return a + r.sm; }, 0);
       var eff = RUNE_EFFECT[weakest.name];
       var effText = eff && weakest.starMax === 6 ? ' Its effect goes from ' + eff[weakest.star] + '% at star ' + weakest.star + ' to ' + eff[6] + '% at star 6.' : '';
+      var wh = hs.map(function (h) {
+        return { name: h.name, n: h.runes.filter(function (r) { return r.n === weakest.name && r.s === weakest.star && r.sm === weakest.starMax; }).length };
+      });
+      var wn = topNames(wh, 'n');
       out.push(move('upgrade', 'runes-stars', 'Titan gear runes', 70 - 20 * (starsNow / starsMax),
         'Raise your ' + weakest.name + ' ' + (weakest.count === 1 ? 'rune' : 'runes'),
-        plural(weakest.count, 'rune') + ' ' + (weakest.count === 1 ? 'is' : 'are') + ' at ' + weakest.star + ' of ' + weakest.starMax + ' stars.' + effText +
+        plural(weakest.count, 'rune') + ' ' + (weakest.count === 1 ? 'is' : 'are') + ' at ' + weakest.star + ' of ' + weakest.starMax + ' stars (on ' + nameList(wn) + ').' + effText +
           ' Overall ' + starsNow + ' of ' + starsMax + ' rune stars are filled.',
         weakest.count + ' ' + weakest.name + (weakest.count === 1 ? ' rune' : ' runes') + ' at ' + weakest.star + ' of ' + weakest.starMax + ' stars',
-        { weakest: weakest, starsNow: starsNow, starsMax: starsMax, runesBelowMax: belowMax.length }));
+        { weakest: weakest, starsNow: starsNow, starsMax: starsMax, runesBelowMax: belowMax.length, heroes: wn }));
     }
-    // refinement: every random stat should reach 70% of its roll maximum
+    // refinement: every random stat of a gold piece should reach 70% of its roll maximum
     var stats = 0, under = 0, rollSum = 0;
-    pieces.forEach(function (e) {
-      (e.infos || []).forEach(function (i) {
+    hs.forEach(function (h) { h.under = 0; h.stats = 0; });
+    gold.forEach(function (x) {
+      (x.e.infos || []).forEach(function (i) {
         if (i.type !== 1 || !G.GEAR_TEMPLATE) return;
         var t = G.GEAR_TEMPLATE[i.templateId];
         if (!t) return;
         var pct = num(i.buffValue) / t.m * 100;
-        stats++; rollSum += pct;
-        if (pct < 70) under++;
+        stats++; rollSum += pct; x.h.stats++;
+        if (pct < 70) { under++; x.h.under++; }
       });
     });
     if (stats && (under >= 3 || under / stats >= 0.15)) {
+      var un = hs.filter(function (h) { return h.under > 0; }).sort(function (a, b) { return b.under - a.under || (b.under / b.stats) - (a.under / a.stats); })
+        .map(function (h) { return h.name; });
       out.push(move('upgrade', 'gear-refine', 'Titan gear', 30 + 40 * (under / stats), 'Refine the weak gear stats',
-        under + ' of ' + stats + ' random gear stats are under 70% of their maximum roll. Raise each stat to at least 70%.',
-        under + ' of ' + stats + ' gear stats under 70%', { under70: under, stats: stats, meanRollPct: Math.round(rollSum / stats) }));
+        'On ' + possessive(un) + ' gold gear, ' + under + ' of ' + stats + ' random stats are under 70% of their maximum roll. Raise each stat to at least 70%.',
+        under + ' of ' + stats + ' gold gear stats under 70%', { under70: under, stats: stats, meanRollPct: Math.round(rollSum / stats), heroes: un }));
     }
     return out;
   }
@@ -546,6 +596,22 @@
     return cands;
   }
 
+  // the stats behind one area: [{key, label, unit, mine, theirs}], non-zero for either side, biggest gap first (March size, a troop
+  // count, comes last). Percent values have one decimal; the four core stats add up to the area's mine / theirs.
+  function statRows(mine, theirs) {
+    mine = mine || {}; theirs = theirs || {};
+    var rows = [];
+    STAT_INFO.forEach(function (f) {
+      var m = num(mine[f[0]]), t = num(theirs[f[0]]);
+      if (Math.abs(m) < 0.05 && Math.abs(t) < 0.05 && (f[2] === '%' || (!m && !t))) return;
+      rows.push({ key: f[0], label: f[1], unit: f[2], mine: Math.round(m * 10) / 10, theirs: Math.round(t * 10) / 10 });
+    });
+    return rows.sort(function (x, y) {
+      if ((x.unit === 'troops') !== (y.unit === 'troops')) return x.unit === 'troops' ? 1 : -1;
+      return Math.abs(y.theirs - y.mine) - Math.abs(x.theirs - x.mine);
+    });
+  }
+
   // ---- gaps -------------------------------------------------------------------------------------------------------
   function buildGaps(me, them, sameHeroes, tables) {
     var group = tables.buffGroup;
@@ -555,7 +621,7 @@
     Object.keys(a.byArea).concat(Object.keys(b.byArea)).forEach(function (k) { ids[k] = 1; });
     var all = Object.keys(ids).map(function (k) {
       var x = a.byArea[k] || { pts: 0 }, y = b.byArea[k] || { pts: 0 }, label = (a.byArea[k] || b.byArea[k]).label;
-      return { area: k, label: label, mine: Math.round(x.pts), theirs: Math.round(y.pts), _gap: y.pts - x.pts };
+      return { area: k, label: label, mine: Math.round(x.pts), theirs: Math.round(y.pts), _gap: y.pts - x.pts, stats: statRows(x.stats, y.stats) };
     });
     var behind = all.filter(function (g) { return g._gap > 0; });
     // share of the total behind: the sum of the areas where this side trails (areas where it leads are not netted off)
@@ -563,7 +629,7 @@
     all.forEach(function (g) { g.share = denom > 0 ? Math.round(100 * g._gap / denom) / 100 : 0; });
     var shown = behind.filter(function (g) { return g.share >= 0.05 && g._gap >= 200; })
       .sort(function (x, y) { return y._gap - x._gap; }).slice(0, 4)
-      .map(function (g) { return { area: g.area, label: g.label, mine: g.mine, theirs: g.theirs, share: g.share }; });
+      .map(function (g) { return { area: g.area, label: g.label, mine: g.mine, theirs: g.theirs, share: g.share, stats: g.stats }; });
     return { shown: shown, all: all };
   }
 

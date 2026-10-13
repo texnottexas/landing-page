@@ -539,7 +539,19 @@
   .coach-line { margin-top: .6rem; font-size: .85rem; color: var(--text); }
   .coach-sub { margin-top: .9rem; font-size: .72rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
   .coach-gap { margin-top: .5rem; }
-  .coach-gap-name { font-size: .82rem; }
+  .coach-gb { display: block; width: 100%; text-align: left; color: inherit; background: none; border: 0; padding: .25rem 0; min-height: 44px; cursor: pointer; font: inherit; }
+  .coach-gb:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .coach-gap-name { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-size: .82rem; }
+  .coach-gc { color: var(--muted); transition: transform .15s; }
+  .coach-gap.open .coach-gc { transform: rotate(180deg); }
+  .coach-st { margin-top: .4rem; padding: .4rem .6rem; border: 1px solid var(--border); border-radius: 8px; }
+  .coach-stt { width: 100%; border-collapse: collapse; font-size: .75rem; table-layout: fixed; }
+  .coach-stt caption { text-align: left; color: var(--muted); padding-bottom: .25rem; }
+  .coach-stt th, .coach-stt td { padding: .25rem 0; border-top: 1px solid var(--border); overflow-wrap: anywhere; vertical-align: top; }
+  .coach-stt thead th { border-top: 0; color: var(--muted); font-weight: 600; text-align: left; }
+  .coach-stt th.sl { text-align: left; font-weight: 400; width: 42%; }
+  .coach-stt .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .coach-stt td.lead span { color: var(--text); font-weight: 600; }
   .coach-bar { display: flex; align-items: center; gap: .5rem; margin-top: .2rem; font-size: .75rem; color: var(--muted); }
   .coach-bar i { display: block; height: 6px; border-radius: 3px; background: var(--muted); min-width: 2px; }
   .coach-bar.me i { background: var(--accent); }
@@ -4492,6 +4504,36 @@
     return parent;
   }
 
+  // The stats behind one area: a small table (stat, you, them), built as nodes.
+  function coachFmt(v, unit) {
+    if (unit === 'troops') return Math.round(v).toLocaleString('en-US') + ' troops';
+    return (Math.abs(v) >= 100 ? Math.round(v).toLocaleString('en-US') : (Math.round(v * 10) / 10).toFixed(1)) + '%';
+  }
+  function coachStats(g, oppName, names) {
+    var box = el('div', { className: 'coach-st' });
+    var rows = g.stats || [];
+    if (!rows.length) { box.appendChild(el('div', { className: 'coach-note', style: 'margin-top:0;' }, 'No stat detail for this source.')); return box; }
+    var t = el('table', { className: 'coach-stt' });
+    t.appendChild(el('caption', null, 'Stats from ' + g.label + ', each side for the troops it fielded'));
+    var hr = el('tr');
+    ['Stat', 'You', oppName].forEach(function(c, i) {
+      var th = el('th', { scope: 'col', className: i ? 'num' : '' }); coachText(th, c, names); hr.appendChild(th);
+    });
+    var hd = el('thead'); hd.appendChild(hr); t.appendChild(hd);
+    var tb = el('tbody');
+    rows.forEach(function(r) {
+      var tr = el('tr', null, [el('th', { scope: 'row', className: 'sl' }, r.label)]);
+      [r.mine, r.theirs].forEach(function(v, i) {
+        var td = el('td', { className: 'num' + (i === 1 && r.theirs > r.mine ? ' lead' : '') });
+        var sp = el('span', { translate: 'no', className: 'notranslate' }, coachFmt(v, r.unit));
+        td.appendChild(sp); tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb); box.appendChild(t);
+    return box;
+  }
+
   function renderCoach(host, result) {
     while (host.firstChild) host.removeChild(host.firstChild);
     var sides = result.sides, fight = result.fight;
@@ -4524,17 +4566,31 @@
 
       if (me.gaps.length) {
         body.appendChild(el('div', { className: 'coach-sub' }, "Where you're behind"));
-        body.appendChild(el('div', { className: 'coach-note', style: 'margin-top:.15rem;' }, 'Stat bonus totals from each source (attack, HP and damage, in % points, for your troop types).'));
+        body.appendChild(el('div', { className: 'coach-note', style: 'margin-top:.15rem;' }, 'Stat bonus totals from each source (attack, HP and damage, in % points, each side for the troops it fielded). Tap a source to see the stats behind it.'));
         var max = Math.max.apply(null, me.gaps.map(function(g) { return Math.max(g.mine, g.theirs); })) || 1;
-        me.gaps.forEach(function(g) {
-          var row = el('div', { className: 'coach-gap' }, [el('div', { className: 'coach-gap-name' }, g.label)]);
+        me.gaps.forEach(function(g, gi) {
+          var row = el('div', { className: 'coach-gap' });
+          var btn = el('button', { type: 'button', className: 'coach-gb', 'aria-expanded': 'false' });
+          var pid = 'coachGapStats' + key + gi;
+          btn.setAttribute('aria-controls', pid);
+          btn.appendChild(el('span', { className: 'coach-gap-name' }, [g.label, el('span', { className: 'coach-gc', 'aria-hidden': 'true' }, '\u25be')]));
           [['me', 'You', g.mine], ['', other.name, g.theirs]].forEach(function(b) {
-            var bar = el('div', { className: 'coach-bar ' + b[0] });
+            var bar = el('span', { className: 'coach-bar ' + b[0] });
             var fill = el('i'); fill.style.width = Math.max(1, Math.round(60 * b[2] / max)) + '%';
             var lab = el('span');
             coachText(lab, b[1] + ' ' + b[2].toLocaleString('en-US'), names);
             bar.appendChild(fill); bar.appendChild(lab);
-            row.appendChild(bar);
+            btn.appendChild(bar);
+          });
+          row.appendChild(btn);
+          var panel = coachStats(g, other.name, names);
+          panel.id = pid; panel.hidden = true;
+          row.appendChild(panel);
+          btn.addEventListener('click', function() {
+            var open = panel.hidden;
+            panel.hidden = !open;
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            row.className = 'coach-gap' + (open ? ' open' : '');
           });
           body.appendChild(row);
         });
