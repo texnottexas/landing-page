@@ -11,6 +11,7 @@
 // and the animated-emoji level floor (GameTools config 630051).
 // For the Alliance Defense Skipper: the siege state (activity type 26, alMonsterSiege), server time, alliance rank and
 // the skip request (sendPB 3700): a window opens, a skip marches the boss, the wave resolves battleMs later.
+// For Angel Attacks: an Angel event (activity with extra.attackMonsterIds + groupId), the Angel list (sendPBV2 8802), carrier attacks (send 902 with isAirCraftCarrier) that land after landMs and join attackMonsterIds, and the march list (NWorldMapData).
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
   cities: {}, claimed: {}, collects: 0, limitAfter: 0, viewError: '', lose901: 0, emptyReward: false, nullItem: false,
@@ -18,6 +19,7 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   choice: null, level: 100, gifLevel: '20', emoji: [], emojiThrows: false, toasts: [],
   known: { emotion_new: [192, 193, 303], emoji_gif: [10005] },   // ids the game's tables hold
   siege: null, rank: 5, battleMs: 500, waitSec: 60, loseAt: 0, refuseSkip: false, opens: {},
+  angelEvent: null, angels: [], carrier: {}, angelMode: 'ok', landMs: 300, marchType189: 189,
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -38,6 +40,19 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     send: function (rid, p, target, cb) {
       F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
       var n = F.sent.length, ans;
+      if (rid === 902 && p.isAirCraftCarrier) {           // an Angel attack from the carrier
+        if (F.angelMode === 'silent') return true;          // sent, never answered
+        if (F.angelMode === 'refuse') { setTimeout(function () { cb({ s: 3, d: 'backup_mecha_lottery_21' }); }, 20); return true; }
+        var key = 'c' + n;
+        F.carrier[key] = { marchType: p.marchType, realUid: F.uid, target_tx: p.x, target_ty: p.y };
+        setTimeout(function () {                            // lands: the Angel joins attackMonsterIds
+          delete F.carrier[key];
+          var hit = F.angels.filter(function (a) { return a.x === p.x && a.y === p.y; })[0];
+          if (hit && F.angelEvent) F.angelEvent.extra.attackMonsterIds.push(String(hit.uuid));
+        }, F.landMs);
+        setTimeout(function () { cb({ s: 0, d: '{}' }); }, 20);
+        return true;
+      }
       if (rid === 818) {                                   // buy one Advanced March Speed-up from the VIP shop
         if (F.buyMode === 'fail') ans = { s: 3, d: 'shop_error' };
         else {
@@ -72,6 +87,13 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
       var city = null, ans;
       Object.keys(F.cities).forEach(function (k) { if (String(F.cities[k].pid) === String(p.targetUidStr)) city = F.cities[k]; });
+      if (rid === 8802) {                                  // the Angel list
+        var L = function (v) { return { toString: function () { return String(v); }, toNumber: function () { return Number(v); } }; };
+        var ok = F.angelMode !== 'listdown';
+        var data = ok ? { worldMonsters: F.angels.map(function (a) { return { uid: a.uid || 'someone', uuid: L(a.uuid), x: a.x, y: a.y, serverId: a.serverId || 2691, expireMilli: L(a.expireMilli), hasMarch: !!a.hasMarch, playerInfo: '{}', frameId: 0 }; }) } : null;
+        setTimeout(function () { cb({ c: 8802, s: ok ? 0 : 3, pbAckV2: { header: ok ? { s: 0 } : { s: 3, d: 'busy' }, data: data } }); }, 20);
+        return true;
+      }
       if (rid !== 2503) ans = { c: rid, s: 3, pbAckV2: { header: { s: 3, d: 'unknown_request' } } };
       else if (F.limitAfter && F.collects >= F.limitAfter) ans = { c: 2503, s: 3, pbAckV2: { header: { s: 3, d: 'mask_limit_1' } } };
       else if (!city || !city.itemId || F.claimed[city.instanceId]) ans = { c: 2503, s: 3, pbAckV2: { header: { s: 3, d: 'pubilc911' } } };
@@ -134,14 +156,14 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   Object.defineProperty(chatInst, 'NowChoiceKey', { get: function () { return F.choice; } });   // null: chat panel closed
   var PARTY = { 2: 1, 3: 2, 4: 3 };
   window.__require = function (name) {
-    if (name === 'DataCenter') return { DATA: { get ServerTime() { return nowSec(); }, UserData: { Name: F.name, StrUid: F.uid, _resourceData: { get _gold() { return F.gems; } },
+    if (name === 'DataCenter') return { DATA: { get ServerTime() { return nowSec(); }, UserData: { Name: F.name, StrUid: F.uid, get UID() { return F.uid; }, _resourceData: { get _gold() { return F.gems; } },
       getItemAmount: function (id) { return id === 520002 ? F.bag : 0; }, get VipLevel() { return F.vip; }, get Level() { return F.level; }, get Alliance() { return { Rank: F.rank }; }, OriginServerId: 2864, ServerId: 2864,
       get itemCityRewardReceivedNum() { return F.serverNum; }, get itemCityRewardReceivedInstIds() { return F.serverIds; } } } };
     if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
     if (name === 'NetMgr') return { NET: NET };
     if (name === 'GameTools') return { default: { getDataConfigData: function (id) { return id === 630051 ? F.gifLevel : null; } } };
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
-    if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: F.activity ? [activity] : [],
+    if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: (F.activity ? [activity] : []).concat(F.angelEvent ? [F.angelEvent] : []),
       getActivityByActivitytype: function (t) { return t === 26 && F.siege ? { id: 153, alMonsterSiege: F.siege } : null; } } } };
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
     if (name === 'PlayerInfo') return { default: function () { var u = ''; this.update = function (s) { try { u = JSON.parse(s).username; } catch (e) { u = ''; } }; this.getDisplayName = function () { return u; }; } };
@@ -151,8 +173,13 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       if (t === 'mask_mystery_party' && PARTY[id]) { var ty = PARTY[id]; return { id: id, type: ty, item_id: 260617001 + ty, msg_banner: 'shareIcon' + (ty + 1), share_msg_key: 'JMR_bs_00' + ty, msg_type: 62 + ty, daily_limit: 20 }; }
       if (t === 'item' && id >= 260604017 && id <= 260604019) return { name: 'mask_reward_' + (id - 260604016) };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
+    if (name === 'NRequestIdV2') return { NRequestIdV2: { PINK_MECHA_MONSTER_LIST: 8802 } };
+    if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902 } };
+    if (name === 'NWorldMapMarchCommon') return { NMarchType: { MECHA_TREASURE_BOSS: F.marchType189 } };
+    if (name === 'NWorldMapData') return { default: { instance: { get marches() { return F.carrier; } } } };
     var TEXT = { equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
-      pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached', view_too_fast: 'Too frequent' };
+      pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached', view_too_fast: 'Too frequent',
+      backup_mecha_lottery_21: 'March failed! A commander can only attack the same Heavy Mothership Angel once!' };
     if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return TEXT[k] || k; } } };
     return null;
   };
