@@ -15,7 +15,7 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Rickroll'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
@@ -130,4 +130,22 @@ test('Rickroll tile: titled Rickroll, a generic description, for members, its ow
   assert.equal(t.overlay, '#rr-root');
   assert.equal(t.icon, 'disco', 'a disco ball, drawn like the other tile icons (Tex, 2026-10-09)');
   assert.match(read('ops-kit.js'), /\n\s*disco: \[/, 'the Ops kit draws it');
+});
+
+// Angel Attacks (Tex, 2026-10-13): every member, its own tile and the Mask Boxes card's switch.
+test('Angel Attacks tile: for members, game ready, its own overlay and crosshair icon, scripts deployed, rules in the deploy gate', () => {
+  const t = list.tools.find((x) => x.id === 'angels');
+  assert.ok(t, 'listed');
+  assert.equal(t.title, 'Angel Attacks');
+  assert.equal(t.gate, 'member');
+  assert.deepEqual(t.ready, ['game']);
+  assert.equal(t.overlay, '#ang-root');
+  assert.equal(t.icon, 'target');
+  assert.deepEqual(t.scripts, ['angel-attacks-core.js', 'angel-attacks.js']);
+  assert.match(t.desc, /Doesn't use your normal marches/);
+  const ver = (read('angel-attacks.js').match(/var VERSION = '([^']+)'/) || [])[1];
+  assert.equal(t.version, ver, 'registry version = script version');
+  assert.ok(/test\/angel-attacks-core\.test\.js/.test(read('.github/workflows/pages.yml')), 'rules run before every deploy');
+  assert.ok(/target:\s*\[/.test(read('ops-kit.js')), 'the crosshair is drawn');
+  assert.match(read('pages/map-collector.html'), /'angels': \['attack', 'attacks'\]/);
 });
