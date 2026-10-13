@@ -246,3 +246,26 @@ test('setupText after Refresh says refreshed; the rest of the wording is unchang
     { tone: 'ok', text: 'Armory report refreshed with your latest march. You asked for 3, but your recent Time Clash attacks only had 1 march.' });
   assert.deepEqual(S.setupText({ state: 'done', picked, asked: 2 }), { tone: 'ok', text: 'Armory report set up with your latest 2 different marches.' });
 });
+
+// The Snapshot used to send the skin panel's display list (the same ~295 skins for every player) as "owned".
+// Ownership is UserData._MyCastleFace ({skinId, endTime}: -1 = permanent, else unix seconds); a report credits only the
+// highest level of each skin group, so the Snapshot does the same.
+test('ownedSkinIds: owned and unexpired, top level per skin group, default skin left out', () => {
+  const S = require('../all-bookmarklet.js');
+  const now = 1790000000;
+  const face = {
+    0: { skinId: 0, endTime: -1 },
+    1710500: { skinId: 1710500, endTime: -1 }, 1710600: { skinId: 1710600, endTime: -1 }, 1710700: { skinId: 1710700, endTime: -1 },
+    1782000: { skinId: 1782000, endTime: -1 },
+    1787000: { skinId: 1787000, endTime: now - 60 },          // expired temporary skin
+    1999000: { skinId: 1999000, endTime: now + 86400 },       // temporary, still running
+    1713000: { skinId: 1713000, endTime: -1 },                // a skin with no group of its own
+    1888000: { skinId: 1888000, endTime: -1 }                 // not in the table: kept, nothing to group it by
+  };
+  const rows = { 1710500: [1000, 1], 1710600: [1000, 2], 1710700: [1000, 3], 1782000: [1001, 1], 1787000: [1003, 1], 1999000: [0, 0], 1713000: [0, 0] };
+  const rowOf = (id) => (rows[id] ? { skin_group: rows[id][0], skin_level: rows[id][1] } : null);
+  assert.deepEqual(S.ownedSkinIds(face, rowOf, now), [1710700, 1713000, 1782000, 1888000, 1999000]);
+  assert.equal(S.ownedSkinIds(null, rowOf, now), null);
+  assert.equal(S.ownedSkinIds(undefined, rowOf, now), null);
+  assert.deepEqual(S.ownedSkinIds({}, rowOf, now), []);
+});

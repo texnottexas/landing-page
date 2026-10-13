@@ -1644,7 +1644,9 @@
     if (!supp) return null;
     return {
       activeSkin: supp.activeSkinId || 0,
-      ownedSkins: supp.ownedSkins || [],
+      // Snapshots before 2026-10-12 sent the skin panel's display list (the same ~295 skins for everyone) as owned;
+      // only ownedFrom 'owned' marks a real ownership list. Without it, ownership is unknown.
+      ownedSkins: supp.ownedFrom === 'owned' ? (supp.ownedSkins || []) : undefined,
       collectSkins: supp.collectSkins || [],
       activeNameplate: 0,
       ownedNameplates: supp.ownedNameplates || [],

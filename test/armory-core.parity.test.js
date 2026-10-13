@@ -431,3 +431,11 @@ test('march size calculation (bench, bag, chests, pool, target)', () => {
   for (const t of f.targets) for (const pool of f.pools) same('msComputeTarget', t, pool);
   assert.equal(C.msComputeTarget({ rarity: 'rare', currentLevel: 99 }, { rare: { 99: 1 } }).maxedOut, true);
 });
+
+test('skins from a Snapshot: only a list marked ownedFrom "owned" counts as owned (older uploads sent the catalog)', () => {
+  const old = same('_ar_synthSkinsFromSupp', { v: 1, activeSkinId: 5, ownedSkins: [1, 2] });
+  assert.equal(old.ownedSkins, undefined);
+  assert.equal(old.activeSkin, 5);
+  const fresh = same('_ar_synthSkinsFromSupp', { v: 1, activeSkinId: 5, ownedSkins: [1, 2], ownedFrom: 'owned' });
+  assert.deepEqual(fresh.ownedSkins, [1, 2]);
+});

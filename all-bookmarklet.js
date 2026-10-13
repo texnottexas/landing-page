@@ -168,7 +168,26 @@ var __snapSync = (function () {
     if (r.state === 'no-log') return { tone: 'bad', text: "Couldn't get your Time Clash reports from the game. Try again." };
     return { tone: 'bad', text: "Couldn't save the report setup. Try again later." };
   }
-  return { SECTIONS: SECTIONS, MAX_BYTES: MAX_BYTES, prepare: prepare, sendToArmory: sendToArmory, syncText: syncText,
+  // Base skins the player owns: UserData._MyCastleFace ({skinId, endTime}: -1 = permanent, else unix seconds), unexpired,
+  // and only the highest level of each skin group (how a battle report credits them). rowOf(id) -> the game's skin row
+  // ({skin_group, skin_level}) or null. Returns the sorted ids, or null when there is no ownership map.
+  function ownedSkinIds(face, rowOf, nowSec) {
+    if (!face || typeof face !== 'object') return null;
+    var best = {}, out = [];
+    Object.keys(face).forEach(function (k) {
+      var e = face[k], id = e && Math.floor(Number(e.skinId));
+      if (!id || id <= 0) return;
+      var end = Number(e.endTime);
+      if (end > 0 && end <= nowSec) return;
+      var row = rowOf(id), g = row && Number(row.skin_group);
+      if (!g) { out.push(id); return; }
+      var lv = Number(row.skin_level) || 0;
+      if (!best[g] || lv > best[g].lv) best[g] = { id: id, lv: lv };
+    });
+    Object.keys(best).forEach(function (g) { out.push(best[g].id); });
+    return out.sort(function (a, b) { return a - b; });
+  }
+  return { SECTIONS: SECTIONS, MAX_BYTES: MAX_BYTES, prepare: prepare, sendToArmory: sendToArmory, syncText: syncText, ownedSkinIds: ownedSkinIds,
     SETUP_MAX: SETUP_MAX, attackLogs: attackLogs, reportUrl: reportUrl, heroSetOf: heroSetOf, pickReports: pickReports,
     parseLogAnswer: parseLogAnswer, saveReportSetup: saveReportSetup, getToken: getToken, setupText: setupText,
     listReports: listReports, cardMode: cardMode, latestCode: latestCode, newPlayerText: newPlayerText };
@@ -906,16 +925,25 @@ if (typeof module !== 'undefined' && module.exports) module.exports = __snapSync
     // Tiny payload — just the active castle skin id plus the owned + collect
     // arrays so the armory bases page can render the right skin without a
     // battle report. Nameplate / castle effect arrays are included when the
-    // player has any.
+    // player has any. ownedSkins comes from the ownership map; until 2026-10-12
+    // it was _myCastleSkinShowArray, the skin panel's display list (the same
+    // ~295 skins for everyone). ownedFrom:'owned' tells the armory the list is real.
     async function extractBaseSkin() {
       stepHook && stepHook('Base skin…');
       var ud = window.__capturedUD;
       if (!ud) throw new Error('UserData reference not captured (run inventory first)');
       function arr(v) { return Array.isArray(v) ? v.filter(function (x) { return Number.isInteger(x); }) : []; }
+      var TM = null;
+      try { TM = req('TableManager').TABLE; TM.getTableGroup('skin', true); } catch (e) {}
+      function rowOf(id) {
+        try { var r = TM && TM.getTableDataById('skin', String(id)); return r && typeof r === 'object' ? r : null; } catch (e) { return null; }
+      }
+      var owned = __snapSync.ownedSkinIds(ud._MyCastleFace, rowOf, Math.floor(Date.now() / 1000));
       return {
         v: 1, ts: new Date().toISOString(),
         activeSkinId: Number.isInteger(ud._hSkinId) ? ud._hSkinId : null,
-        ownedSkins: arr(ud._myCastleSkinShowArray),
+        ownedSkins: owned || [],
+        ownedFrom: owned ? 'owned' : 'none',
         collectSkins: arr(ud._myCastleSkinCollectArray),
         ownedNameplates: arr(ud._myCastleNameShowArray),
         collectNameplates: arr(ud._myCastleNameCollectArray),
