@@ -111,15 +111,16 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
           var camp = RR.camps.filter(function (c) { return c.x === p.x && c.y === p.y && !c.rallied; })[0];
           var need = {}; (p.armyList || []).forEach(function (a) { need[a.armyId] = (need[a.armyId] || 0) + a.armyNum; });
           var short = Object.keys(need).some(function (id) { var g = RR.units.filter(function (u) { return String(u.armyID) === id; })[0]; return !g || g.n - (RR.unitOut[id] || 0) < need[id]; });
-          var bad = !camp ? 'no_camp' : (p.marchType !== 8 || p.time !== 180 || JSON.stringify(p.armyList) !== JSON.stringify(p.armyListNew)) ? 'bad_rally' : RR.used >= RR.max ? 'no_march'
+          var bad = !camp ? 'no_camp' : (p.marchType !== 8 || p.time !== 180 || JSON.stringify(p.armyList) !== JSON.stringify(p.armyListNew)) ? 'bad_rally' : (RR.live || 0) >= RR.max ? 'no_march'
             : RR.vit < 5 ? 'no_vit' : (p.heroList || []).some(function (h) { return RR.heroOut[h]; }) ? 'hero_busy' : short ? 'no_units' : '';
           if (bad) ans = { s: 3, d: bad };
           else {
-            camp.rallied = true; RR.used++; RR.vit -= p.heroList.indexOf(115) >= 0 ? 4 : 5;   // Diana cuts the cost
+            camp.rallied = true; RR.live = (RR.live || 0) + 1; RR.vit -= p.heroList.indexOf(115) >= 0 ? 4 : 5;   // Diana cuts the cost
+            if (RR.usedLagMs) setTimeout(function () { RR.used++; }, RR.usedLagMs); else RR.used++;   // the game may show the march late
             p.heroList.forEach(function (h) { RR.heroOut[h] = 1; });
             Object.keys(need).forEach(function (id) { RR.unitOut[id] = (RR.unitOut[id] || 0) + need[id]; });
             setTimeout(function () {                          // the rally is over: everything comes home, the camp is gone
-              RR.used--; p.heroList.forEach(function (h) { delete RR.heroOut[h]; });
+              RR.used--; RR.live--; p.heroList.forEach(function (h) { delete RR.heroOut[h]; });
               Object.keys(need).forEach(function (id) { RR.unitOut[id] -= need[id]; });
               RR.camps = RR.camps.filter(function (c) { return c !== camp; });
             }, RR.rallyMs);
