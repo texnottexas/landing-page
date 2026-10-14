@@ -328,3 +328,16 @@ test('ANG-14: once dragged, the Angel card stays where the player put it instead
   await page.click('#ang-stop');
   await ctx.close();
 });
+
+test('ANG-15: with the drag helper missing (404), the Mask Boxes card\'s Angels switch still starts Angel Attacks', async () => {
+  const { ctx, page } = await open();
+  await page.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
+  await page.evaluate(event, [{}]);
+  await page.addScriptTag({ url: base + 'mask-boxes-core.js' });
+  await page.addScriptTag({ url: base + 'mask-boxes.js' });
+  await page.waitForSelector('#mbx-angels');
+  await page.click('#mbx-angels');
+  await page.waitForFunction(() => window.__ANG && window.__ANG.running, null, { timeout: 8000 });
+  await page.evaluate(() => window.__ANG.stop());
+  await ctx.close();
+});

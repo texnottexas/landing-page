@@ -160,6 +160,16 @@ test('DRAG-9: a card drawn again many times leaves no stray listeners and still 
   for (let i = 0; i < 20; i++) await make(page);
   await dragBy(page, '#tcard .t-title', 20, 20);
   const r = await rect(page); assert.equal(r.x, 28); assert.equal(r.y, 104);
-  assert.ok(await page.evaluate(() => window.OpsDrag.live() <= 1), 'removed cards were let go');
+  assert.equal(await page.evaluate(() => window.OpsDrag.attached()), 1, 'removed cards were let go: one card, one set of listeners');
+  await ctx.close();
+});
+
+test('DRAG-10: the title row can\'t be text-selected (no Safari text selection or long-press loupe while dragging)', async () => {
+  const { ctx, page } = await open();
+  await make(page);
+  const st = await page.evaluate(() => { const s = getComputedStyle(document.querySelector('#tcard .t-head')); return s.userSelect || s.webkitUserSelect; });
+  assert.equal(st, 'none');
+  await dragBy(page, '#tcard .t-title', 40, 40);
+  assert.equal(await page.evaluate(() => String(window.getSelection())), '', 'no text selected by the drag');
   await ctx.close();
 });

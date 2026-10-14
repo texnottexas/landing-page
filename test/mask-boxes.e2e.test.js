@@ -944,3 +944,18 @@ test('MBX-DRAG-1: the card drags by its title and keeps its spot after a relaunc
   assert.deepEqual(await cardAt(page, '#mbx-root'), b);
   await ctx.close();
 });
+
+test('MBX-DRAG-2: with the drag helper missing (404), Map Collector\'s Mask Boxes switch still starts Mask Boxes', async () => {
+  feed = [box({ server: 1, endMs: Date.now() + 100000 })];
+  const { ctx, page } = await open(([b]) => {
+    window.__OPS_BASE = b; window.__MAPC_WORKER = b.replace(/\/$/, ''); window.__MAPC_REPORT_MS = 1000;
+    localStorage.setItem('mapc_pw_v1', 'good pass');
+  }, [base]);
+  await page.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
+  await page.addScriptTag({ url: base + 'map-collector-core.js' });
+  await page.addScriptTag({ url: base + 'map-collector.js' });
+  await page.waitForSelector('#mapc-mbx[aria-pressed="false"]');
+  await page.click('#mapc-mbx');
+  await page.waitForSelector('#mapc-mbx[aria-pressed="true"]', { timeout: 8000 });
+  await ctx.close();
+});

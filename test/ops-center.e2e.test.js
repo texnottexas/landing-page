@@ -50,6 +50,12 @@ async function open(viewport, before, o) {
     if (o && o.workerDown) return rt.abort();
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
+  if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
+  if (o && o.dragFirst) await ctx.route('**/ops-tools.json*', async (rt) => {     // a tool that lists the drag helper first
+    const r = await rt.fetch(); const j = await r.json();
+    j.tools.forEach((t) => { if (t.id === 'alpha') t.scripts.unshift('ops-drag.js'); });
+    rt.fulfill({ response: r, body: JSON.stringify(j) });
+  });
   await page.goto(base);
   if (before) await page.evaluate(before);
   await page.addScriptTag({ url: base + 'ops-center.js' });          // what the bookmarklet does
@@ -430,5 +436,14 @@ test('OPS-DRAG-1: the Ops Center menu drags by its title and opens there next ti
   await page.addScriptTag({ url: base + 'ops-center.js' });
   await page.waitForSelector('.ops-card .ops-title');
   assert.deepEqual(await cardAt(page, '.ops-card'), b);
+  await ctx.close();
+});
+
+test('OPS-DRAG-2: with the drag helper missing (404) the Ops Center still opens, and a tool that lists it still launches', async () => {
+  const { ctx, page } = await open(PHONE, null, { dragMissing: true, dragFirst: true });
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Alpha Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#fake-alpha');
   await ctx.close();
 });

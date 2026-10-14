@@ -111,7 +111,8 @@
     var sel = o.css || (el.id ? '#' + el.id + (o.handle ? ' ' + o.handle : '') : '');
     if (sel && !document.querySelector('style[data-ops-drag="' + o.key + '"]')) {
       var st = document.createElement('style'); st.setAttribute('data-ops-drag', o.key);
-      st.textContent = sel + '{touch-action:none;cursor:grab}' + (o.dragButtons ? (el.id ? '#' + el.id + ' ' : '') + o.dragButtons + '{touch-action:none}' : '');
+      var still = 'touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none';   // no text selection or long-press loupe (Safari)
+      st.textContent = sel + '{' + still + ';cursor:grab}' + (o.dragButtons ? (el.id ? '#' + el.id + ' ' : '') + o.dragButtons + '{' + still + '}' : '');
       document.head.appendChild(st);
     }
     var ctl = { placed: function () { return !!readPos(lsGet(key)); }, reset: reset, reclamp: reclamp, detach: detach };
@@ -123,6 +124,7 @@
   root.OpsDrag = {
     attach: attach, clampPos: clampPos, readPos: readPos,
     placed: function (k) { return !!readPos(lsGet(KEY + k)); },
-    live: function () { return live.filter(function (x) { return x.isConnected; }).length; }
+    live: function () { return live.filter(function (x) { return x.isConnected; }).length; },
+    attached: function () { return live.length; }            // cards still holding window listeners
   };
 })(typeof window !== 'undefined' ? window : globalThis);

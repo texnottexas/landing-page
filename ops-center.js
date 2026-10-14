@@ -259,7 +259,7 @@
     showFab('Ops · starting ' + t.title);
     startObserver();
     var chain = Promise.resolve();
-    t.scripts.forEach(function (f) { chain = chain.then(function () { return loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); }); });
+    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return f === 'ops-drag.js' ? p.catch(function () {}) : p; }); });   // the drag helper is optional
     chain.then(function () { dispatch({ type: 'loaded', at: Date.now() }); }, function () { dispatch({ type: 'loadError', at: Date.now() }); });
   }
   function dispatch(ev) {
@@ -378,7 +378,7 @@
   window.OpsCenter = { toggle: toggle, close: close, version: '1', _state: S };
   var deps = [];
   if (!window.OpsKit) deps.push(loadScript(BASE + 'ops-kit.js?_=' + Date.now()));
-  if (!window.OpsDrag) deps.push(loadScript(BASE + 'ops-drag.js?_=' + Date.now()));   // cards drag by the title (Tex)
+  if (!window.OpsDrag) deps.push(loadScript(BASE + 'ops-drag.js?_=' + Date.now()).catch(function () {}));   // cards drag by the title (Tex); optional: never blocks the Ops Center
   if (!window.OpsCore) deps.push(loadScript(BASE + 'ops-core.js?_=' + Date.now()));
   Promise.all(deps).then(start, function () {
     window.OpsCenter = null;
