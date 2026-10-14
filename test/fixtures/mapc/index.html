@@ -12,6 +12,7 @@
 // For the Alliance Defense Skipper: the siege state (activity type 26, alMonsterSiege), server time, alliance rank and
 // the skip request (sendPB 3700): a window opens, a skip marches the boss, the wave resolves battleMs later.
 // For Angel Attacks: an Angel event (activity with extra.attackMonsterIds + groupId), the Angel list (sendPBV2 8802), carrier attacks (send 902 with isAirCraftCarrier) that land after landMs and join attackMonsterIds, and the march list (NWorldMapData).
+// For HT Gift Boxes: Chip Blessing gift tiles (type 259) in the 901 view, the next claimable gift (sendPBV2 8852) and gift claims (send 902 marchType 257) that land and come home.
 // For Refugee Camps: "Help Me" Letters (815) that put a camp by the base, the camp list (1021), the VIT buy (801), VIT capsules (815), rallies (1201) that hold heroes, units and a march for rallyMs, and Quick Deploy's inputs (heroes, units, slot sizes).
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
@@ -29,6 +30,8 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
     units: [{ armyID: 901103, type: 101, level: 103, power: 300, n: 60 }, { armyID: 905103, type: 301, level: 103, power: 300, n: 60 },
       { armyID: 10102, type: 101, level: 102, power: 200, n: 200 }, { armyID: 30102, type: 301, level: 102, power: 200, n: 200 }],
     heroOut: {}, unitOut: {}, mechas: [] },
+  // HT Gift Boxes: Chip Blessing gift boxes (tiles type 259) on the map, the day's claim count and our gift marches
+  htg: { gifts: [], received: 0, cap: '10', bagCap: 20, travelMs: 800, claimMode: 'ok', queryMode: 'ok', inview: true, inflight: 0, claimed: {}, marches: {}, maxOut: 0 },
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -54,6 +57,22 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     checkRequestIdNoRes: function (rid) { return F.pending.indexOf(rid) >= 0; },
     send: function (rid, p, target, cb) {
       F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
+      if (rid === 902 && p.marchType === 257) {             // claim a gift box: a march with no troops that lands, then comes home
+        var HG = F.htg;
+        if (HG.claimMode === 'silent') { if (F.pending.indexOf(902) < 0) F.pending.push(902); return true; }
+        if (HG.claimMode === 'refuse') { setTimeout(function () { cb({ s: 3, d: 'itemdrop_error_1' }); }, 20); return true; }
+        var gift = HG.gifts.filter(function (gi) { return gi.x === p.x && gi.y === p.y; })[0], gkey = gift ? gift.m.marchIdStr + ':' + gift.m.luckyBagNum : '';
+        var bad = !gift ? 'no_gift' : (gift.m.receiveBagUidList.indexOf(F.uid) >= 0 || HG.claimed[gkey]) ? 'already' : gift.m.receiveBagUidList.length >= HG.bagCap ? 'full'
+          : Object.keys(HG.marches).length >= 5 ? 'too_many' : HG.received + HG.inflight >= Number(HG.cap) ? 'limit' : '';
+        if (bad) { setTimeout(function () { cb({ s: 3, d: bad }); }, 20); return true; }
+        var mk = 'g' + F.sent.length, start = Math.floor(Date.now() / 1000), arriveSec = start + Math.max(1, Math.ceil(HG.travelMs / 1000));
+        HG.claimed[gkey] = 1; HG.inflight++; HG.marches[mk] = 1; HG.maxOut = Math.max(HG.maxOut, Object.keys(HG.marches).length);
+        F.carrier[mk] = { marchType: 257, realUid: F.uid, target_tx: p.x, target_ty: p.y };
+        setTimeout(function () { HG.inflight--; HG.received++; gift.m.receiveBagUidList.push(F.uid); }, HG.travelMs);
+        setTimeout(function () { delete HG.marches[mk]; delete F.carrier[mk]; }, HG.travelMs * 2);
+        setTimeout(function () { cb({ s: 0, d: JSON.stringify({ marchInfo: { marchId: mk, marchType: 257, marchStartTime: start, marchArrive: arriveSec } }) }); }, 20);
+        return true;
+      }
       var n = F.sent.length, ans;
       if (rid === 902 && p.isAirCraftCarrier) {           // an Angel attack from the carrier
         if (F.angelMode === 'silent') { if (F.pending.indexOf(902) < 0) F.pending.push(902); return true; }   // never answered: like the real game, it stays pending
@@ -89,6 +108,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
           if (c.itemId) pp.cityReward = { itemId: c.itemId, instanceId: c.instanceId, players: [], num: 5, endTimeMilli: c.endMs || 0 };
           pts.push({ v: 1, x: a[1], y: a[2], k: a[0], pointType: 1, p: pp });
         });
+        if (F.htg.inview !== false) F.htg.gifts.forEach(function (g, gi) { if (g.k === p.k) pts.push({ v: 1, x: g.x, y: g.y, k: g.k, id: 9000 + gi, pointType: 259, m: JSON.parse(JSON.stringify(g.m)) }); });
         setTimeout(function () { cb({ c: 901, o: String(n), d: JSON.stringify({ rtype: 2, pointList: pts }) }); }, 20);
         return true;
       } else if (rid === 815) {                            // use an item: a letter puts a camp by the base; capsules add VIT
@@ -162,6 +182,12 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         setTimeout(function () { cb({ c: 8802, s: ok ? 0 : 3, pbAckV2: { header: ok ? { s: 0 } : { s: 3, d: 'busy' }, data: data } }); }, 20);
         return true;
       }
+      if (rid === 8852) {                                   // the next gift box the player can claim (the world map's quick button)
+        var HQ = F.htg, nowS = Math.floor(Date.now() / 1000);
+        var g8 = HQ.queryMode === 'none' ? null : HQ.gifts.filter(function (gi) { return gi.m.receiveBagUidList.indexOf(F.uid) < 0 && gi.m.receiveBagUidList.length < HQ.bagCap && gi.m.endSecsTime > nowS; })[0];
+        setTimeout(function () { cb({ c: 8852, pbAckV2: { header: { s: 0 }, data: g8 ? { x: g8.x, y: g8.y } : {} } }); }, 20);
+        return true;
+      }
       if (rid !== 2503) ans = { c: rid, s: 3, pbAckV2: { header: { s: 3, d: 'unknown_request' } } };
       else if (F.limitAfter && F.collects >= F.limitAfter) ans = { c: 2503, s: 3, pbAckV2: { header: { s: 3, d: 'mask_limit_1' } } };
       else if (!city || !city.itemId || F.claimed[city.instanceId]) ans = { c: 2503, s: 3, pbAckV2: { header: { s: 3, d: 'pubilc911' } } };
@@ -225,6 +251,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   var PARTY = { 2: 1, 3: 2, 4: 3 };
   window.__require = function (name) {
     if (name === 'DataCenter') return { DATA: { get ServerTime() { return nowSec(); }, UserData: { Name: F.name, StrUid: F.uid, get UID() { return F.uid; }, _resourceData: { get _gold() { return F.gems; } },
+      getItemDropReceivedNumData: function () { return { 259: F.htg.received }; },
       getItemAmount: function (id) { return id === 520002 ? F.bag : id === 1700039 ? F.rfc.letters : id === 600001 ? F.rfc.small : id === 600002 ? F.rfc.large : 0; },
       getEnergy: function () { return { Point: F.rfc.vit, PointMax: F.rfc.vitMax, BuyTimes: F.rfc.buys }; },
       get myMarchNum() { return F.rfc.used; }, get myMarchNumMAX() { return F.rfc.max; }, Heros: {},
@@ -234,7 +261,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
     if (name === 'NetMgr') return { NET: NET };
     if (name === 'GameTools') return { default: {
-      getDataConfigData: function (id) { return ({ 630051: F.gifLevel, 2021116: '115|117|1117', 2021115: '3', 5041: '50|200|500|500|1000' })[id] || null; },
+      getDataConfigData: function (id) { return ({ 630051: F.gifLevel, 250908001: F.htg.cap, 2021116: '115|117|1117', 2021115: '3', 5041: '50|200|500|500|1000' })[id] || null; },
       getAttackerMyArmys: function () {                 // one entry per unit at home
         var out = [];
         F.rfc.units.forEach(function (g) { for (var i = g.n - (F.rfc.unitOut[g.armyID] || 0); i > 0; i--) out.push({ armyID: g.armyID, armyNum: 0, ArmyData: { type: g.type, level: g.level, power: g.power, mecha_id: g.mecha || 0 }, battleMechaData: g.mecha ? { mechaId: g.mecha } : null }); });
@@ -253,12 +280,15 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       if (t === 'hero') { var hh = F.rfc.heroes.filter(function (h) { return h.Id === Number(id); })[0]; return hh ? { hero_type: hh.HeroType, exclude: hh.exclude || 0 } : null; }
       if (t === 'item' && Number(id) === 1700039) return { para1: '12', para2: '14' };
       if (t === 'monster_group' && Number(id) === 12) return { cost_energy: 5 };
+      if (t === 'alliance_parade') return { bag_reward_num: F.htg.bagCap };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
-    if (name === 'NRequestIdV2') return { NRequestIdV2: { PINK_MECHA_MONSTER_LIST: 8802 } };
-    if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902, ITEM_USE: 815, BuyEnergry: 801, GetRefugee: 1021, ALLIANCE_Assembly_Create: 1201 } };
+    if (name === 'NRequestIdV2') return { NRequestIdV2: { PINK_MECHA_MONSTER_LIST: 8802, FLOAT_PARADE_QUERY_CAN_REWARD_BAG: 8852 } };
+    if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902, GET_WORLD_INFO: 901, ITEM_USE: 815, BuyEnergry: 801, GetRefugee: 1021, ALLIANCE_Assembly_Create: 1201 } };
     if (name === 'NWorldMapMarchCommon') return { NMarchType: { MECHA_TREASURE_BOSS: F.marchType189 } };
     if (name === 'NWorldMapData') return { default: { instance: { get marches() { return F.carrier; } } } };
     if (name === 'PushResponse') return { PUSH_FIND_REFUGEECAMP: PushFindCamp };
+    if (name === 'WorldMapCommon') return { MarchType: { CHIP_BLESSING_ITEM_DROP: 256, CHIP_BLESSING_GET_ITEM_DROP_REWARD: 257 }, WorldMapEntityType: { CHIP_BLESSING_ITEMDROP_BUILD: 259 } };
+    if (name === 'TableName') return { TableName: { alliance_parade: 'alliance_parade' } };
     if (name === 'GameDefine') return { FunctionKey: { mecha: 'mecha', refugee_v2: 'refugee_v2', monster_battle_replace: 'monster_battle_replace' }, BuffType: { BattleHeroAddNum: 'BattleHeroAddNum' } };
     // like the game: getAllEnabledHero reads the current battle's type, unset until a battle screen has opened (right
     // after login, in base); a rally's heroes are the march-able list (HeroController.getHaveHeroCanMarchList)
@@ -270,7 +300,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'NBattlePositionBiz') return { NBattlePositionBiz: { getPositionCount: function () { return F.rfc.positions; } } };
     if (name === 'MarchStorageController') return { MarchStorageController: { getInstance: function () { return { getMaxCoutByPos: function (y) { var a = F.rfc.armyAdd; return 1 + Math.floor(a / 9) + (a % 9 > y ? 1 : 0); } }; } } };
     if (name === 'MechaController') return { MechaController: { getInstance: function () { return { getMyMechaList: function () { return F.rfc.mechas; } }; } } };
-    var TEXT = { assembly_error_1: 'The rally could not start.', equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
+    var TEXT = { itemdrop_error_1: 'The gift box is gone.', assembly_error_1: 'The rally could not start.', equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
       pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached', view_too_fast: 'Too frequent',
       backup_mecha_lottery_21: 'March failed! A commander can only attack the same Heavy Mothership Angel once!' };
     if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return TEXT[k] || k; } } };
