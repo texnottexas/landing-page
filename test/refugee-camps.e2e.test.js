@@ -95,12 +95,12 @@ test('RFC-1: the set-up card shows marches, letters and capsules, fits a phone, 
   await ctx.close();
 });
 
-test('RFC-2: one march: a letter, the camp list, then a 3-minute rally with Diana, one camp after another', async () => {
+test('RFC-2: one march: the camp list, a letter, the camp list again, then a 3-minute rally with Diana, one camp after another', async () => {
   const { ctx, page } = await open(() => { __fake.rfc.rallyMs = 600; window.__maxOut = 0; setInterval(() => { window.__maxOut = Math.max(window.__maxOut, __fake.rfc.used); }, 10); });
   await start(page, { marches: 1, camps: 3 });
   await waitMsg(page, /Done\. Rallied 3 camps\./, 20000);
   const s = await sent(page);
-  assert.deepEqual(s.map((x) => x.rid), [1021, 815, 1021, 1201, 815, 1021, 1201, 815, 1021, 1201]);
+  assert.deepEqual(s.map((x) => x.rid), [1021, 815, 1021, 1201, 1021, 815, 1021, 1201, 1021, 815, 1021, 1201]);
   s.filter((x) => x.rid === 815).forEach((x) => assert.deepEqual(x.p, LETTER));
   const rallies = s.filter((x) => x.rid === 1201).map((x) => x.p);
   assert.deepEqual(rallies.map((r) => r.x + ',' + r.y), ['401,601', '402,602', '403,603']);
@@ -131,7 +131,7 @@ test('RFC-4: VIT short: the 50-gem buy first', async () => {
   const { ctx, page } = await open(() => { __fake.rfc.vit = 3; __fake.gems = 1000; });
   await start(page, { camps: 1 });
   await waitMsg(page, /Rallied 1 camp\./);
-  assert.deepEqual((await sent(page)).map((x) => x.rid), [1021, 801, 815, 1021, 1201]);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [801, 1021, 815, 1021, 1201]);
   assert.equal(await page.evaluate(() => __fake.gems), 950);
   assert.equal((await page.evaluate(() => window.__RFC.state())).gemsSpent, 50);
   await ctx.close();
@@ -151,7 +151,7 @@ test('RFC-6: out of VIT within the limits: stops before using a letter', async (
   const { ctx, page } = await open(() => { Object.assign(__fake.rfc, { vit: 3, buys: 1 }); });
   await start(page, { camps: 3, small: 0, large: 0 });
   await waitMsg(page, /out of VIT \(your limits are used up\)\. Rallied 0 camps\./);
-  assert.deepEqual((await sent(page)).map((x) => x.rid), [1021]);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [], 'nothing sent');
   await ctx.close();
 });
 
@@ -274,4 +274,47 @@ test('RFC-17: the game shows a new rally in its march count late: one march stil
   await waitMsg(page, /Rallied 2 camps/, 20000);
   assert.equal(await page.evaluate(() => window.__maxLive), 1, 'never two rallies out');
   await ctx.close();
+});
+
+test('RFC-18: the next camp lands on the tile the last one used: still found and rallied', async () => {
+  const { ctx, page } = await open(() => { Object.assign(__fake.rfc, { spawnAt: { x: 425, y: 643 }, rallyMs: 300 }); });
+  await start(page, { marches: 1, camps: 2 });
+  await waitMsg(page, /Rallied 2 camps/, 15000);
+  assert.deepEqual((await sent(page)).filter((x) => x.rid === 1201).map((x) => x.p.x + ',' + x.p.y), ['425,643', '425,643']);
+  await ctx.close();
+});
+
+test('RFC-19: two gatherers out and a march count that shows rallies late: three marches never means more than three out', async () => {
+  const { ctx, page } = await open(() => {
+    Object.assign(__fake.rfc, { used: 2, live: 2, usedLagMs: 3000, rallyMs: 6000 });   // the gatherers never come home
+    window.__maxLive = 0; setInterval(() => { window.__maxLive = Math.max(window.__maxLive, __fake.rfc.live || 0); }, 10);
+  });
+  await page.evaluate(() => { window.__RFC_RALLY_MS = 5000; });
+  await start(page, { marches: 3, camps: 2 });
+  await waitMsg(page, /Rallied 2 camps/, 25000);
+  assert.equal(await page.evaluate(() => window.__maxLive), 3);
+  await ctx.close();
+});
+
+test('RFC-20: no free heroes or troops: stops before using a letter', async () => {
+  const { ctx, page } = await open(() => { __fake.rfc.heroes.forEach((h) => { __fake.rfc.heroOut[h.Id] = 1; }); });
+  await start(page, { camps: 3 });
+  await waitMsg(page, /no free heroes or troops for a rally/);
+  assert.equal((await sent(page)).filter((x) => x.rid === 815).length, 0, 'no letter used');
+  await ctx.close();
+});
+
+test('RFC-21: the game drops after the letter, or after the camp list: on reconnect the same camp is rallied, one letter used', async () => {
+  for (const drop of [{ rid: 815, n: 1 }, { rid: 1021, n: 2 }]) {
+    const { ctx, page } = await open((d) => { __fake.rfc.drop = d; }, drop);
+    await start(page, { camps: 1 });
+    await waitText(page, '#rfc-foot', /Game disconnected/);
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { __fake.socket = 1; });
+    await waitMsg(page, /Rallied 1 camp\./);
+    const s = await sent(page);
+    assert.equal(s.filter((x) => x.rid === 815).length, 1, 'one letter (' + drop.rid + ')');
+    assert.deepEqual(s.filter((x) => x.rid === 1201).map((x) => x.p.x + ',' + x.p.y), ['401,601']);
+    await ctx.close();
+  }
 });

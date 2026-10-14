@@ -136,9 +136,9 @@
     return { act: 'stop', reason: 'out of VIT (your limits are used up)' };
   }
 
-  // A march is free for a rally: all of the player's marches count, and our own rallies from the last 3 minutes
-  // count even before the game shows them.
-  function marchFree(used, max, want, own) { return Math.max(int(used, 0), int(own, 0)) < Math.min(int(want, 1), int(max, 0)); }
+  // A march is free for a rally: all of the player's marches count (gatherers too), plus our own rallies the game
+  // doesn't show in its count yet.
+  function marchFree(used, max, want, own) { return int(used, 0) + int(own, 0) < Math.min(int(want, 1), int(max, 0)); }
 
   function gate(log, now) {
     var inMin = log.filter(function (t) { return t > now - 60000; });

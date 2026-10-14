@@ -104,7 +104,7 @@
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function lsJSON(k) { try { return JSON.parse(lsGet(k)); } catch (e) { return null; } }
-  var S = { running: false, stopped: false, siteKey: '', set: null, seen: {}, camp: null, done: 0, log: [], rallies: [], used: { small: 0, large: 0, buy: 0 },
+  var S = { running: false, stopped: false, siteKey: '', set: null, camp: null, done: 0, log: [], unshown: [], used: { small: 0, large: 0, buy: 0 },
     gemsSpent: 0, noBuy: false, count: null, foot: '', tone: 'ok', last: '', min: lsGet(LS_MIN) === '1', view: '' };
   function today() { return C.gameDay(Date.now()); }
   function todayCount() { return S.count && S.count.day === today() ? S.count.n || 0 : 0; }
@@ -205,8 +205,13 @@
     if (!(await settle(function () { return vit().point > v.point; }))) { stop("VIT didn't go up after a VIT Capsule"); return false; }
     return true;
   }
-  // One letter, then the camp it brought: a camp in the game's list this run hasn't seen. 'retry': nothing sent.
+  // The camp list right before a letter, the letter, then the camp it brought: one that wasn't in that list. A camp
+  // can come back on a tile an earlier camp used, so this compares with the list just before, not with the whole run.
+  // 'retry': no letter sent.
   async function useLetter() {
+    var before = await campList();
+    if (!before) return null;
+    var had = {}; before.forEach(function (p) { had[C.key(p)] = 1; });   // camps already there are left alone
     var n0 = held(C.LETTER);
     setFoot('Using a "Help Me" Letter...', 'ok');
     var a = await ask('use', { itemid: C.LETTER, amount: 1 });
@@ -222,8 +227,8 @@
     while (S.running) {
       var pts = await campList();
       if (!pts) return null;
-      var fresh = C.newCamps(pts, S.seen);
-      if (fresh.length) { pts.forEach(function (p) { S.seen[C.key(p)] = 1; }); return fresh[0]; }   // others that came at once are left alone
+      var fresh = C.newCamps(pts, had);
+      if (fresh.length) return fresh[0];                   // others that came at once are left alone
       if (Date.now() >= end) { stop('a letter showed no camp, so no more letters were used'); return null; }
     }
     return null;
@@ -233,7 +238,7 @@
     var plan;
     try { plan = deploy(); } catch (e) { stop("couldn't read your heroes and troops"); return false; }
     if (!plan.heroes.length || !plan.army.length) { stop('no free heroes or troops for a rally'); return false; }
-    S.seen[C.key(camp)] = 1;                               // before the request: a lost answer never brings a second rally
+    var m0 = marches().used;
     setFoot('Rallying the camp at ' + camp.x + ', ' + camp.y + '...', 'ok');
     var a = await ask('rally', C.rallyRequest(camp, plan.heroes, plan.army));
     if (a.s === 'stopped') return false;
@@ -242,27 +247,31 @@
     var r = C.classify(a);
     if (r.kind === 'silent') { stop("the game didn't answer the rally"); return false; }
     if (r.kind !== 'ok') { refused(r); return false; }
-    S.rallies.push(Date.now()); S.done++; bump();
+    S.done++; bump();
     S.last = 'Rallied ' + camp.x + ', ' + camp.y;
     reportUsage(); paint();
+    // until the game's march count shows this rally, it counts as out on top of that count
+    if (!(await settle(function () { return marches().used > m0; }))) S.unshown.push(Date.now());
     return true;
   }
 
   // ---------------------------------------------------------------- the loop
   async function run() {
-    var first = await campList();
-    if (!first) return;
-    first.forEach(function (p) { S.seen[C.key(p)] = 1; });   // camps found before this run are left alone
     while (S.running) {
       if (S.done >= S.set.camps) { finish(); return; }
       if (!ready()) { await waitDown(); continue; }
-      var now = Date.now(), m = marches(), own = S.rallies.filter(function (t) { return t > now - RALLY_MS; }).length;
+      var now = Date.now(), m = marches(), own = S.unshown.filter(function (t) { return t > now - RALLY_MS; }).length;
       if (!C.marchFree(m.used, m.max, S.set.marches, own)) {
-        setFoot('Waiting for a march (' + Math.max(m.used, own) + ' of ' + Math.min(S.set.marches, m.max) + ' out)', 'ok');
+        setFoot('Waiting for a march (' + (m.used + own) + ' of ' + Math.min(S.set.marches, m.max) + ' out)', 'ok');
         await delay(POLL_MS); continue;
       }
       var g = C.gate(S.log, now);
       if (!g.ok) { setFoot('Paused: ' + g.reason + '.', 'warn'); await delay(POLL_MS); continue; }
+      if (!S.camp) {                                       // no letter unless a rally can follow it
+        var p0;
+        try { p0 = deploy(); } catch (e) { stop("couldn't read your heroes and troops"); return; }
+        if (!p0.heroes.length || !p0.army.length) { stop('no free heroes or troops for a rally'); return; }
+      }
       if (!(await ensureVit())) return;
       if (!S.camp) {
         if (held(C.LETTER) < 1) { finish('Out of "Help Me" Letters.'); return; }

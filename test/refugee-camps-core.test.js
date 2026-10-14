@@ -109,11 +109,12 @@ test('buyPrice and refill: the 50-gem buy first (first buy of the day only), the
   assert.equal(end.act, 'stop'); assert.match(end.reason, /out of VIT/);
 });
 
-test('marchFree: all of the player\'s marches count, and our own recent rallies count even before the game shows them', () => {
+test('marchFree: all of the player\'s marches count, plus our own rallies the game does not show yet', () => {
   assert.equal(R.marchFree(0, 7, 1, 0), true);
   assert.equal(R.marchFree(1, 7, 1, 0), false);
   assert.equal(R.marchFree(0, 7, 1, 1), false, 'the game has not counted our rally yet');
-  assert.equal(R.marchFree(2, 7, 3, 1), true);
+  assert.equal(R.marchFree(2, 7, 3, 1), false, 'two gatherers out + our rally the game does not show yet = 3');
+  assert.equal(R.marchFree(1, 7, 3, 1), true);
   assert.equal(R.marchFree(3, 3, 7, 0), false, 'never past the player\'s max');
 });
 

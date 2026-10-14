@@ -89,7 +89,11 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         var RF = F.rfc, it = p.itemid;
         if (it === 1700039) {
           if (RF.letters < 1) ans = { s: 3, d: 'item_not_enough' };
-          else { RF.letters--; if (!RF.noCamp) { RF.seq++; RF.camps.push({ x: 400 + RF.seq, y: 600 + RF.seq }); } ans = { s: 0, d: JSON.stringify({ itemId: it, amount: RF.letters }) }; }
+          else { RF.letters--; if (!RF.noCamp) {                                  // spawnAt: the game puts the camp on a free tile it used before
+            RF.seq++;
+            var spot = RF.spawnAt && !RF.camps.some(function (c) { return c.x === RF.spawnAt.x && c.y === RF.spawnAt.y; }) ? RF.spawnAt : { x: 400 + RF.seq, y: 600 + RF.seq };
+            RF.camps.push({ x: spot.x, y: spot.y });
+          } ans = { s: 0, d: JSON.stringify({ itemId: it, amount: RF.letters }) }; }
         } else if (it === 600001 || it === 600002) {
           var kind = it === 600001 ? 'small' : 'large';
           if (RF[kind] < 1) ans = { s: 3, d: 'item_not_enough' };
@@ -132,6 +136,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         ans = F.answers.length ? F.answers.shift() : { s: 0, d: JSON.stringify({ marchInfo: { marchStartTime: nowSec, marchArrive: nowSec + F.marchSecs, marchId: 'm' + n } }) };
       }
       setTimeout(function () { cb(ans); }, 20);
+      if (F.rfc.drop && F.rfc.drop.rid === rid && --F.rfc.drop.n === 0) setTimeout(function () { F.socket = 3; }, 30);   // the game drops right after this answer
       return true;
     },
     sendPBV2: function (rid, p, target, cb) {
