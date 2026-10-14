@@ -10,7 +10,7 @@
   var C = window.RefugeeCampsCore;
   if (!C) { try { alert('Refugee Camps did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-13';
+  var VERSION = '2026-10-13.2';
   var WORKER = window.__RFC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__RFC_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__RFC_TIMEOUT_MS || 10000, CAMP_WAIT_MS = window.__RFC_CAMP_WAIT_MS || 10000;
   var POLL_MS = window.__RFC_POLL_MS || 1000, SETTLE_MS = window.__RFC_SETTLE_MS || 3000, RALLY_MS = window.__RFC_RALLY_MS || C.RALLY_MS;
@@ -48,6 +48,21 @@
     var it = table('item', C.LETTER), g = it && table('monster_group', funcOn('refugee_v2') ? it.para2 : it.para1), n = g && Number(g.cost_energy);
     return n > 0 ? n : 5;
   }
+  // A letter's camp comes with a push (PUSH_FIND_REFUGEECAMP {x, y}) whose only job is to jump the map to the camp,
+  // and that jump closes every open screen, chat included. While one of our letters waits for its camp, the push's
+  // handler does nothing; letters used by hand jump as always (Tex, 2026-10-13). Put back when the run ends.
+  function quiet(ms) { window.__RFC_QUIET_UNTIL = ms ? Date.now() + ms : 0; }
+  function hush(on) {
+    try {
+      var P = req('PushResponse').PUSH_FIND_REFUGEECAMP, proto = P && P.prototype;
+      if (!proto) return;
+      if (on && !proto.__rfcOrig) {
+        var orig = proto.Handler;
+        proto.__rfcOrig = orig;
+        proto.Handler = function () { if (Date.now() < (window.__RFC_QUIET_UNTIL || 0)) return; return orig.apply(this, arguments); };
+      } else if (!on && proto.__rfcOrig) { proto.Handler = proto.__rfcOrig; delete proto.__rfcOrig; }
+    } catch (e) {}
+  }
   function gameText(key) { try { var L = req('LocalManager'), t = (L.LOCAL || L.default).getText(key); return t && t !== key ? String(t) : ''; } catch (e) { return ''; } }
   function parse(a) { var d = a && a.d; if (typeof d === 'string') { try { return JSON.parse(d); } catch (e) { return null; } } return d && typeof d === 'object' ? d : null; }
   function sha256Hex(text) {
@@ -57,8 +72,13 @@
   }
 
   // Quick Deploy's inputs, read the way the game reads them.
+  // A rally's heroes: the branch of the game's HeroTools.getAllEnabledHero a rally takes (the heroes who can march,
+  // less any held by another stage). getAllEnabledHero itself reads the current battle's type, which the game only
+  // sets once a battle screen has opened, so it throws in base right after login.
   function heroPool() {
-    return (req('HeroTools').default.getAllEnabledHero() || []).map(function (h) {
+    var used = [];
+    try { used = req('NBattleModel').NBattleModel.instance.getOtherStageUsedHeros() || []; } catch (e) {}
+    return (req('HeroController').HeroController.getInstance().getHaveHeroCanMarchList() || []).filter(function (h) { return h && used.indexOf(h.Id) < 0; }).map(function (h) {
       var t = table('hero', h.Id) || {};
       return { id: Number(h.Id), quality: Number(h.Quality) || 0, star: Number(h.Star) || 0, level: Number(h.Level) || 0, power: Number(h.Power) || 0, type: Number(h.HeroType) || 0, exclude: Number(t.exclude) || 0, tryOut: h.TryOut ? 1 : 0 };
     });
@@ -214,6 +234,7 @@
     var had = {}; before.forEach(function (p) { had[C.key(p)] = 1; });   // camps already there are left alone
     var n0 = held(C.LETTER);
     setFoot('Using a "Help Me" Letter...', 'ok');
+    hush(true); quiet(GAP_MS + TIMEOUT_MS + CAMP_WAIT_MS + 3000);   // no map jump for our own letter
     var a = await ask('use', { itemid: C.LETTER, amount: 1 });
     if (unsent(a)) return S.running ? 'retry' : null;
     var r = C.classify(a);
@@ -228,7 +249,7 @@
       var pts = await campList();
       if (!pts) return null;
       var fresh = C.newCamps(pts, had);
-      if (fresh.length) return fresh[0];                   // others that came at once are left alone
+      if (fresh.length) { quiet(3000); return fresh[0]; }  // others that came at once are left alone
       if (Date.now() >= end) { stop('a letter showed no camp, so no more letters were used'); return null; }
     }
     return null;
@@ -291,6 +312,7 @@
   function end(text) {
     if (S.stopped) return;
     S.stopped = true; S.running = false;
+    quiet(0); hush(false);
     showMessage(text, true);
   }
   function stop(reason) {
@@ -349,7 +371,7 @@
     card.appendChild(head); card.appendChild(body); root.appendChild(card);
     document.body.appendChild(root);
   }
-  function removeRoot() { if (root && root.parentNode) root.parentNode.removeChild(root); root = null; window.__RFC.open = false; }
+  function removeRoot() { if (root && root.parentNode) root.parentNode.removeChild(root); root = null; window.__RFC.open = false; quiet(0); hush(false); }
   function setView(v) {
     S.view = v;
     var mb = document.getElementById('rfc-min');

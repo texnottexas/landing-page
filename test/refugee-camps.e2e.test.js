@@ -318,3 +318,26 @@ test('RFC-21: the game drops after the letter, or after the camp list: on reconn
     await ctx.close();
   }
 });
+
+test('RFC-22: right after login, in base (no battle screen opened yet): the heroes still read, and the run goes', async () => {
+  const { ctx, page } = await open();
+  assert.equal(await page.evaluate(() => { try { __require('HeroTools').default.getAllEnabledHero(); return 'read'; } catch (e) { return 'throws'; } }), 'throws', 'the game\'s list needs a battle type');
+  await launch(page);
+  assert.deepEqual((await page.evaluate(() => window.__RFC.preview())).heroes, [117, 115, 169]);
+  await page.fill('#rfc-camps', '1');
+  await page.click('#rfc-start');
+  await waitMsg(page, /Done\. Rallied/, 15000);
+  await ctx.close();
+});
+
+test('RFC-23: the tool\'s letters don\'t jump the map or close chat; a letter used by hand after the run still does', async () => {
+  const { ctx, page } = await open(() => { __fake.rfc.rallyMs = 300; __fake.choice = { Channel: 2, Id: 'alliance' }; });
+  await start(page, { marches: 1, camps: 2 });
+  await waitMsg(page, /Rallied 2 camps/, 15000);
+  assert.deepEqual(await page.evaluate(() => __fake.jumps), [], 'no jump');
+  assert.ok(await page.evaluate(() => !!__fake.choice), 'the open chat stays open');
+  await page.click('#rfc-close');
+  await page.evaluate(() => __fake.pushCamp(410, 610));       // a letter from the bag, after the run
+  assert.deepEqual(await page.evaluate(() => __fake.jumps), [{ x: 410, y: 610 }], 'the game\'s own jump is back');
+  await ctx.close();
+});

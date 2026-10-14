@@ -20,7 +20,7 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   choice: null, level: 100, gifLevel: '20', emoji: [], emojiThrows: false, toasts: [],
   known: { emotion_new: [192, 193, 303], emoji_gif: [10005] },   // ids the game's tables hold
   siege: null, rank: 5, battleMs: 500, waitSec: 60, loseAt: 0, refuseSkip: false, opens: {},
-  angelEvent: null, angels: [], carrier: {}, angelMode: 'ok', landMs: 300, marchType189: 189,
+  angelEvent: null, angels: [], carrier: {}, angelMode: 'ok', landMs: 300, marchType189: 189, jumps: [],
   // Refugee Camps: letters and capsules in the bag, VIT, marches, camps by the base, heroes and units at home
   rfc: { letters: 20, small: 5, large: 2, vit: 100, vitMax: 327, buys: 0, used: 0, max: 7, camps: [], seq: 0, noCamp: false, rallyMode: 'ok', rallyMs: 3000,
     positions: 9, armyAdd: 30, heroMax: 3, heroAddBuff: 1, gemDrift: 0, func: { mecha: true, monster_battle_replace: true, refugee_v2: false },
@@ -35,6 +35,12 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
 try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.__fake.kickBox = true; } } catch (e) {}
 (function () {
   var F = window.__fake;
+  // like the game: a letter's camp comes with a push (PUSH_FIND_REFUGEECAMP {x, y}) whose handler jumps the map to it,
+  // which closes every open screen, chat included
+  function PushFindCamp() {}
+  PushFindCamp.prototype.ResponseHandle = function (e) { try { this.Handler(e); } catch (x) {} };
+  PushFindCamp.prototype.Handler = function (e) { var t = JSON.parse(e.data); F.jumps.push({ x: t.x, y: t.y }); F.choice = null; };
+  F.pushCamp = function (x, y) { new PushFindCamp().ResponseHandle({ data: JSON.stringify({ x: x, y: y }) }); };
   var ec = {
     on: function (n, f) { (F.handlers[n] = F.handlers[n] || []).push(f); },
     off: function (n, f) { F.handlers[n] = (F.handlers[n] || []).filter(function (x) { return x !== f; }); },
@@ -93,6 +99,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
             RF.seq++;
             var spot = RF.spawnAt && !RF.camps.some(function (c) { return c.x === RF.spawnAt.x && c.y === RF.spawnAt.y; }) ? RF.spawnAt : { x: 400 + RF.seq, y: 600 + RF.seq };
             RF.camps.push({ x: spot.x, y: spot.y });
+            setTimeout(function () { F.pushCamp(spot.x, spot.y); }, 40);   // just after the answer, as live
           } ans = { s: 0, d: JSON.stringify({ itemId: it, amount: RF.letters }) }; }
         } else if (it === 600001 || it === 600002) {
           var kind = it === 600001 ? 'small' : 'large';
@@ -246,11 +253,15 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902, ITEM_USE: 815, BuyEnergry: 801, GetRefugee: 1021, ALLIANCE_Assembly_Create: 1201 } };
     if (name === 'NWorldMapMarchCommon') return { NMarchType: { MECHA_TREASURE_BOSS: F.marchType189 } };
     if (name === 'NWorldMapData') return { default: { instance: { get marches() { return F.carrier; } } } };
+    if (name === 'PushResponse') return { PUSH_FIND_REFUGEECAMP: PushFindCamp };
     if (name === 'GameDefine') return { FunctionKey: { mecha: 'mecha', refugee_v2: 'refugee_v2', monster_battle_replace: 'monster_battle_replace' }, BuffType: { BattleHeroAddNum: 'BattleHeroAddNum' } };
-    if (name === 'HeroTools') return { default: { getAllEnabledHero: function () { return F.rfc.heroes.filter(function (h) { return !F.rfc.heroOut[h.Id]; }).map(function (h) { return Object.assign({ Quality: 5, Star: 5, Level: 120, TryOut: 0 }, h); }); } } };
+    // like the game: getAllEnabledHero reads the current battle's type, unset until a battle screen has opened (right
+    // after login, in base); a rally's heroes are the march-able list (HeroController.getHaveHeroCanMarchList)
+    var freeHeroes = function () { return F.rfc.heroes.filter(function (h) { return !F.rfc.heroOut[h.Id]; }).map(function (h) { return Object.assign({ Quality: 5, Star: 5, Level: 120, TryOut: 0 }, h); }); };
+    if (name === 'HeroTools') return { default: { getAllEnabledHero: function () { if (!F.curBattle) throw new TypeError("Cannot read properties of undefined (reading 'Type')"); return freeHeroes(); } } };
     if (name === 'HeroData') return { HeroQuality: { Orange: 5 } };
-    if (name === 'HeroController') return { HeroController: { getInstance: function () { return { checkHeroExclude: function () { return false; } }; } }, HeroState: { March: 2 } };
-    if (name === 'NBattleModel') return { NBattleModel: { instance: { myMaxArmysNum: 9, getMarchHeroNumMax: function () { return F.rfc.heroMax; } } } };
+    if (name === 'HeroController') return { HeroController: { getInstance: function () { return { checkHeroExclude: function () { return false; }, getHaveHeroCanMarchList: freeHeroes }; } }, HeroState: { March: 2 } };
+    if (name === 'NBattleModel') return { NBattleModel: { instance: { myMaxArmysNum: 9, getMarchHeroNumMax: function () { return F.rfc.heroMax; }, getOtherStageUsedHeros: function () { return []; } } } };
     if (name === 'NBattlePositionBiz') return { NBattlePositionBiz: { getPositionCount: function () { return F.rfc.positions; } } };
     if (name === 'MarchStorageController') return { MarchStorageController: { getInstance: function () { return { getMaxCoutByPos: function (y) { var a = F.rfc.armyAdd; return 1 + Math.floor(a / 9) + (a % 9 > y ? 1 : 0); } }; } } };
     if (name === 'MechaController') return { MechaController: { getInstance: function () { return { getMyMechaList: function () { return F.rfc.mechas; } }; } } };
