@@ -51,9 +51,12 @@ async function open(viewport, before, o) {
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
-  if (o && o.dragFirst) await ctx.route('**/ops-tools.json*', async (rt) => {     // a tool that lists the drag helper first
+  if (o && (o.dragFirst || o.events)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
-    j.tools.forEach((t) => { if (t.id === 'alpha') t.scripts.unshift('ops-drag.js'); });
+    j.tools.forEach((t) => {
+      if (o.dragFirst && t.id === 'alpha') t.scripts.unshift('ops-drag.js');   // a tool that lists the drag helper first
+      if (o.events && o.events[t.id]) t.event = o.events[t.id];                 // a tool tied to an event
+    });
     rt.fulfill({ response: r, body: JSON.stringify(j) });
   });
   await page.goto(base);
@@ -445,5 +448,69 @@ test('OPS-DRAG-2: with the drag helper missing (404) the Ops Center still opens,
   await clickTile(page, 'Alpha Tool');
   await page.click('.ops-btn.primary');
   await page.waitForSelector('#fake-alpha');
+  await ctx.close();
+});
+
+// Event tiles (Tex, 2026-10-14): a tool whose event isn't running is tucked into a folded "Not running now" row.
+const live = (type) => { const s = Math.floor(Date.now() / 1000); return { type, begintime: s - 60, endtime: s + 3600 }; };
+const mainNames = (page) => page.$$eval('.ops-grid:not(.ops-tucked) .ops-tname', (els) => els.map((e) => e.textContent));
+const tuckedNames = (page) => page.$$eval('.ops-tucked .ops-tname', (els) => els.map((e) => e.textContent));
+
+test('OPS-EV-1: an event tool whose event is not running is tucked into "Not running now"; a tap shows it, dimmed, "Not running"', async () => {
+  const { ctx, page } = await open(PHONE, () => { __fake.activities = [{ type: 292, begintime: 0, endtime: 1 }]; }, { events: { alpha: [279], epsilon: [292] } });
+  await page.waitForSelector('.ops-tile');
+  assert.ok(!(await mainNames(page)).includes('Alpha Tool'), 'tucked');
+  assert.ok(!(await mainNames(page)).includes('Epsilon Tool'), 'an ended event is not running');
+  assert.ok((await mainNames(page)).includes('Beta Tool'), 'tools without an event stay');
+  assert.equal(await page.textContent('.ops-tuck'), 'Not running now (2)');
+  assert.equal(await page.getAttribute('.ops-tuck', 'aria-expanded'), 'false');
+  assert.deepEqual(await tuckedNames(page), []);
+  await page.click('.ops-tuck');
+  assert.deepEqual((await tuckedNames(page)).sort(), ['Alpha Tool', 'Epsilon Tool']);
+  assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Not running']);
+  assert.equal(await page.$eval('.ops-tucked .ops-tile', (e) => e.classList.contains('dim')), true);
+  assert.equal(await page.getAttribute('.ops-tuck', 'aria-expanded'), 'true');
+  await ctx.close();
+});
+
+test('OPS-EV-2: search finds a tucked tool and shows it in the opened tucked group', async () => {
+  const { ctx, page } = await open(PHONE, () => { __fake.activities = []; }, { events: { alpha: [279] } });
+  await page.waitForSelector('.ops-tuck');
+  await page.fill('.ops-input', 'first');                           // alpha's keyword
+  await page.waitForSelector('.ops-tucked .ops-tile');
+  assert.deepEqual(await mainNames(page), []);
+  assert.deepEqual(await tuckedNames(page), ['Alpha Tool']);
+  assert.equal(await page.$('.ops-empty'), null, 'not "No tools match"');
+  await ctx.close();
+});
+
+test('OPS-EV-3: when the event starts, its tile moves back into the menu without reopening it', async () => {
+  const { ctx, page } = await open(PHONE, () => { __fake.activities = []; }, { events: { alpha: [279] } });
+  await page.waitForSelector('.ops-tuck');
+  await page.evaluate((a) => { __fake.activities.push(a); }, live(279));
+  await page.waitForFunction(() => [...document.querySelectorAll('.ops-grid:not(.ops-tucked) .ops-tname')].some((e) => e.textContent === 'Alpha Tool'), null, { timeout: 3000 });
+  assert.equal(await page.$('.ops-tuck'), null, 'no tuck row left');
+  assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Ready']);
+  await ctx.close();
+});
+
+test('OPS-EV-4: a tucked tool\'s page says the event isn\'t running and still launches ("Launch anyway")', async () => {
+  const { ctx, page } = await open(PHONE, () => { __fake.activities = []; }, { events: { alpha: [279] } });
+  await page.click('.ops-tuck');
+  await clickTile(page, 'Alpha Tool');
+  await page.waitForSelector('.ops-check');
+  const rows = await page.$$eval('.ops-check', (els) => els.map((e) => e.textContent));
+  assert.ok(rows.some((t) => /The event isn't running now/.test(t)), rows.join(' | '));
+  assert.equal(await page.textContent('.ops-btn.primary'), 'Launch anyway');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#fake-alpha');                         // the tool's own screen
+  await ctx.close();
+});
+
+test('OPS-EV-5: when the game\'s activities can\'t be read, every tool stays in the menu (a broken read never hides a tool)', async () => {
+  const { ctx, page } = await open(PHONE, null, { events: { alpha: [279] } });   // no ActivityController in the fake game
+  await page.waitForSelector('.ops-tile');
+  assert.ok((await mainNames(page)).includes('Alpha Tool'));
+  assert.equal(await page.$('.ops-tuck'), null);
   await ctx.close();
 });

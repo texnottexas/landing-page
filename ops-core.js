@@ -49,6 +49,8 @@
         overlay: /^#[A-Za-z0-9_-]+$/.test(t.overlay || '') ? t.overlay : null,
         auto: (Array.isArray(t.auto) ? t.auto : []).filter(function (r) { return t.ready.indexOf(r) >= 0; }),
         owners: (Array.isArray(t.owners) ? t.owners : []).filter(function (k) { return typeof k === 'string' && /^[0-9a-f]{16}$/.test(k); }),
+        // a tool tied to events lists the game's activity types (whole numbers above 0); the rest is dropped
+        event: (Array.isArray(t.event) ? t.event : []).filter(function (n) { return typeof n === 'number' && n > 0 && n % 1 === 0; }),
         ownerOnly: t.owners !== undefined          // fail closed: an owners key that isn't a good list hides the tool
       });
     });
@@ -97,8 +99,18 @@
   function tileStatus(tool, ctx) {
     if (!ctx.member) return { state: 'blocked', launch: null };
     if (tool.gate === 'code' && !ctx.unlocked) return { state: 'locked', launch: null };
+    if (ctx.eventOff) return { state: 'off', launch: 'Launch anyway' };   // its event isn't running: it can still open
     var ok = tool.ready.every(function (r) { return isAutoFor(tool, r) || (ctx.checks && ctx.checks[r] === true); });
     return ok ? { state: 'ready', launch: 'Launch' } : { state: 'notready', launch: 'Launch anyway' };
+  }
+
+  var EVENT_TEXT = ['The event is running', 'The event isn\'t running now'];
+  // A tool tied to events is running when any activity of its types is between its begin and end. No types: always.
+  function eventLive(types, acts, nowSec) {
+    if (!Array.isArray(types) || !types.length) return true;
+    return (Array.isArray(acts) ? acts : []).some(function (a) {
+      return !!a && typeof a === 'object' && types.indexOf(Number(a.type)) >= 0 && (Number(a.begintime) || 0) <= nowSec && nowSec < (Number(a.endtime) || 0);
+    });
   }
 
   // info: { ops, matchesOverlay, position, zIndex } of an element added to the page after launch
@@ -153,6 +165,7 @@
     ICONS: ICONS, READY_IDS: READY_IDS, READY_TEXT: READY_TEXT,
     validateTools: validateTools, visibleTools: visibleTools, filterTools: filterTools, orderTools: orderTools, pushRecent: pushRecent,
     initSeen: initSeen, badgeFor: badgeFor, tileStatus: tileStatus, isToolNode: isToolNode, isAutoFor: isAutoFor, AUTO_TEXT: AUTO_TEXT,
+    eventLive: eventLive, EVENT_TEXT: EVENT_TEXT,
     trackerInit: trackerInit, trackerReduce: trackerReduce, trackerWatching: trackerWatching
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = OpsCore;

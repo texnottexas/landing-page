@@ -53,8 +53,22 @@
     } catch (e) {}
     try { var p = window.cc && cc.find('UICanvas/PopLayer/prefabWorlddefenderMonsterFortress'); out.defender = !!(p && p.activeInHierarchy); } catch (e) {}
     out.r4 = !!(S.member && S.member.rank >= 4);
+    out.events = events();
     return out;
   }
+  // The game's activities, to tell whether a tool's event is running. null when they can't be read: then every tool
+  // counts as running (a broken read never hides a tool).
+  function events() {
+    try {
+      var m = req('ActivityController'), A = m && (m.ActivityController || m.default || m), I = A && (A.Instance || A.instance);
+      if (!I || !Array.isArray(I._activityList)) return null;
+      var acts = I._activityList.slice();
+      if (I._activityMap && typeof I._activityMap === 'object') Object.keys(I._activityMap).forEach(function (k) { acts.push(I._activityMap[k]); });
+      var d = req('DataCenter'), now = Number(d && d.DATA && d.DATA.ServerTime);
+      return { acts: acts, now: now > 0 ? now : Math.floor(Date.now() / 1000) };
+    } catch (e) { return null; }
+  }
+  function eventOff(t, ev) { return !!(ev && t.event && t.event.length && !C().eventLive(t.event, ev.acts, ev.now)); }
 
   // ---------------------------------------------------------------- data
   function loadList() {
@@ -109,7 +123,7 @@
     } catch (e) {}
   }
   function toolById(id) { return S.list ? S.list.tools.filter(function (t) { return t.id === id; })[0] : null; }
-  function statusOf(tool, ck) { return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck }); }
+  function statusOf(tool, ck) { return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events) }); }
 
   // ---------------------------------------------------------------- shell
   function ensureRoot() { if (!S.root || !S.root.isConnected) S.root = K().root(); return S.root; }
@@ -122,6 +136,7 @@
   }
   function close() {
     closeCard();
+    S.tuckOpen = false;
     if (S.waitTimer) { clearTimeout(S.waitTimer); S.waitTimer = null; }
     if (S.tracker) S.tracker = C().trackerReduce(S.tracker, { type: 'abandon', at: Date.now() });   // no late screens after a close
     if (!trackerBusy()) { stopObserver(); hideFab(); removeRoot(); }
@@ -172,28 +187,55 @@
     renderGrid();
     S.timer = setInterval(updateTiles, 1000);
   }
+  function addTile(grid) {
+    return function (t) {
+      var tl = K().tile({ icon: t.icon, title: t.title, onClick: function () { openTool(t.id); } });
+      S.tiles[t.id] = tl; grid.appendChild(tl.btn);
+    };
+  }
+  function chevron() {
+    var NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg'), p = document.createElementNS(NS, 'path');
+    svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('class', 'ops-chev');
+    p.setAttribute('d', 'M6 9l6 6 6-6'); svg.appendChild(p); return svg;
+  }
+  function menuTools() { return C().orderTools(C().filterTools(C().visibleTools(S.list.tools, S.siteKey), S.query), S.recent); }
+  function offIds(tools, ev) { return tools.filter(function (t) { return eventOff(t, ev); }).map(function (t) { return t.id; }).join(','); }
+  // Tools whose event isn't running sit in a folded "Not running now" row under the grid (Tex: tucked, not hidden).
   function renderGrid() {
     if (!S.grid) return;
     S.grid.textContent = ''; S.tiles = {};
-    var tools = C().orderTools(C().filterTools(C().visibleTools(S.list.tools, S.siteKey), S.query), S.recent);
-    if (!tools.length) { S.grid.appendChild(K().el('div', 'ops-empty', 'No tools match "' + S.query.trim() + '".')); S.grid.style.display = 'block'; return; }
-    S.grid.style.display = '';
-    tools.forEach(function (t) {
-      var tl = K().tile({ icon: t.icon, title: t.title, onClick: function () { openTool(t.id); } });
-      S.tiles[t.id] = tl; S.grid.appendChild(tl.btn);
-    });
+    if (S.tuck && S.tuck.parentNode) S.tuck.parentNode.removeChild(S.tuck);
+    S.tuck = null;
+    var ev = events(), all = menuTools();
+    var on = all.filter(function (t) { return !eventOff(t, ev); }), off = all.filter(function (t) { return eventOff(t, ev); });
+    S.offKey = offIds(all, ev);
+    if (!all.length) { S.grid.appendChild(K().el('div', 'ops-empty', 'No tools match "' + S.query.trim() + '".')); S.grid.style.display = 'block'; return; }
+    S.grid.style.display = on.length ? '' : 'none';
+    on.forEach(addTile(S.grid));
+    if (off.length) {
+      var open = !!S.query.trim() || !!S.tuckOpen;
+      var wrap = K().el('div', 'ops-tuck-wrap'), row = K().el('button', 'ops-tuck');
+      row.type = 'button'; row.setAttribute('aria-expanded', String(open));
+      row.appendChild(K().el('span', 'ops-tuck-label', 'Not running now (' + off.length + ')')); row.appendChild(chevron());
+      row.addEventListener('click', function () { S.tuckOpen = !open; renderGrid(); });
+      wrap.appendChild(row);
+      if (open) { var g = K().el('div', 'ops-grid ops-tucked'); off.forEach(addTile(g)); wrap.appendChild(g); }
+      S.grid.parentNode.insertBefore(wrap, S.grid.nextSibling);
+      S.tuck = wrap;
+    }
     updateTiles();
   }
-  var PILL = { ready: ['Ready', 'ok'], notready: ['Not ready', 'warn'], locked: ['Locked', 'mute'], blocked: ['Members only', 'mute'] };
+  var PILL = { ready: ['Ready', 'ok'], notready: ['Not ready', 'warn'], locked: ['Locked', 'mute'], blocked: ['Members only', 'mute'], off: ['Not running', 'mute'] };
   function updateTiles() {
     if (S.view !== 'menu' || !S.list) return;
     var ck = checks();
+    if (S.grid && offIds(menuTools(), ck.events) !== S.offKey) { renderGrid(); return; }   // an event started or ended: its tile moves
     Object.keys(S.tiles).forEach(function (id) {
       var t = toolById(id), tl = S.tiles[id], st = statusOf(t, ck), badge = C().badgeFor(t, S.seen);
       tl.pills.textContent = '';
       tl.pills.appendChild(K().pill(PILL[st.state][0], PILL[st.state][1]));
       if (badge) tl.pills.appendChild(K().pill(badge === 'new' ? 'New' : 'Updated', 'info'));
-      tl.btn.classList.toggle('dim', st.state === 'locked' || st.state === 'blocked');
+      tl.btn.classList.toggle('dim', st.state === 'locked' || st.state === 'blocked' || st.state === 'off');
       tl.btn.setAttribute('aria-label', t.title + ', ' + PILL[st.state][0] + (badge ? ', ' + (badge === 'new' ? 'New' : 'Updated') : ''));
     });
     if (S.sub) S.sub.textContent = subText();
@@ -212,6 +254,11 @@
       row.appendChild(dot); row.appendChild(txt); box.appendChild(row);
       return { id: r, dot: dot, txt: txt };
     });
+    var evRow = null;                                    // a tool tied to an event says whether it's running
+    if (t.event && t.event.length) {
+      evRow = { dot: K().el('span', 'ops-dot'), txt: K().el('span') };
+      var er = K().el('div', 'ops-check'); er.appendChild(evRow.dot); er.appendChild(evRow.txt); box.appendChild(er);
+    }
     if (t.gate === 'code' && !S.unlocked) {
       var lock = K().el('div', 'ops-check');
       lock.appendChild(K().el('span', 'ops-dot warn', '!')); lock.appendChild(K().el('span', '', 'This tool needs the unlock code'));
@@ -239,6 +286,11 @@
         r.dot.className = 'ops-dot ' + (ok ? 'ok' : auto ? 'info' : 'warn'); r.dot.textContent = ok ? '✓' : auto ? '→' : '!';
         r.txt.textContent = auto ? C().AUTO_TEXT[r.id] : C().READY_TEXT[r.id][ok ? 0 : 1];
       });
+      if (evRow) {
+        var off = eventOff(t, ck.events);
+        evRow.dot.className = 'ops-dot ' + (off ? 'warn' : 'ok'); evRow.dot.textContent = off ? '!' : '✓';
+        evRow.txt.textContent = C().EVENT_TEXT[off ? 1 : 0];
+      }
       go.textContent = st.launch || (st.state === 'locked' ? 'Launch' : 'Members only');
       go.disabled = !st.launch;
     }

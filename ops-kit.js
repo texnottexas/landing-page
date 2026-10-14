@@ -57,14 +57,20 @@
     '.ops-note.err{color:' + T.red + '}',
     '.ops-meta{font-size:12px;color:' + T.muted + '}',
     '.ops-empty{font-size:14px;color:' + T.muted + ';text-align:center;padding:18px 8px}',
+    '.ops-tuck{display:flex;align-items:center;gap:8px;width:100%;margin-top:12px;padding:0 12px;min-height:44px;background:transparent;border:1px dashed ' + T.border + ';border-radius:10px;color:' + T.muted + ';font:inherit;font-size:13px;cursor:pointer;text-align:left}',
+    '.ops-tuck:hover{color:' + T.text + ';border-color:' + T.muted + '}',
+    '.ops-tuck-label{flex:1}',
+    '.ops-chev{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}',
+    '.ops-tuck[aria-expanded="true"] .ops-chev{transform:rotate(180deg)}',
+    '.ops-tucked{margin-top:10px}',
     '.ops-toast{display:flex;gap:10px;align-items:center;justify-content:space-between;background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.4);border-radius:10px;padding:8px 10px;font-size:13px}',
     '.ops-fab{position:absolute;right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom));pointer-events:auto;display:flex;align-items:center;gap:8px;background:' + T.surface + ';border:1px solid ' + T.blue + ';border-radius:999px;padding:0 16px;min-height:44px;color:' + T.accent + ';font:inherit;font-size:13px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.5);cursor:pointer;max-width:calc(100vw - 24px)}',
     '.ops-fab span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.ops-fab i{width:8px;height:8px;border-radius:50%;background:' + T.green + ';flex:0 0 8px;animation:ops-pulse 2s ease-in-out infinite}',
     '.ops-bubble{position:absolute;right:max(12px,env(safe-area-inset-right));bottom:calc(max(12px,env(safe-area-inset-bottom)) + 50px);max-width:min(320px,calc(100vw - 24px));background:' + T.surface + ';border:1px solid ' + T.border + ';border-radius:12px;padding:10px 12px;font-size:13px;pointer-events:auto;box-shadow:0 8px 24px rgba(0,0,0,.5)}',
-    '.ops-tile:focus-visible,.ops-btn:focus-visible,.ops-icon-btn:focus-visible,.ops-fab:focus-visible{outline:2px solid ' + T.accent + ';outline-offset:2px}',
+    '.ops-tile:focus-visible,.ops-tuck:focus-visible,.ops-btn:focus-visible,.ops-icon-btn:focus-visible,.ops-fab:focus-visible{outline:2px solid ' + T.accent + ';outline-offset:2px}',
     '@keyframes ops-pulse{0%,100%{opacity:1}50%{opacity:.35}}',
-    '@media (prefers-reduced-motion:reduce){.ops-fab i{animation:none}.ops-tile{transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.ops-fab i{animation:none}.ops-tile,.ops-chev{transition:none}}'
   ].join('\n');
 
   var PATHS = {

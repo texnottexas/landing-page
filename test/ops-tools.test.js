@@ -221,3 +221,9 @@ test('movable cards: each floating tool lists ops-drag.js first, at version 2026
   assert.ok(/ ops-drag\.js /.test(cpLine), 'deployed');
   assert.ok(/test\/ops-drag\.test\.js/.test(read('.github/workflows/pages.yml')), 'rules in the gate');
 });
+
+// Event tiles (Tex, 2026-10-14): Angel Attacks, Enigma Veins and Alliance Defense are tied to their events; HT Gift Boxes is not.
+test('event tools: Angel Attacks 292, Enigma Veins 279, Alliance Defense 26; no other tool has an event', () => {
+  const ev = Object.fromEntries(list.tools.filter((t) => t.event.length).map((t) => [t.id, t.event]));
+  assert.deepEqual(ev, { 'alliance-defense': [26], angels: [292], 'enigma-veins': [279] });
+});

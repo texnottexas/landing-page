@@ -237,3 +237,27 @@ test('gem is a known icon', () => {
 test('smile is a known icon', () => {
   assert.equal(OC.validateTools({ tools: [tool({ id: 's', icon: 'smile' })] }).tools[0].icon, 'smile');
 });
+
+test('event: kept as positive whole activity types, anything else dropped; the tool stays', () => {
+  const r = OC.validateTools({ tools: [tool({ id: 'e1', event: [279] }), tool({ id: 'e2', event: [292, 'x', -1, 2.5, 0, 26] }), tool({ id: 'e3', event: 'nope' }), tool({ id: 'e4' })] }).tools;
+  assert.deepEqual(r.map((t) => [t.id, t.event]), [['e1', [279]], ['e2', [292, 26]], ['e3', []], ['e4', []]]);
+});
+
+test('eventLive: any activity of the tool\'s types between its begin and end; no types means always', () => {
+  const s = 1792000000, acts = [{ type: 292, begintime: s - 10, endtime: s + 10 }, { type: 279, begintime: s + 100, endtime: s + 200 }, null];
+  assert.equal(OC.eventLive([292], acts, s), true);
+  assert.equal(OC.eventLive([279], acts, s), false, 'not begun');
+  assert.equal(OC.eventLive([279], acts, s + 200), false, 'ended');
+  assert.equal(OC.eventLive([26], acts, s), false);
+  assert.equal(OC.eventLive([26, 292], acts, s), true);
+  assert.equal(OC.eventLive([], acts, s), true);
+  assert.equal(OC.eventLive([279], [{ type: 279, endtime: s + 5 }], s), true, 'no begintime counts as begun');
+  assert.equal(OC.eventLive([279], null, s), false);
+});
+
+test('tileStatus: a member\'s tool whose event is off shows Not running and Launch anyway; blocked and locked still win', () => {
+  assert.deepEqual(OC.tileStatus(tool(), { member: true, unlocked: true, checks: { game: true }, eventOff: true }), { state: 'off', launch: 'Launch anyway' });
+  assert.deepEqual(OC.tileStatus(tool(), { member: false, unlocked: true, checks: { game: true }, eventOff: true }), { state: 'blocked', launch: null });
+  assert.deepEqual(OC.tileStatus(tool({ gate: 'code' }), { member: true, unlocked: false, checks: { game: true }, eventOff: true }), { state: 'locked', launch: null });
+  assert.deepEqual(OC.EVENT_TEXT, ['The event is running', "The event isn't running now"]);
+});
