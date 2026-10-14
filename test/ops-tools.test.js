@@ -159,7 +159,7 @@ test('Refugee Camps tile: for members, game ready, its own overlay and tent icon
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#rfc-root');
   assert.equal(t.icon, 'tent');
-  assert.deepEqual(t.scripts, ['ops-drag.js', 'refugee-camps-core.js', 'refugee-camps.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-jam.js', 'refugee-camps-core.js', 'refugee-camps.js']);
   assert.match(t.desc, /"Help Me" Letters/);
   assert.ok(!/—/.test(t.desc), 'no em dash');
   const ver = (read('refugee-camps.js').match(/var VERSION = '([^']+)'/) || [])[1];
@@ -200,7 +200,7 @@ test('Enigma Veins tile: for members, game ready, its own overlay and gem icon, 
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#vein-root');
   assert.equal(t.icon, 'gem');
-  assert.deepEqual(t.scripts, ['ops-drag.js', 'enigma-veins-core.js', 'enigma-veins.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-jam.js', 'enigma-veins-core.js', 'enigma-veins.js']);
   assert.match(t.desc, /Enigma Field Hunt/);
   assert.ok(!/—/.test(t.desc), 'no em dash');
   const ver = (read('enigma-veins.js').match(/var VERSION = '([^']+)'/) || [])[1];
@@ -232,4 +232,14 @@ test('event tools: Angel Attacks 292, Enigma Veins 279, Alliance Defense 26; no 
 test('tucked tools: TC Squad Sync and Class Talent Reset (EL), nothing else', () => {
   assert.deepEqual(list.tools.filter((t) => t.tucked).map((t) => t.id).sort(), ['class-reset', 'tc-sync']);
   assert.equal(list.tools.find((t) => t.id === 'class-reset').title, 'Class Talent Reset (EL)');
+});
+
+test('alongside (Tex 2026-10-14): only Rickroll runs alongside; the Jam cards list ops-jam.js second; the helper deploys and its rule runs in the gate', () => {
+  assert.deepEqual(list.tools.filter((t) => t.alongside).map((t) => t.id), ['rickroll']);
+  for (const id of ['mask-boxes', 'map-collector', 'enigma-veins', 'refugee-camps']) {
+    const t = list.tools.find((x) => x.id === id);
+    assert.deepEqual(t.scripts.slice(0, 2), ['ops-drag.js', 'ops-jam.js'], id);
+  }
+  assert.ok(/ ops-jam\.js /.test(cpLine), 'deployed');
+  assert.ok(/test\/ops-jam\.test\.js/.test(read('.github/workflows/pages.yml')), 'rule in the gate');
 });

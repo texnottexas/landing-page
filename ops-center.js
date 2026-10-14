@@ -125,7 +125,7 @@
     } catch (e) {}
   }
   function toolById(id) { return S.list ? S.list.tools.filter(function (t) { return t.id === id; })[0] : null; }
-  function statusOf(tool, ck) { return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events) }); }
+  function statusOf(tool, ck) { return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events), alongsideOn: !!tool.alongside && alongsideOn(tool) }); }
 
   // ---------------------------------------------------------------- shell
   function ensureRoot() { if (!S.root || !S.root.isConnected) S.root = K().root(); return S.root; }
@@ -228,7 +228,7 @@
     }
     updateTiles();
   }
-  var PILL = { ready: ['Ready', 'ok'], notready: ['Not ready', 'warn'], locked: ['Locked', 'mute'], blocked: ['Members only', 'mute'], off: ['Not running', 'mute'] };
+  var PILL = { ready: ['Ready', 'ok'], notready: ['Not ready', 'warn'], locked: ['Locked', 'mute'], blocked: ['Members only', 'mute'], off: ['Not running', 'mute'], playing: ['Playing', 'info'] };
   function updateTiles() {
     if (S.view !== 'menu' || !S.list) return;
     var ck = checks();
@@ -305,6 +305,7 @@
   var nodeIds = typeof WeakMap === 'function' ? new WeakMap() : null, nextNode = 1;
   function trackerBusy() { return !!(S.tracker && C().trackerWatching(S.tracker, Date.now())); }
   function launch(t) {
+    if (t.alongside) { launchAlongside(t); return; }
     S.recent = C().pushRecent(S.recent, t.id); lsSet(LS.recent, S.recent);
     S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
     reportUse(t);
@@ -342,7 +343,7 @@
   function nodeInfo(n) {
     var cs = null; try { cs = getComputedStyle(n); } catch (e) {}
     var m = false; try { m = !!(S.tool && S.tool.overlay && n.matches && n.matches(S.tool.overlay)); } catch (e) {}
-    return { ops: isOurs(n), matchesOverlay: m, position: cs ? cs.position : '', zIndex: cs ? parseInt(cs.zIndex, 10) || 0 : 0 };
+    return { ops: isOurs(n), matchesOverlay: m, alongside: isAlongsideNode(n), position: cs ? cs.position : '', zIndex: cs ? parseInt(cs.zIndex, 10) || 0 : 0 };
   }
   function idOf(n) {
     if (!nodeIds) return null;
@@ -394,8 +395,28 @@
   // the note above the pill, with a way to hide the pill in case it covers one of the tool's own buttons
   function showNote() {
     ensureRoot();
-    if (S.fab) K().bubble(S.root, runningNote(), 6000, 'Hide this button', function () { S.fabHidden = true; hideFab(); });
-    else K().bubble(S.root, runningNote());
+    var al = alongsideTool(), extra = null;            // the song can start alongside whatever is open (Tex 2026-10-14)
+    if (al) extra = alongsideOn(al) ? { text: al.title + ' is on', disabled: true } : { text: al.title + ' \u266a', onClick: function () { launchAlongside(al); } };
+    if (S.fab) K().bubble(S.root, runningNote(), 6000, 'Hide this button', function () { S.fabHidden = true; hideFab(); }, extra);
+    else K().bubble(S.root, runningNote(), undefined, null, null, extra);
+  }
+  // Tools that run alongside the others (Rickroll, Tex 2026-10-14): never the running tool, never holding the menu.
+  function alongsideTool() {
+    if (!S.list) return null;
+    return C().visibleTools(S.list.tools, S.siteKey).filter(function (t) { return t.alongside && (t.gate !== 'code' || S.unlocked); })[0] || null;
+  }
+  function alongsideOn(t) { try { return !!(t && t.overlay && document.querySelector(t.overlay)); } catch (e) { return false; } }
+  function isAlongsideNode(n) {
+    return !!S.list && S.list.tools.some(function (t) { try { return t.alongside && t.overlay && n.matches && n.matches(t.overlay); } catch (e) { return false; } });
+  }
+  function launchAlongside(t) {
+    S.recent = C().pushRecent(S.recent, t.id); lsSet(LS.recent, S.recent);
+    S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
+    reportUse(t);
+    if (S.view) { closeCard(); if (!trackerBusy()) { stopObserver(); hideFab(); removeRoot(); } }
+    var chain = Promise.resolve();
+    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return f === 'ops-drag.js' ? p.catch(function () {}) : p; }); });   // the drag helper is optional
+    chain.catch(function () { ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.'); });
   }
   function hideFab() { if (S.fab) { S.fab.remove(); S.fab = null; } }
 

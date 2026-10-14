@@ -51,7 +51,8 @@
         owners: (Array.isArray(t.owners) ? t.owners : []).filter(function (k) { return typeof k === 'string' && /^[0-9a-f]{16}$/.test(k); }),
         // a tool tied to events lists the game's activity types (whole numbers above 0); the rest is dropped
         event: (Array.isArray(t.event) ? t.event : []).filter(function (n) { return typeof n === 'number' && n > 0 && n % 1 === 0; }),
-        tucked: t.tucked === true,                     // always under "Not running now" (Tex 2026-10-14: TC Squad Sync, Class Talent Reset (EL))
+        tucked: t.tucked === true,
+        alongside: t.alongside === true,               // runs alongside the others, never holding the Ops Center (Tex 2026-10-14: Rickroll)                     // always under "Not running now" (Tex 2026-10-14: TC Squad Sync, Class Talent Reset (EL))
         ownerOnly: t.owners !== undefined          // fail closed: an owners key that isn't a good list hides the tool
       });
     });
@@ -100,6 +101,7 @@
   function tileStatus(tool, ctx) {
     if (!ctx.member) return { state: 'blocked', launch: null };
     if (tool.gate === 'code' && !ctx.unlocked) return { state: 'locked', launch: null };
+    if (ctx.alongsideOn) return { state: 'playing', launch: 'Launch' };   // runs alongside (Rickroll) and is on now
     if (ctx.eventOff) return { state: 'off', launch: 'Launch anyway' };   // its event isn't running: it can still open
     var ok = tool.ready.every(function (r) { return isAutoFor(tool, r) || (ctx.checks && ctx.checks[r] === true); });
     return ok ? { state: 'ready', launch: 'Launch' } : { state: 'notready', launch: 'Launch anyway' };
@@ -116,7 +118,7 @@
 
   // info: { ops, matchesOverlay, position, zIndex } of an element added to the page after launch
   function isToolNode(info) {
-    if (info.ops) return false;
+    if (info.ops || info.alongside) return false;          // an alongside tool's screen (Rickroll) is never the running tool's
     if (info.matchesOverlay) return true;
     return info.position === 'fixed' && Number(info.zIndex) >= 1000;
   }

@@ -165,12 +165,16 @@
     f.addEventListener('click', onClick); r.appendChild(f);
     return { el: f, setText: function (t) { s.textContent = t; }, remove: function () { f.remove(); } };
   }
-  function bubble(r, text, ms, actionText, onAction) {
+  function bubble(r, text, ms, actionText, onAction, extra) {
     var old = r.querySelector('.ops-bubble'); if (old) old.remove();
     var b = el('div', 'ops-bubble'); b.appendChild(el('div', '', text));
     if (actionText) {
       var a = button(actionText, 'small', function () { b.remove(); if (onAction) onAction(); });
       a.style.marginTop = '8px'; b.appendChild(a);
+    }
+    if (extra && extra.text) {                          // a second action: {text, onClick, disabled}
+      var x2 = button(extra.text, 'small', function () { if (extra.disabled) return; b.remove(); if (extra.onClick) extra.onClick(); });
+      x2.style.marginTop = '8px'; x2.style.marginLeft = actionText ? '8px' : '0'; x2.disabled = !!extra.disabled; b.appendChild(x2);
     }
     r.appendChild(b);
     setTimeout(function () { b.remove(); }, ms || 5000);

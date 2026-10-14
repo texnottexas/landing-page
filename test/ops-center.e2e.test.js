@@ -51,13 +51,14 @@ async function open(viewport, before, o) {
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
-  if (o && (o.dragFirst || o.events || o.tucked)) await ctx.route('**/ops-tools.json*', async (rt) => {
+  if (o && (o.dragFirst || o.events || o.tucked || o.alongside)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
     j.tools.forEach((t) => {
       if (o.dragFirst && t.id === 'alpha') t.scripts.unshift('ops-drag.js');   // a tool that lists the drag helper first
       if (o.events && o.events[t.id]) t.event = o.events[t.id];                 // a tool tied to an event
       if (o.tucked && o.tucked.includes(t.id)) t.tucked = true;                 // a tool that always sits under "Not running now"
     });
+    if (o.alongside && !j.tools.some((x) => x.id === 'rickroll')) j.tools.push({ id: 'rickroll', title: 'Rickroll', icon: 'disco', gate: 'member', ready: ['game'], scripts: ['fake-rickroll.js'], version: '1', overlay: '#rr-root', alongside: true, desc: 'A song.', keywords: 'song music' });
     rt.fulfill({ response: r, body: JSON.stringify(j) });
   });
   await page.goto(base);
@@ -481,7 +482,7 @@ test('OPS-EV-2: search finds a tucked tool and shows it in the opened tucked gro
   await page.waitForSelector('.ops-tucked .ops-tile');
   assert.deepEqual(await mainNames(page), []);
   assert.deepEqual(await tuckedNames(page), ['Alpha Tool']);
-  assert.equal(await page.$('.ops-empty'), null, 'not "No tools match"');
+  assert.equal(await page.$$eval('.ops-empty', (e) => e.length), 0, 'not "No tools match"');
   assert.equal(await page.$eval('.ops-tuck', (e) => e.disabled), true, 'the search holds it open: no tap that does nothing');
   await page.fill('.ops-input', '');
   assert.equal(await page.$eval('.ops-tuck', (e) => e.disabled), false, 'tappable again');
@@ -493,7 +494,7 @@ test('OPS-EV-3: when the event starts, its tile moves back into the menu without
   await page.waitForSelector('.ops-tuck');
   await page.evaluate((a) => { __fake.activities.push(a); }, live(279));
   await page.waitForFunction(() => [...document.querySelectorAll('.ops-grid:not(.ops-tucked) .ops-tname')].some((e) => e.textContent === 'Alpha Tool'), null, { timeout: 3000 });
-  assert.equal(await page.$('.ops-tuck'), null, 'no tuck row left');
+  assert.equal(await page.$$eval('.ops-tuck', (e) => e.length), 0, 'no tuck row left');
   assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Ready']);
   await ctx.close();
 });
@@ -515,7 +516,7 @@ test('OPS-EV-5: when the game\'s activities can\'t be read, every tool stays in 
   const { ctx, page } = await open(PHONE, null, { events: { alpha: [279] } });   // no ActivityController in the fake game
   await page.waitForSelector('.ops-tile');
   assert.ok((await mainNames(page)).includes('Alpha Tool'));
-  assert.equal(await page.$('.ops-tuck'), null);
+  assert.equal(await page.$$eval('.ops-tuck', (e) => e.length), 0);
   await ctx.close();
 });
 
@@ -531,5 +532,40 @@ test('OPS-EV-6 (Tex 2026-10-14): a tucked tool always sits under "Not running no
   assert.equal(await page.textContent('.ops-btn.primary'), 'Launch anyway');
   await page.click('.ops-btn.primary');
   await page.waitForSelector('#fake-alpha');
+  await ctx.close();
+});
+
+test('OPS-JAM-1 (Tex 2026-10-14): Rickroll launched from the menu holds nothing: the menu opens again and Alpha launches while it plays; its tile says Playing', async () => {
+  const { ctx, page } = await open(PHONE, null, { alongside: true });
+  await clickTile(page, 'Rickroll');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#rr-root');
+  await page.waitForSelector('.ops-card', { state: 'detached' });
+  assert.equal(await page.$$eval('.ops-fab', (e) => e.length), 0, 'no "running" pill');
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-card .ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Rickroll'), ['Playing']);
+  await clickTile(page, 'Alpha Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#fake-alpha');
+  assert.ok(await page.$('#rr-root'), 'the song plays on');
+  await ctx.close();
+});
+
+test('OPS-JAM-2 (Tex 2026-10-14): with Alpha open, the note offers Rickroll; it starts alongside, and closing Alpha brings the menu back while the song plays', async () => {
+  const { ctx, page } = await open(PHONE, null, { alongside: true });
+  await clickTile(page, 'Alpha Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('.ops-fab:has-text("Alpha Tool running")');
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-bubble:has-text("Alpha Tool is open")');
+  await page.click('.ops-bubble .ops-btn:text-is("Rickroll ♪")');
+  await page.waitForSelector('#rr-root');
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-bubble .ops-btn:text-is("Rickroll is on")');
+  assert.equal(await page.$eval('.ops-bubble .ops-btn:text-is("Rickroll is on")', (b) => b.disabled), true);
+  await page.click('#fake-alpha-close');
+  await page.waitForSelector('.ops-card .ops-tile', { timeout: 5000 });   // back to the menu: Rickroll's card is not Alpha's
+  assert.ok(await page.$('#rr-root'), 'the song plays on');
   await ctx.close();
 });

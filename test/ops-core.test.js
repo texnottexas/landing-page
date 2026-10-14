@@ -266,3 +266,12 @@ test('tucked: kept only as true; a tucked tool always sits under "Not running no
   const r = OC.validateTools({ tools: [tool({ id: 't1', tucked: true }), tool({ id: 't2', tucked: 'yes' }), tool({ id: 't3' })] }).tools;
   assert.deepEqual(r.map((t) => [t.id, t.tucked]), [['t1', true], ['t2', false], ['t3', false]]);
 });
+
+test('alongside (Tex 2026-10-14): kept only as true; its screen is never the running tool\'s; its tile says Playing while it is on', () => {
+  const r = OC.validateTools({ tools: [tool({ id: 'a1', alongside: true }), tool({ id: 'a2', alongside: 1 }), tool({ id: 'a3' })] }).tools;
+  assert.deepEqual(r.map((t) => [t.id, t.alongside]), [['a1', true], ['a2', false], ['a3', false]]);
+  assert.equal(OC.isToolNode({ ops: false, matchesOverlay: false, position: 'fixed', zIndex: 2147483000, alongside: true }), false);
+  assert.equal(OC.isToolNode({ ops: false, matchesOverlay: false, position: 'fixed', zIndex: 2147483000 }), true);
+  assert.deepEqual(OC.tileStatus(tool(), { member: true, unlocked: true, checks: { game: true }, alongsideOn: true }), { state: 'playing', launch: 'Launch' });
+  assert.deepEqual(OC.tileStatus(tool(), { member: false, unlocked: true, checks: { game: true }, alongsideOn: true }), { state: 'blocked', launch: null });
+});
