@@ -315,7 +315,7 @@
     showFab('Ops · starting ' + t.title);
     startObserver();
     var chain = Promise.resolve();
-    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return f === 'ops-drag.js' ? p.catch(function () {}) : p; }); });   // the drag helper is optional
+    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag and Jam helpers are optional
     chain.then(function () { dispatch({ type: 'loaded', at: Date.now() }); }, function () { dispatch({ type: 'loadError', at: Date.now() }); });
   }
   function dispatch(ev) {
@@ -415,7 +415,7 @@
     reportUse(t);
     if (S.view) { closeCard(); if (!trackerBusy()) { stopObserver(); hideFab(); removeRoot(); } }
     var chain = Promise.resolve();
-    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return f === 'ops-drag.js' ? p.catch(function () {}) : p; }); });   // the drag helper is optional
+    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag and Jam helpers are optional
     chain.catch(function () { ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.'); });
   }
   function hideFab() { if (S.fab) { S.fab.remove(); S.fab = null; } }

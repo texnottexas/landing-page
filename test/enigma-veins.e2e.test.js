@@ -308,3 +308,15 @@ test('VEIN-JAM-1 (Tex 2026-10-14): Jam in the title row; two quick taps load Ric
   await page.waitForFunction(() => document.querySelector('#vein-root .ops-jam').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
   await ctx.close();
 });
+
+test('VEIN-JAM-2 (review 2026-10-14): the tool list never answers: the note gives up after a while and can be tapped again', async () => {
+  const { ctx, page } = await open(VEINS, [[{ x: 1, y: 1 }]]);
+  await page.route('**/ops-tools.json*', () => {});                 // never answered
+  await page.evaluate((b) => { window.__OPS_BASE = b; window.__JAM_LOAD_MS = 1000; }, base);
+  await page.addScriptTag({ url: base + 'ops-jam.js' });
+  await launch(page);
+  await page.click('#vein-root .ops-jam');
+  await page.waitForFunction(() => document.querySelector('#vein-root .ops-jam').getAttribute('aria-busy') === 'true');
+  await page.waitForFunction(() => { const b = document.querySelector('#vein-root .ops-jam'); return b.getAttribute('aria-busy') === 'false' && /Couldn't load Rickroll/.test(b.getAttribute('aria-label')); }, null, { timeout: 4000 });
+  await ctx.close();
+});

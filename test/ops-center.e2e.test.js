@@ -51,10 +51,11 @@ async function open(viewport, before, o) {
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
-  if (o && (o.dragFirst || o.events || o.tucked || o.alongside)) await ctx.route('**/ops-tools.json*', async (rt) => {
+  if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
     j.tools.forEach((t) => {
       if (o.dragFirst && t.id === 'alpha') t.scripts.unshift('ops-drag.js');   // a tool that lists the drag helper first
+      if (o.jamFirst && t.id === 'alpha') t.scripts.unshift('ops-jam.js');     // and the Jam helper (not served here: 404)
       if (o.events && o.events[t.id]) t.event = o.events[t.id];                 // a tool tied to an event
       if (o.tucked && o.tucked.includes(t.id)) t.tucked = true;                 // a tool that always sits under "Not running now"
     });
@@ -567,5 +568,14 @@ test('OPS-JAM-2 (Tex 2026-10-14): with Alpha open, the note offers Rickroll; it 
   await page.click('#fake-alpha-close');
   await page.waitForSelector('.ops-card .ops-tile', { timeout: 5000 });   // back to the menu: Rickroll's card is not Alpha's
   assert.ok(await page.$('#rr-root'), 'the song plays on');
+  await ctx.close();
+});
+
+test('OPS-JAM-3 (review): with the Jam helper missing (404), a tool that lists it still launches', async () => {
+  const { ctx, page } = await open(PHONE, null, { jamFirst: true });
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Alpha Tool');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#fake-alpha');
   await ctx.close();
 });

@@ -982,6 +982,11 @@ test('MBX-JAM-1 (Tex 2026-10-14): on the folded bar, the note plays Rickroll wit
   await page.click('#mbx-root .ops-jam');
   await page.waitForSelector('#rr-root');
   assert.ok(await page.evaluate(() => !!document.querySelector('#mbx-root .min')), 'still folded');
-  assert.equal(await page.evaluate(() => localStorage.getItem('ops_pos_v1_mask-boxes')), null, 'a tap is not a drag');
+  await page.click('#rr-stop');
+  const at = await page.$eval('#mbx-root .ops-jam', (e) => { const r = e.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+  const card0 = await page.$eval('#mbx-root', (e) => e.getBoundingClientRect().left);
+  await page.mouse.move(at.x, at.y); await page.mouse.down(); await page.mouse.move(at.x + 20, at.y + 20); await page.mouse.move(at.x + 40, at.y + 40); await page.mouse.up();
+  assert.equal(await page.$eval('#mbx-root', (e) => e.getBoundingClientRect().left), card0, 'a press that moves from the note is not a drag');
+  assert.equal(await page.evaluate(() => localStorage.getItem('ops_pos_v1_mask-boxes')), null);
   await ctx.close();
 });

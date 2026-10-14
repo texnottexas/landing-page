@@ -214,3 +214,27 @@ test('RR-DRAG-1: the player card drags (not from its buttons or video); the mini
   assert.equal(await page.evaluate(() => document.getElementById('rr-pill').style.display), 'none', 'a tap opens it');
   await ctx.close();
 });
+
+test('RR-LAYER-1 (review 2026-10-14): the card sits on the tool cards\' layer, above Map Collector\'s Unattended game frame', async () => {
+  const { ctx, page } = await open();
+  await launch(page);
+  await page.waitForSelector('#rr-root');
+  const z = await page.$eval('#rr-root', (e) => Number(getComputedStyle(e).zIndex));
+  assert.ok(z >= 2147483000, 'z-index ' + z + ' (the frame is 2147482000)');
+  await ctx.close();
+});
+
+test('RR-FRAME-1 (review 2026-10-14): in Unattended mode the song pauses the game playing in the frame, and Stop brings it back', async () => {
+  const { ctx, page } = await open();
+  await page.evaluate(() => new Promise((resolve) => {
+    const f = document.createElement('iframe'); f.id = 'mapc-frame';
+    f.srcdoc = '<script>window.__game2 = { pauses: 0, resumes: 0 }; window.cc = { audioEngine: { pauseAll: function () { __game2.pauses++; }, resumeAll: function () { __game2.resumes++; } } };<\/script>';
+    f.onload = resolve; document.body.appendChild(f);
+  }));
+  await launch(page);
+  await page.waitForFunction(() => window.__RR && window.__RR.state().playing);
+  assert.deepEqual(await page.evaluate(() => Object.assign({}, document.getElementById('mapc-frame').contentWindow.__game2)), { pauses: 1, resumes: 0 });
+  await page.evaluate(() => window.__RR.stop());
+  assert.deepEqual(await page.evaluate(() => Object.assign({}, document.getElementById('mapc-frame').contentWindow.__game2)), { pauses: 1, resumes: 1 });
+  await ctx.close();
+});

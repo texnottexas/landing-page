@@ -12,7 +12,12 @@
 
   var S = { audio: null, root: null, gamePaused: false, playing: false };
 
-  function engine() { try { return window.cc && window.cc.audioEngine; } catch (e) { return null; } }
+  // The game's sound: the game in Map Collector's Unattended frame when there is one (its page's own game is paused there),
+  // else this page's (review 2026-10-14).
+  function engine() {
+    try { var f = document.getElementById('mapc-frame'), w = f && f.contentWindow; if (w && w.cc && w.cc.audioEngine) return w.cc.audioEngine; } catch (e) {}
+    try { return window.cc && window.cc.audioEngine; } catch (e) { return null; }
+  }
   // pauseAll() pauses only what is playing and resumeAll() resumes only what it paused.
   function pauseGame() {
     var a = engine();
@@ -28,7 +33,7 @@
   function el(tag, css, text) { var e = document.createElement(tag); if (css) e.style.cssText = css; if (text != null) e.textContent = text; return e; }
   var BTN = 'min-height:44px;padding:0 16px;border-radius:8px;font:600 14px/1 system-ui,sans-serif;cursor:pointer;';
   var SMALL = 'min(340px,calc(100vw - 24px))', WIDE = 'min(560px,calc(100vw - 24px))';
-  var root = el('div', 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:100000;width:' + SMALL + ';' +
+  var root = el('div', 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:2147483000;width:' + SMALL + ';' +
     'box-sizing:border-box;padding:12px 14px;background:' + T.surface + ';border:1px solid ' + T.border + ';border-radius:12px;' +
     'box-shadow:0 8px 28px rgba(0,0,0,.5);color:' + T.text + ';font:14px/1.4 system-ui,sans-serif;display:flex;flex-direction:column;gap:10px;transition:box-shadow .2s');
   var row = el('div', 'display:flex;align-items:center;gap:12px');

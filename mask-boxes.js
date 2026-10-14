@@ -108,7 +108,7 @@
       .then(function (reg) {
         var t = (reg && Array.isArray(reg.tools) ? reg.tools : []).filter(function (x) { return x && x.id === 'angels'; })[0];
         if (!t || !Array.isArray(t.scripts)) throw new Error('not listed');
-        return t.scripts.reduce(function (p, f) { return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(t.version)); return f === 'ops-drag.js' ? q.catch(function () {}) : q; }); }, Promise.resolve());   // the drag helper is optional
+        return t.scripts.reduce(function (p, f) { return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? q.catch(function () {}) : q; }); }, Promise.resolve());   // the drag and Jam helpers are optional
       })
       .then(function () { angLoading = false; angFailed = false; paint(); }, function () { angLoading = false; angFailed = true; paint(); });
   }

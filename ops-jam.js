@@ -15,6 +15,7 @@
   if (root.OpsJam) return;                                  // one helper per page; the cards share it
 
   var buttons = [], timer = null, loading = false, failedUntil = 0;
+  var LOAD_MS = root.__JAM_LOAD_MS || 15000;               // a load that never answers gives up, so the note isn't stuck
   var MUTED = '#8b949e', ON = '#79c0ff', WARN = '#d29922';
   function playing() { return !!(root.__RR && document.getElementById('rr-root')); }
   function loadScript(src) {
@@ -29,15 +30,16 @@
     if (loading) return;
     loading = true; paintAll();
     var base = root.__OPS_BASE || 'https://2864tw.com/';
-    fetch(base + 'ops-tools.json?_=' + Date.now(), { cache: 'no-store' })
+    var load = fetch(base + 'ops-tools.json?_=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
       .then(function (reg) {
         var j = jamScripts(reg);
         if (!j) throw new Error('not listed');
         return j.scripts.reduce(function (p, f) {
-          return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(j.version)); return f === 'ops-drag.js' ? q.catch(function () {}) : q; });   // the drag helper is optional
+          return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(j.version)); return /^ops-(drag|jam)\.js$/.test(f) ? q.catch(function () {}) : q; });   // the helpers are optional
         }, Promise.resolve());
-      })
+      });
+    Promise.race([load, new Promise(function (ok, no) { setTimeout(function () { no(new Error('timed out')); }, LOAD_MS); })])
       .then(function () { loading = false; paintAll(); }, function () { loading = false; failedUntil = Date.now() + 4000; paintAll(); });
   }
   function toggle(e) {
