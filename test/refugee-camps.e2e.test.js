@@ -50,7 +50,7 @@ async function open(setup, arg, realPace) {
   await page.evaluate(([b, real]) => {
     window.__RFC_WORKER = b.replace(/\/$/, '');
     if (!real) window.__RFC_GAP_MS = 60;
-    window.__RFC_TIMEOUT_MS = 800; window.__RFC_CAMP_WAIT_MS = 1500; window.__RFC_POLL_MS = 100; window.__RFC_SETTLE_MS = 1500; window.__RFC_RALLY_MS = 300;
+    window.__RFC_TIMEOUT_MS = 800; window.__RFC_CAMP_WAIT_MS = 1500; window.__RFC_POLL_MS = 100; window.__RFC_SETTLE_MS = 1500; window.__RFC_UNSHOWN_MS = 300;
   }, [base, !!realPace]);
   await page.addScriptTag({ url: base + 'refugee-camps-core.js' });
   if (setup) await page.evaluate(setup, arg);
@@ -220,7 +220,7 @@ test('RFC-12: camps found before the run are left alone', async () => {
 
 test('RFC-13: Stop ends the run; nothing is sent after it', async () => {
   const { ctx, page } = await open(() => { __fake.rfc.rallyMs = 60000; });
-  await page.evaluate(() => { window.__RFC_RALLY_MS = 60000; });
+  await page.evaluate(() => { window.__RFC_UNSHOWN_MS = 60000; });
   await start(page, { marches: 1, camps: 5 });
   await waitText(page, '#rfc-foot', /Waiting for a march/);
   const n = (await sent(page)).length;
@@ -269,7 +269,7 @@ test('RFC-17: the game shows a new rally in its march count late: one march stil
     Object.assign(__fake.rfc, { rallyMs: 2500, usedLagMs: 700 });
     window.__maxLive = 0; setInterval(() => { window.__maxLive = Math.max(window.__maxLive, __fake.rfc.live || 0); }, 10);
   });
-  await page.evaluate(() => { window.__RFC_RALLY_MS = 2000; });   // shorter than the rally, as 3 minutes is in the game
+  await page.evaluate(() => { window.__RFC_UNSHOWN_MS = 2000; });   // shorter than the rally, as in the game
   await start(page, { marches: 1, camps: 2 });
   await waitMsg(page, /Rallied 2 camps/, 20000);
   assert.equal(await page.evaluate(() => window.__maxLive), 1, 'never two rallies out');
@@ -289,10 +289,26 @@ test('RFC-19: two gatherers out and a march count that shows rallies late: three
     Object.assign(__fake.rfc, { used: 2, live: 2, usedLagMs: 3000, rallyMs: 6000 });   // the gatherers never come home
     window.__maxLive = 0; setInterval(() => { window.__maxLive = Math.max(window.__maxLive, __fake.rfc.live || 0); }, 10);
   });
-  await page.evaluate(() => { window.__RFC_RALLY_MS = 5000; });
+  await page.evaluate(() => { window.__RFC_UNSHOWN_MS = 5000; });
   await start(page, { marches: 3, camps: 2 });
   await waitMsg(page, /Rallied 2 camps/, 25000);
   assert.equal(await page.evaluate(() => window.__maxLive), 3);
+  await ctx.close();
+});
+
+test('RFC-28: a gatherer comes home the moment our rally starts (the count stays flat): the rally is not counted twice, the next march goes', async () => {
+  const { ctx, page } = await open(() => {
+    Object.assign(__fake.rfc, { used: 1, live: 1, rallyMs: 60000, returnOnRally: 1 });   // our rallies stay out; one gatherer, home at rally 1
+    window.__maxLive = 0; setInterval(() => { window.__maxLive = Math.max(window.__maxLive, __fake.rfc.live || 0); }, 10);
+  });
+  await page.evaluate(() => { delete window.__RFC_UNSHOWN_MS; });   // the tool's own timings, not the harness's short ones
+  await start(page, { marches: 2, camps: 2 });
+  await waitMsg(page, /Rallied 2 camps/, 25000).catch(async (e) => {
+    const card = await page.evaluate(() => document.querySelector('#rfc-root').innerText.replace(/\s+/g, ' '));
+    const out = await page.evaluate(() => __fake.rfc.used);
+    assert.fail('stuck with ' + out + ' march(es) really out; card: ' + card);
+  });
+  assert.equal(await page.evaluate(() => window.__maxLive), 2, 'never more than 2 out');
   await ctx.close();
 });
 
@@ -365,7 +381,7 @@ test('RFC-26: the game shows 6 marches when the card opens and 7 a moment later 
     Object.assign(__fake.rfc, { max: 6, rallyMs: 60000 });
     for (let i = 0; i < 12; i++) __fake.rfc.heroes.push({ Id: 401 + i, Power: 3000 + i, HeroType: 1 });   // heroes enough for 7 rallies
   });
-  await page.evaluate(() => { window.__RFC_RALLY_MS = 60000; });
+  await page.evaluate(() => { window.__RFC_UNSHOWN_MS = 60000; });
   await launch(page);
   await page.fill('#rfc-marches', '7'); await page.fill('#rfc-camps', '8');
   await page.click('#rfc-start');

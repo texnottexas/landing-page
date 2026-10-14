@@ -118,6 +118,11 @@ test('marchFree: all of the player\'s marches count, plus our own rallies the ga
   assert.equal(R.marchFree(3, 3, 7, 0), false, 'never past the player\'s max');
 });
 
+test('a rally the march count does not show yet counts as out for seconds, not a whole 3-minute rally (Tex: 6 of 6 out with 5 out)', () => {
+  assert.equal(R.UNSHOWN_MS, 10000);
+  assert.equal(R.RALLY_MS, undefined, 'no 3-minute hold left');
+});
+
 test('gate: at most 20 rallies a minute (a runaway guard: Tex sends up to 14 by hand)', () => {
   const now = 1e9;
   assert.equal(R.gate(Array.from({ length: 19 }, (_, i) => now - i * 1000), now).ok, true);

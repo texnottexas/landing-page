@@ -10,10 +10,10 @@
   var C = window.RefugeeCampsCore;
   if (!C) { try { alert('Refugee Camps did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14';
+  var VERSION = '2026-10-14.2';
   var WORKER = window.__RFC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__RFC_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__RFC_TIMEOUT_MS || 10000, CAMP_WAIT_MS = window.__RFC_CAMP_WAIT_MS || 10000;
-  var POLL_MS = window.__RFC_POLL_MS || 1000, SETTLE_MS = window.__RFC_SETTLE_MS || 3000, RALLY_MS = window.__RFC_RALLY_MS || C.RALLY_MS;
+  var POLL_MS = window.__RFC_POLL_MS || 1000, SETTLE_MS = window.__RFC_SETTLE_MS || 3000, UNSHOWN_MS = window.__RFC_UNSHOWN_MS || C.UNSHOWN_MS;
   var LS_SET = 'rfc_settings_v1', LS_COUNT = 'rfc_count_v1_', LS_MIN = 'rfc_min_v1';
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
   var IDS = { use: ['ITEM_USE', 815], buy: ['BuyEnergry', 801], camps: ['GetRefugee', 1021], rally: ['ALLIANCE_Assembly_Create', 1201] };
@@ -279,7 +279,7 @@
     S.done++; bump();
     S.last = 'Rallied ' + camp.x + ', ' + camp.y;
     reportUsage(); paint();
-    // until the game's march count shows this rally, it counts as out on top of that count
+    // a rally the game's march count doesn't show yet counts as out on top of that count, for a few seconds at most
     if (!(await settle(function () { return marches().used > m0; }))) S.unshown.push(Date.now());
     return true;
   }
@@ -289,7 +289,7 @@
     while (S.running) {
       if (S.done >= S.set.camps) { finish(); return; }
       if (!ready()) { await waitDown(); continue; }
-      var now = Date.now(), m = marches(), own = S.unshown.filter(function (t) { return t > now - RALLY_MS; }).length;
+      var now = Date.now(), m = marches(), own = S.unshown.filter(function (t) { return t > now - UNSHOWN_MS; }).length;
       if (!C.marchFree(m.used, m.max, S.set.marches, own)) {
         setFoot('Waiting for a march (' + (m.used + own) + ' of ' + Math.min(S.set.marches, m.max) + ' out)', 'ok');
         await delay(POLL_MS); continue;

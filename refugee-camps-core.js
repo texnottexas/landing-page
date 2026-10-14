@@ -7,7 +7,10 @@
   var LETTER = 1700039, SMALL = 600001, LARGE = 600002, BUY_PRICE = 50;
   var GAP_MS = 1500;                                    // one request at a time, 1.5 s after the last one (Tex, 2026-10-13)
   var MAX_PER_MIN = 20;                                 // a runaway guard only: Tex sends up to 14 a minute by hand
-  var RALLY_MS = 180000;                                // a 3-minute rally: our own rallies are out at least this long
+  // A rally the game's march count didn't show within the settle counts as out on top of it for this long at most.
+  // The game counts its own rallies within ~60 ms (live); a count that stays flat almost always means another march
+  // came home at that moment, so a longer hold counted the rally twice (Tex: "6 of 6 out" with 5 out).
+  var UNSHOWN_MS = 10000;
   var SLOT_POS = [1, 2, 3, 11, 12, 13, 21, 22, 23];     // troop slot -> pos in the rally request (9 slots)
   var MAP_MAX = 1200;
   var MAX_MARCHES = 10;                                 // the card's ceiling: a march count the game reads low for a moment
@@ -172,7 +175,7 @@
   function summary(n) { return 'Rallied ' + n + ' camp' + (n === 1 ? '' : 's') + '.'; }
 
   var RefugeeCampsCore = {
-    LETTER: LETTER, SMALL: SMALL, LARGE: LARGE, BUY_PRICE: BUY_PRICE, GAP_MS: GAP_MS, MAX_PER_MIN: MAX_PER_MIN, RALLY_MS: RALLY_MS, SLOT_POS: SLOT_POS, MAP_MAX: MAP_MAX, MAX_MARCHES: MAX_MARCHES,
+    LETTER: LETTER, SMALL: SMALL, LARGE: LARGE, BUY_PRICE: BUY_PRICE, GAP_MS: GAP_MS, MAX_PER_MIN: MAX_PER_MIN, UNSHOWN_MS: UNSHOWN_MS, SLOT_POS: SLOT_POS, MAP_MAX: MAP_MAX, MAX_MARCHES: MAX_MARCHES,
     gameDay: gameDay, clampSettings: clampSettings, pickHeroes: pickHeroes, pickTroops: pickTroops, rallyRequest: rallyRequest, buyPrice: buyPrice,
     refill: refill, marchFree: marchFree, gate: gate, classify: classify, lettersLeft: lettersLeft, campPoints: campPoints, key: key, newCamps: newCamps, summary: summary
   };

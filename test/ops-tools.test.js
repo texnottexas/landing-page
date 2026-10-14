@@ -192,11 +192,11 @@ test('HT Gift Boxes tile: for members, game ready, its own overlay and chest ico
 });
 
 // Movable cards (Tex, 2026-10-14): every floating card's tool loads the drag helper first; the helper ships and is gated.
-test('movable cards: each floating tool lists ops-drag.js first, at version 2026-10-14; the helper deploys and its rules gate', () => {
+test('movable cards: each floating tool lists ops-drag.js first, at version 2026-10-14 or later; the helper deploys and its rules gate', () => {
   for (const id of ['map-collector', 'mask-boxes', 'fun-stuff', 'angels', 'refugee-camps', 'ht-gifts', 'alliance-defense', 'rickroll', 'troop']) {
     const t = list.tools.find((x) => x.id === id);
     assert.equal(t.scripts[0], 'ops-drag.js', id);
-    assert.equal(t.version, '2026-10-14', id);
+    assert.ok(t.version >= '2026-10-14', id + ' ' + t.version);   // the version that brought the helper, or a later bump
   }
   assert.ok(/ ops-drag\.js /.test(cpLine), 'deployed');
   assert.ok(/test\/ops-drag\.test\.js/.test(read('.github/workflows/pages.yml')), 'rules in the gate');
