@@ -141,9 +141,12 @@ test('camp list: points as whole tiles on the map; new = not seen this run', () 
   assert.equal(R.key({ x: 1, y: 2 }), '1,2');
 });
 
-test('settings: marches up to the player\'s max (default 1), camps up to the letters held (default 10), buy on by default', () => {
+test('settings: marches 1..10 (or more if the player has more; default 1), camps up to the letters held (default 10), buy on by default', () => {
   assert.deepEqual(R.clampSettings(null, { marchMax: 7, letters: 346 }), { marches: 1, camps: 10, buy: true, small: 0, large: 0 });
-  assert.deepEqual(R.clampSettings({ marches: 9, camps: 400, buy: false, small: -2, large: '3' }, { marchMax: 7, letters: 346 }), { marches: 7, camps: 346, buy: false, small: 0, large: 3 });
+  assert.deepEqual(R.clampSettings({ marches: 9, camps: 400, buy: false, small: -2, large: '3' }, { marchMax: 7, letters: 346 }), { marches: 9, camps: 346, buy: false, small: 0, large: 3 }, 'the run uses what the player has at each step');
+  assert.equal(R.clampSettings({ marches: 7 }, { marchMax: 6, letters: 9 }).marches, 7, 'a march count the game reads low for a moment (a buff\'s 7th march) does not cap the choice');
+  assert.equal(R.clampSettings({ marches: 50 }, { marchMax: 6, letters: 9 }).marches, R.MAX_MARCHES);
+  assert.equal(R.clampSettings({ marches: 12 }, { marchMax: 12, letters: 9 }).marches, 12, 'never below what the player really has');
   assert.deepEqual(R.clampSettings({ camps: 14 }, { marchMax: 7, letters: 5 }).camps, 5);
   assert.equal(R.clampSettings({}, { marchMax: 7, letters: 4 }).camps, 4);
 });

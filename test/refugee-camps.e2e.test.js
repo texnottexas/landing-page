@@ -74,7 +74,7 @@ test('RFC-1: the set-up card shows marches, letters and capsules, fits a phone, 
   const { ctx, page } = await open();
   await launch(page);
   const t = await page.textContent('#rfc-root');
-  assert.match(t, /of 7/); assert.match(t, /20 letters/); assert.match(t, /5 in bag/); assert.match(t, /Diana/);
+  assert.match(t, /you have 7/); assert.match(t, /20 letters/); assert.match(t, /5 in bag/); assert.match(t, /Diana/);
   assert.ok(!/—/.test(t), 'no em dash');
   assert.equal(await page.inputValue('#rfc-marches'), '1');
   assert.equal(await page.inputValue('#rfc-camps'), '10');
@@ -357,5 +357,21 @@ test('RFC-25: no "camp found" push (the module isn\'t there): the camp list afte
   await waitMsg(page, /Rallied/, 15000);
   assert.match(await page.textContent('#rfc-root .rfc-msg'), /^Done\. Rallied 2 camps\.$/);
   assert.deepEqual((await sent(page)).map((x) => x.rid), [1021, 815, 1021, 1201, 1021, 815, 1021, 1201]);
+  await ctx.close();
+});
+
+test('RFC-26: the game shows 6 marches when the card opens and 7 a moment later (a buff\'s march): all 7 are used', async () => {
+  const { ctx, page } = await open(() => {
+    Object.assign(__fake.rfc, { max: 6, rallyMs: 60000 });
+    for (let i = 0; i < 12; i++) __fake.rfc.heroes.push({ Id: 401 + i, Power: 3000 + i, HeroType: 1 });   // heroes enough for 7 rallies
+  });
+  await page.evaluate(() => { window.__RFC_RALLY_MS = 60000; });
+  await launch(page);
+  await page.fill('#rfc-marches', '7'); await page.fill('#rfc-camps', '8');
+  await page.click('#rfc-start');
+  await page.evaluate(() => { __fake.rfc.max = 7; });
+  await page.waitForFunction(() => __fake.rfc.live === 7, null, { timeout: 15000 });
+  await waitText(page, '#rfc-foot', /Waiting for a march \(7 of 7 out\)/);
+  await page.click('#rfc-stop');
   await ctx.close();
 });

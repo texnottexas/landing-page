@@ -10,6 +10,8 @@
   var RALLY_MS = 180000;                                // a 3-minute rally: our own rallies are out at least this long
   var SLOT_POS = [1, 2, 3, 11, 12, 13, 21, 22, 23];     // troop slot -> pos in the rally request (9 slots)
   var MAP_MAX = 1200;
+  var MAX_MARCHES = 10;                                 // the card's ceiling: a march count the game reads low for a moment
+                                                        // (a buff's extra march) must not cap the player's choice
 
   var ET_FMT = null;
   function etParts(ms) {
@@ -22,10 +24,11 @@
 
   function int(v, d) { var n = Math.floor(Number(v)); return isFinite(n) ? n : d; }
   function clamp(v, lo, hi, d) { return Math.min(hi, Math.max(lo, int(v, d))); }
-  // The card's settings, held to what the player has: marches 1..their max, camps 1..letters held.
+  // The card's settings: marches 1..10 (more if the player has more; each step of a run uses no more than the player
+  // has right then), camps 1..letters held.
   function clampSettings(s, lim) {
     s = s && typeof s === 'object' ? s : {};
-    var mmax = Math.max(1, int(lim && lim.marchMax, 1)), lmax = Math.max(1, int(lim && lim.letters, 1));
+    var mmax = Math.max(MAX_MARCHES, int(lim && lim.marchMax, 1)), lmax = Math.max(1, int(lim && lim.letters, 1));
     return { marches: clamp(s.marches, 1, mmax, 1), camps: clamp(s.camps, 1, lmax, Math.min(10, lmax)), buy: s.buy !== false,
       small: clamp(s.small, 0, 999, 0), large: clamp(s.large, 0, 999, 0) };
   }
@@ -169,7 +172,7 @@
   function summary(n) { return 'Rallied ' + n + ' camp' + (n === 1 ? '' : 's') + '.'; }
 
   var RefugeeCampsCore = {
-    LETTER: LETTER, SMALL: SMALL, LARGE: LARGE, BUY_PRICE: BUY_PRICE, GAP_MS: GAP_MS, MAX_PER_MIN: MAX_PER_MIN, RALLY_MS: RALLY_MS, SLOT_POS: SLOT_POS, MAP_MAX: MAP_MAX,
+    LETTER: LETTER, SMALL: SMALL, LARGE: LARGE, BUY_PRICE: BUY_PRICE, GAP_MS: GAP_MS, MAX_PER_MIN: MAX_PER_MIN, RALLY_MS: RALLY_MS, SLOT_POS: SLOT_POS, MAP_MAX: MAP_MAX, MAX_MARCHES: MAX_MARCHES,
     gameDay: gameDay, clampSettings: clampSettings, pickHeroes: pickHeroes, pickTroops: pickTroops, rallyRequest: rallyRequest, buyPrice: buyPrice,
     refill: refill, marchFree: marchFree, gate: gate, classify: classify, lettersLeft: lettersLeft, campPoints: campPoints, key: key, newCamps: newCamps, summary: summary
   };

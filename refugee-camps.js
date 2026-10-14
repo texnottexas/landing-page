@@ -10,7 +10,7 @@
   var C = window.RefugeeCampsCore;
   if (!C) { try { alert('Refugee Camps did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-13.3';
+  var VERSION = '2026-10-13.4';
   var WORKER = window.__RFC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__RFC_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__RFC_TIMEOUT_MS || 10000, CAMP_WAIT_MS = window.__RFC_CAMP_WAIT_MS || 10000;
   var POLL_MS = window.__RFC_POLL_MS || 1000, SETTLE_MS = window.__RFC_SETTLE_MS || 3000, RALLY_MS = window.__RFC_RALLY_MS || C.RALLY_MS;
@@ -403,7 +403,7 @@
     ensureRoot(); body.textContent = ''; setView('setup'); card.className = 'rfc-card';
     var m = marches(), letters = held(C.LETTER);
     var set = C.clampSettings(lsJSON(LS_SET), { marchMax: m.max, letters: letters });
-    body.appendChild(stepper('Marches', 'marches', set.marches, 1, Math.max(1, m.max), 'of ' + m.max));
+    body.appendChild(stepper('Marches', 'marches', set.marches, 1, Math.max(C.MAX_MARCHES, m.max), 'you have ' + m.max));
     body.appendChild(stepper('Camps', 'camps', set.camps, 1, Math.max(1, letters), letters + ' letters'));
     var row = el('div', 'rfc-row'), lab = el('span', 'rfc-lab', '50-gem VIT buy');
     lab.appendChild(el('span', 'rfc-hint', 'first buy of the day only'));
