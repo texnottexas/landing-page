@@ -5,7 +5,7 @@
   'use strict';
   var TYPES = { 1: 'Treasure', 2: 'HT', 3: 'RSS' }, DAILY_CAP = 20, MIN_LEFT_MS = 45000;
   var CLAIMED = 'pubilc911', ITEM_BASE = 260617001;     // "Reward claimed"; a box's item is 260617001 + its type
-  var MAX_PER_MIN = 10, MAX_PER_10MIN = 50, FAIL_STREAK = 3, FAIL_PAUSE_MS = 300000;
+  var MAX_PER_MIN = 10, MAX_PER_10MIN = 100, FAIL_STREAK = 3, FAIL_PAUSE_MS = 300000;   // 100 per 10 min: was 50 (Tex 2026-10-14, twice the pasted spots)
 
   var ET_FMT = null;
   function etParts(ms) {
@@ -79,7 +79,7 @@
     return { kind: 'stop', key: h.d ? String(h.d).slice(0, 80) : '' };
   }
 
-  // Hard limits, checked before every box: 10 a minute, 50 per 10 minutes, and three failed tries in a row pause
+  // Hard limits, checked before every box: 10 a minute, 100 per 10 minutes, and three failed tries in a row pause
   // for 5 minutes. log = [{t, kind}], one entry per box tried.
   function gate(log, now) {
     var inMin = log.filter(function (e) { return e.t > now - 60000; });
@@ -179,9 +179,10 @@
     return list[0] || null;
   }
   // A spot pasted from FunCC on mask-spots.html (Tex, 2026-10-11): a good lead with no type or end time. Newest first,
-  // untried, unremembered. At most 30 looks in 10 minutes (6 left real HT boxes unchecked after reset, Tex 2026-10-13);
-  // the gate's 10 a minute and 50 per 10 minutes still cap every look, and each spot gets one look ever.
-  var PASTE_PER_10MIN = 30, PASTE_TTL_MS = 3600000;
+  // untried, unremembered. At most 60 looks in 10 minutes (Tex 2026-10-14: twice the pasted spots; was 30, and 6 before
+  // 2026-10-13); the gate's 10 a minute and 100 per 10 minutes still cap every look, and each spot gets one look ever.
+  // A pasted spot lives 30 minutes on the list (was 60).
+  var PASTE_PER_10MIN = 60, PASTE_TTL_MS = 1800000;
   function pastedCandidate(spots, o) {
     var recent = (o.pasteLog || []).filter(function (t) { return t > o.now - 600000; });
     if (recent.length >= PASTE_PER_10MIN) return null;

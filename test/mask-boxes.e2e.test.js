@@ -909,14 +909,25 @@ test('PASTE-7: a pasted spot the game refuses to show stops the run as any refus
   await ctx.close();
 });
 
-test('PASTE-8: an empty pasted spot is remembered until the list drops it, not just the usual 30 minutes', async () => {
-  pasted = [ps(2656, 452, 422, 5 * 60000)];                       // added 5 minutes ago: the list keeps it 55 more
+test('PASTE-8: an empty pasted spot is remembered until the list drops it (30 minutes after it was added, plus a minute)', async () => {
+  pasted = [ps(2656, 452, 422, 0)];                                // just added: the list keeps it 30 minutes
   const { ctx, page } = await open();
   await launch(page);
   await waitSent(page, 1);
   await page.waitForTimeout(500);
   const left = await page.evaluate((sk) => JSON.parse(localStorage.getItem('mbx_spots_v1_' + sk))['2656:452:422'] - Date.now(), SK);
-  assert.ok(left > 55 * 60000 && left < 57 * 60000, 'remembered until the list drops it: ' + Math.round(left / 60000) + ' min');
+  assert.ok(left > 30.5 * 60000 && left < 31.5 * 60000, 'remembered until the list drops it: ' + Math.round(left / 60000) + ' min');
+  await ctx.close();
+});
+
+test('PAUSE-1 (Tex 2026-10-14): a pause for the caps says when it goes on, and it goes on by itself (no refresh needed)', async () => {
+  pasted = Array.from({ length: 14 }, (_, i) => ps(3100 + i, 452, 422, i * 1000));   // 14 empty spots: 10 looks fill the minute
+  const { ctx, page } = await open();
+  await launch(page);
+  await waitText(page, '#mbx-foot', /^Goes on in 0:\d\d\. Paused: too many boxes in a minute$/, 30000);
+  const shown = await page.$eval('#mbx-foot', (e) => { const r = document.createRange(); r.setStart(e.firstChild, 0); r.setEnd(e.firstChild, 'Goes on in 0:00'.length); return r.getBoundingClientRect().right <= e.getBoundingClientRect().right; });
+  assert.ok(shown, 'the countdown is on screen, not cut off');
+  await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 901).length >= 11, null, { timeout: 75000 });   // it went on by itself
   await ctx.close();
 });
 

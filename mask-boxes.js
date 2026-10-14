@@ -15,7 +15,7 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14';
+  var VERSION = '2026-10-14.2';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
@@ -339,12 +339,14 @@
       var next = nextWork();
       if (!next) { await untilNextFetch(waitingText(), S.feedOk ? 'ok' : 'warn'); continue; }
       var g = C.gate(S.log, Date.now());
-      if (!g.ok) { setFoot('Paused: ' + g.reason, 'warn'); await delay(Math.min(5000, Math.max(250, g.until - Date.now()))); continue; }
+      // the card says when it goes on, so nobody refreshes to get it going (Tex 2026-10-14); first, so the one-line foot never cuts it off
+      if (!g.ok) { setFoot('Goes on in ' + mmss(Math.max(1, Math.ceil((g.until - Date.now()) / 1000))) + '. Paused: ' + g.reason, 'warn'); await delay(Math.min(1000, Math.max(250, g.until - Date.now()))); continue; }
       S.nextIn = 0;
       await tryBox(next);
       if (S.running) await delay(FAST ? 0 : 3000 + rand(2000));
     }
   }
+  function mmss(sec) { var m = Math.floor(sec / 60), s = sec % 60; return m + ':' + (s < 10 ? '0' : '') + s; }
   function note(kind) { S.log.push({ t: Date.now(), kind: kind }); if (S.log.length > 200) S.log.shift(); }
   // One box: look at the owner's city, and if the box is still there and new to us, collect it.
   function stopText(key, fallback) { return key ? gameText(key) || 'The game answered ' + key + '.' : fallback; }

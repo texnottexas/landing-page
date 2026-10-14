@@ -18,7 +18,7 @@ let server, base, browser, spots, posted, postAnswer, gets;
 test.before(async () => {
   server = http.createServer((req, res) => {
     const json = (status, body) => { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)); };
-    if (req.url.startsWith('/maskspots') && req.method === 'GET') { gets++; json(200, { ok: true, ttlMs: 3600000, max: 40, spots }); return; }
+    if (req.url.startsWith('/maskspots') && req.method === 'GET') { gets++; json(200, { ok: true, ttlMs: 1800000, max: 100, spots }); return; }
     if (req.url.startsWith('/maskspots') && req.method === 'POST') {
       let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
         posted.push({ type: req.headers['content-type'], body: JSON.parse(b) });
@@ -74,7 +74,7 @@ test('stored identity: pasted lines are added, each line says what happened, and
   assert.ok(list.includes(EVIL), 'a name is shown as text');
   assert.match(list, /5 min ago/);
   assert.equal(await page.evaluate(() => window.__pwned), undefined);
-  assert.match(await text(page, '#ms-count'), /2 of 40/);
+  assert.match(await text(page, '#ms-count'), /2 of 100/);
   const body = await text(page, 'body');
   assert.ok(!/—/.test(body), 'no em dash');
   assert.deepEqual(errs, []);
@@ -121,7 +121,7 @@ test('the live list refreshes by itself, links to FunCC, and fits a phone', asyn
   await page.waitForFunction(() => /No spots right now/.test(document.getElementById('ms-list').innerText));
   spots = [{ server: 2656, x: 452, y: 422, addedAt: Date.now() - 60000, name: 'Samson' }];
   await page.waitForFunction(() => /S2656/.test(document.getElementById('ms-list').innerText));
-  assert.match(await text(page, '#ms-count'), /1 of 40/);
+  assert.match(await text(page, '#ms-count'), /1 of 100/);
   const link = await page.$eval('a[href="https://game.funcc.xyz/mask-intel"]', (a) => ({ target: a.target, rel: a.rel }));
   assert.equal(link.target, '_blank');
   assert.match(link.rel, /noopener/);
@@ -131,5 +131,21 @@ test('the live list refreshes by itself, links to FunCC, and fits a phone', asyn
   assert.ok(lay.add >= 44, 'Add is a 44 px tap target');
   assert.ok(lay.font >= 16, 'no zoom on focus in iOS Safari');
   assert.equal(lay.bg, 'rgb(13, 17, 23)', 'dark by default');
+  await ctx.close();
+});
+
+test('limits (Tex 2026-10-14): up to 25 a paste, spots last 30 minutes, 80 an hour each, 100 on the list', async () => {
+  postAnswer = { status: 200, body: { ok: true, bad: [], results: [{ spot: 'S1 1,1', status: 'added' }, { spot: 'S2 1,1', status: 'limit' }, { spot: 'S3 1,1', status: 'full' }], spots: [] } };
+  const { ctx, page } = await open({ name: 'Tex', siteKey: TEX });
+  const lead = await text(page, '.lead');
+  assert.match(lead, /up to 25 at a time/);
+  assert.match(lead, /for the next 30 minutes/);
+  await page.fill('#ms-text', 'S1 1,1\nS2 1,1\nS3 1,1');
+  await page.click('#ms-add');
+  await page.waitForFunction(() => /List is full/.test(document.getElementById('ms-results').innerText));
+  const r = await text(page, '#ms-results');
+  assert.match(r, /S2 1,1\s*You can add 80 an hour/);
+  assert.match(r, /S3 1,1\s*List is full \(100 spots\)/);
+  assert.match(await text(page, '#ms-msg'), /for the next 30 minutes/);
   await ctx.close();
 });
