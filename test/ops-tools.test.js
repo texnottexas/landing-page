@@ -26,7 +26,7 @@ test('every tool in ops-tools.json passes validation', () => {
   assert.equal(fun.desc, 'Send any chat emoji, locked packs and animated ones too, to the chat you have open.');
   assert.equal(fun.overlay, '#fun-root');
   assert.equal(fun.icon, 'smile');
-  assert.deepEqual(fun.scripts, ['fun-stuff-core.js', 'fun-stuff.js']);
+  assert.deepEqual(fun.scripts, ['ops-drag.js', 'fun-stuff-core.js', 'fun-stuff.js']);
   const mbx = list.tools.find((t) => t.id === 'mask-boxes');
   assert.equal(mbx.gate, 'member', 'any member can launch Mask Mystery Boxes');
   assert.equal(mbx.overlay, '#mbx-root');
@@ -125,7 +125,7 @@ test('Rickroll tile: titled Rickroll, a generic description, for members, its ow
   assert.equal(t.desc, 'A little something for the grind.');
   assert.ok(!/rick|roll|astley|never gonna|song|music|audio/i.test(t.desc + ' ' + t.keywords), 'the description gives nothing away');
   assert.equal(t.gate, 'member');
-  assert.deepEqual(t.scripts, ['rickroll-audio.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'rickroll-audio.js']);
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#rr-root');
   assert.equal(t.icon, 'disco', 'a disco ball, drawn like the other tile icons (Tex, 2026-10-09)');
@@ -141,7 +141,7 @@ test('Angel Attacks tile: for members, game ready, its own overlay and crosshair
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#ang-root');
   assert.equal(t.icon, 'target');
-  assert.deepEqual(t.scripts, ['angel-attacks-core.js', 'angel-attacks.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'angel-attacks-core.js', 'angel-attacks.js']);
   assert.match(t.desc, /Doesn't use your normal marches/);
   const ver = (read('angel-attacks.js').match(/var VERSION = '([^']+)'/) || [])[1];
   assert.equal(t.version, ver, 'registry version = script version');
@@ -159,7 +159,7 @@ test('Refugee Camps tile: for members, game ready, its own overlay and tent icon
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#rfc-root');
   assert.equal(t.icon, 'tent');
-  assert.deepEqual(t.scripts, ['refugee-camps-core.js', 'refugee-camps.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'refugee-camps-core.js', 'refugee-camps.js']);
   assert.match(t.desc, /"Help Me" Letters/);
   assert.ok(!/—/.test(t.desc), 'no em dash');
   const ver = (read('refugee-camps.js').match(/var VERSION = '([^']+)'/) || [])[1];
@@ -180,7 +180,7 @@ test('HT Gift Boxes tile: for members, game ready, its own overlay and chest ico
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#htg-root');
   assert.equal(t.icon, 'chest');
-  assert.deepEqual(t.scripts, ['ht-gifts-core.js', 'ht-gifts.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ht-gifts-core.js', 'ht-gifts.js']);
   assert.match(t.desc, /password/);
   assert.ok(!/—/.test(t.desc) && !/bananas/i.test(t.desc + t.keywords), 'no em dash; the password is not printed');
   const ver = (read('ht-gifts.js').match(/var VERSION = '([^']+)'/) || [])[1];
@@ -189,4 +189,15 @@ test('HT Gift Boxes tile: for members, game ready, its own overlay and chest ico
   assert.ok(/ ht-gifts-core\.js ht-gifts\.js /.test(cpLine), 'scripts deployed');
   assert.ok(/\n\s*chest: \[/.test(read('ops-kit.js')), 'the chest is drawn');
   assert.match(read('pages/map-collector.html'), /'ht-gifts': \['claim', 'claims'\]/);
+});
+
+// Movable cards (Tex, 2026-10-14): every floating card's tool loads the drag helper first; the helper ships and is gated.
+test('movable cards: each floating tool lists ops-drag.js first, at version 2026-10-14; the helper deploys and its rules gate', () => {
+  for (const id of ['map-collector', 'mask-boxes', 'fun-stuff', 'angels', 'refugee-camps', 'ht-gifts', 'alliance-defense', 'rickroll', 'troop']) {
+    const t = list.tools.find((x) => x.id === id);
+    assert.equal(t.scripts[0], 'ops-drag.js', id);
+    assert.equal(t.version, '2026-10-14', id);
+  }
+  assert.ok(/ ops-drag\.js /.test(cpLine), 'deployed');
+  assert.ok(/test\/ops-drag\.test\.js/.test(read('.github/workflows/pages.yml')), 'rules in the gate');
 });
