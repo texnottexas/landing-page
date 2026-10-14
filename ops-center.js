@@ -14,7 +14,8 @@
   var S = {
     list: null, listErr: false, member: null, memberErr: 'wait', siteKey: null, unlocked: false, recent: [], seen: {},
     view: null, toolId: null, query: '', root: null, modal: null, sub: null, grid: null, tiles: {},
-    timer: null, waitTimer: null, tracker: null, tool: null, observer: null, tick: null, fab: null, fabHidden: false, keyHandler: null
+    timer: null, waitTimer: null, tracker: null, tool: null, observer: null, tick: null, fab: null, fabHidden: false, keyHandler: null,
+    tuck: null, tuckOpen: false, offKey: ''         // the folded "Not running now" row
   };
 
   // ---------------------------------------------------------------- small helpers
@@ -216,6 +217,7 @@
       var open = !!S.query.trim() || !!S.tuckOpen;
       var wrap = K().el('div', 'ops-tuck-wrap'), row = K().el('button', 'ops-tuck');
       row.type = 'button'; row.setAttribute('aria-expanded', String(open));
+      row.disabled = !!S.query.trim();                     // a search holds it open: no tap that does nothing
       row.appendChild(K().el('span', 'ops-tuck-label', 'Not running now (' + off.length + ')')); row.appendChild(chevron());
       row.addEventListener('click', function () { S.tuckOpen = !open; renderGrid(); });
       wrap.appendChild(row);

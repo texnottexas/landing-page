@@ -93,10 +93,13 @@
     return { eventId: id, keys: keys };
   }
 
+  // Add a vein to the sent list and drop the ones that have ended, so a long run's list stays small.
+  function addSent(sent, key, now, at) { var out = sentFor(sent, sent.eventId, now); out.keys[key] = at; return out; }
+
   var EnigmaVeinsCore = {
     TYPE: TYPE, UI_TYPE: UI_TYPE, MIN_LEFT_MS: MIN_LEFT_MS, MAX_PER_MIN: MAX_PER_MIN, MAX_PER_10MIN: MAX_PER_10MIN, MAX_OUT: MAX_OUT, TIME_KEY: TIME_KEY,
     num: num, gameDay: gameDay, findEvent: findEvent, maxOut: maxOut, veinKey: veinKey, pickVeins: pickVeins, counts: counts,
-    gate: gate, classify: classify, sentFor: sentFor
+    gate: gate, classify: classify, sentFor: sentFor, addSent: addSent
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = EnigmaVeinsCore;
   else root.EnigmaVeinsCore = EnigmaVeinsCore;

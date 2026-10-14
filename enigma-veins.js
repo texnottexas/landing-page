@@ -11,6 +11,7 @@
   var VERSION = '2026-10-14';
   var WORKER = window.__VEIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__VEIN_FAST, CHECK_MS = window.__VEIN_CHECK_MS || 120000, IDLE_MS = window.__VEIN_IDLE_MS || 600000, TIMEOUT_MS = window.__VEIN_TIMEOUT_MS || 10000;
+  var UNSHOWN_MS = window.__VEIN_UNSHOWN_MS || 10000;     // how long a send counts as out before the game's march list shows it
   var LIST = 8623, MARCH = 902, VEIN_MARCH = 180;          // what the game used on 2026-10-14; read live when it names them
   var LS_SENT = 'vein_sent_v1_', LS_COUNT = 'vein_count_v1_', LS_MIN = 'vein_min_v1';
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
@@ -68,13 +69,13 @@
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function lsJSON(k) { try { return JSON.parse(lsGet(k)); } catch (e) { return null; } }
   var S = { running: false, stopped: false, siteKey: '', sent: { eventId: '', keys: {} }, count: null, log: [], eventId: '', max: C.MAX_OUT,
-    up: 0, mined: 0, onWay: 0, sentRun: 0, skipped: 0, foot: 'Starting...', tone: 'ok', last: '', note: '', noteTone: 'ok', min: lsGet(LS_MIN) === '1', view: '' };
+    recent: [], up: 0, mined: 0, onWay: 0, sentRun: 0, skipped: 0, foot: 'Starting...', tone: 'ok', last: '', note: '', noteTone: 'ok', min: lsGet(LS_MIN) === '1', view: '' };
   function today() { return C.gameDay(Date.now()); }
   function todayCount() { return S.count && S.count.day === today() ? S.count.n || 0 : 0; }
   function bump() { S.count = { day: today(), n: todayCount() + 1 }; lsSet(LS_COUNT + S.siteKey, JSON.stringify(S.count)); }
   // Our sent list follows the event: a new round starts it empty, and ended veins drop out.
   function syncSent(eventId) { if (S.sent.eventId !== String(eventId)) S.sent = C.sentFor(lsJSON(LS_SENT + S.siteKey), eventId, nowMs()); }
-  function remember(key) { S.sent.keys[key] = Date.now(); lsSet(LS_SENT + S.siteKey, JSON.stringify(S.sent)); }
+  function remember(key) { S.sent = C.addSent(S.sent, key, nowMs(), Date.now()); lsSet(LS_SENT + S.siteKey, JSON.stringify(S.sent)); }
   function reportUsage() {
     var name = '';
     try { name = String(UD().Name || '').slice(0, 40); } catch (e) {}
@@ -84,7 +85,15 @@
     } catch (e) {}
   }
   function setFoot(text, tone) { S.foot = text; S.tone = tone || 'ok'; paint(); }
-  function refreshCounts() { S.onWay = Object.keys(marchTiles(ids().type)).length; }
+  // Our vein marches out: the game's march list, plus our sends of the last few seconds it doesn't show yet (a send
+  // counts once: when the list has shown its tile, the list alone counts it). Review 2026-10-14.
+  function outNow() {
+    var tiles = marchTiles(ids().type), n = Object.keys(tiles).length, now = Date.now();
+    S.recent = S.recent.filter(function (r) { return r.at > now - UNSHOWN_MS; });
+    S.recent.forEach(function (r) { if (tiles[r.tile]) r.seen = true; else if (!r.seen) n++; });
+    return n;
+  }
+  function refreshCounts() { S.onWay = outNow(); }
 
   // ---------------------------------------------------------------- requests
   var flight = null;
@@ -134,7 +143,7 @@
     }
   }
   function note(text, tone) { S.note = text; S.noteTone = tone || 'ok'; setFoot(text, S.noteTone); }
-  function full() { return Object.keys(marchTiles(ids().type)).length >= S.max; }
+  function full() { return outNow() >= S.max; }
   async function check(ev) {
     S.note = ''; S.noteTone = 'ok';
     setFoot('Checking the vein list...', 'ok');
@@ -166,6 +175,7 @@
       var r = C.classify(raw, raw && typeof raw.d === 'string' ? gameText(raw.d) : '');
       if (r.kind === 'ok') {
         S.sentRun++; sent++; bump();
+        S.recent.push({ tile: t.x + ',' + t.y, at: Date.now() });
         S.last = 'Sent to ' + t.x + ', ' + t.y;
         reportUsage(); refreshCounts(); paint();
         continue;
@@ -234,7 +244,7 @@
     document.body.appendChild(root);
     if (window.OpsDrag) window.OpsDrag.attach(root, { key: 'enigma-veins', handle: '.vein-head' });   // the player can drag the card by its title (Tex)
   }
-  function removeRoot() { if (root && root.parentNode) root.parentNode.removeChild(root); root = null; }
+  function removeRoot() { if (root && root.parentNode) root.parentNode.removeChild(root); root = null; card = null; body = null; }
   function setView(v) {
     S.view = v;
     var mb = document.getElementById('vein-min');

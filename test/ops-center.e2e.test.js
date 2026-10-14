@@ -481,6 +481,9 @@ test('OPS-EV-2: search finds a tucked tool and shows it in the opened tucked gro
   assert.deepEqual(await mainNames(page), []);
   assert.deepEqual(await tuckedNames(page), ['Alpha Tool']);
   assert.equal(await page.$('.ops-empty'), null, 'not "No tools match"');
+  assert.equal(await page.$eval('.ops-tuck', (e) => e.disabled), true, 'the search holds it open: no tap that does nothing');
+  await page.fill('.ops-input', '');
+  assert.equal(await page.$eval('.ops-tuck', (e) => e.disabled), false, 'tappable again');
   await ctx.close();
 });
 

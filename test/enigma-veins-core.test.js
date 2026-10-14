@@ -90,3 +90,9 @@ test('gameDay: reset is 12:00 ET', () => {
   assert.equal(V.gameDay(Date.UTC(2026, 9, 14, 15, 59)), '2026-10-13');   // 11:59 ET
   assert.equal(V.gameDay(Date.UTC(2026, 9, 14, 16, 0)), '2026-10-14');    // 12:00 ET
 });
+
+test('addSent (review): adds a vein and drops the ones that have ended, so a long run\'s list stays small', () => {
+  const live = '5,5,' + (NOW / 1000 + 600), gone = '6,6,' + (NOW / 1000 - 1), fresh = '7,7,' + (NOW / 1000 + 900);
+  const out = V.addSent({ eventId: '83000157', keys: { [live]: 1, [gone]: 2 } }, fresh, NOW, 42);
+  assert.deepEqual(out, { eventId: '83000157', keys: { [live]: 1, [fresh]: 42 } });
+});

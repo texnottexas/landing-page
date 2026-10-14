@@ -253,3 +253,33 @@ test('VEIN-14: a vein that passes the 5-minute line while the tool waits is not 
   assert.equal(m[0].marchType, 181);
   await ctx.close();
 });
+
+test('VEIN-15 (review): the game\'s march list shows a new march late: still never more than para6 out, and the run goes on', async () => {
+  const { ctx, page } = await open(VEINS, [[{}, {}, {}], { para6: '2' }]);
+  await page.evaluate(() => { Object.assign(__fake.vein, { listLagMs: 2500, travelMs: 3000, mineMs: 3000 }); });
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 902).length === 3, null, { timeout: 20000 });
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => __fake.vein.maxOut), 2, 'never a third out');
+  assert.equal(await page.evaluate(() => window.__VEIN.running), true, 'no refusal stopped it');
+  await ctx.close();
+});
+
+test('VEIN-16 (review): stopped while a march answer is on its way and launched again: the old run never writes into the new card', async () => {
+  const { ctx, page } = await open(VEINS, [[{ x: 1, y: 1 }]]);
+  await page.evaluate(() => { __fake.vein.answerMs = 1500; window.__VEIN_TIMEOUT_MS = 5000; });
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 902).length === 1);
+  await page.click('#vein-stop');                                    // the answer is still on its way
+  await launch(page);
+  await page.waitForSelector('#vein-stop');
+  await page.evaluate(() => {                                         // every text the new card's last-send line ever shows
+    window.__lastSeen = [];
+    const e = document.getElementById('vein-last');
+    new MutationObserver(() => window.__lastSeen.push(e.textContent)).observe(e, { childList: true, characterData: true, subtree: true });
+  });
+  await page.waitForTimeout(2000);                                   // the old answer has landed
+  assert.deepEqual(await page.evaluate(() => window.__lastSeen.filter((t) => t)), [], 'the old run never wrote into the new card, not even for a moment');
+  assert.equal(await page.textContent('#vein-last'), '', 'the new run sent nothing (the vein is in the sent list)');
+  await ctx.close();
+});
