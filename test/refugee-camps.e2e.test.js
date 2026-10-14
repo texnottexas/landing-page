@@ -95,12 +95,12 @@ test('RFC-1: the set-up card shows marches, letters and capsules, fits a phone, 
   await ctx.close();
 });
 
-test('RFC-2: one march: the camp list, a letter, the camp list again, then a 3-minute rally with Diana, one camp after another', async () => {
+test('RFC-2: one march: the camp list, a letter, then a 3-minute rally with Diana on the camp the game names, one camp after another', async () => {
   const { ctx, page } = await open(() => { __fake.rfc.rallyMs = 600; window.__maxOut = 0; setInterval(() => { window.__maxOut = Math.max(window.__maxOut, __fake.rfc.used); }, 10); });
   await start(page, { marches: 1, camps: 3 });
   await waitMsg(page, /Done\. Rallied 3 camps\./, 20000);
   const s = await sent(page);
-  assert.deepEqual(s.map((x) => x.rid), [1021, 815, 1021, 1201, 1021, 815, 1021, 1201, 1021, 815, 1021, 1201]);
+  assert.deepEqual(s.map((x) => x.rid), [1021, 815, 1201, 1021, 815, 1201, 1021, 815, 1201], 'the camp comes from the game\'s push: no second list');
   s.filter((x) => x.rid === 815).forEach((x) => assert.deepEqual(x.p, LETTER));
   const rallies = s.filter((x) => x.rid === 1201).map((x) => x.p);
   assert.deepEqual(rallies.map((r) => r.x + ',' + r.y), ['401,601', '402,602', '403,603']);
@@ -131,7 +131,7 @@ test('RFC-4: VIT short: the 50-gem buy first', async () => {
   const { ctx, page } = await open(() => { __fake.rfc.vit = 3; __fake.gems = 1000; });
   await start(page, { camps: 1 });
   await waitMsg(page, /Rallied 1 camp\./);
-  assert.deepEqual((await sent(page)).map((x) => x.rid), [801, 1021, 815, 1021, 1201]);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [801, 1021, 815, 1201]);
   assert.equal(await page.evaluate(() => __fake.gems), 950);
   assert.equal((await page.evaluate(() => window.__RFC.state())).gemsSpent, 50);
   await ctx.close();
@@ -191,7 +191,7 @@ test('RFC-10: real pace: every request at least 1.5 s after the last one', async
   await start(page, { camps: 1 });
   await waitMsg(page, /Rallied 1 camp\./, 15000);
   const s = await sent(page);
-  assert.deepEqual(s.map((x) => x.rid), [1021, 815, 1021, 1201]);
+  assert.deepEqual(s.map((x) => x.rid), [1021, 815, 1201]);
   for (let i = 1; i < s.length; i++) assert.ok(s[i].at - s[i - 1].at >= 1495, 'gap ' + (s[i].at - s[i - 1].at) + ' ms');
   await ctx.close();
 });
@@ -304,8 +304,8 @@ test('RFC-20: no free heroes or troops: stops before using a letter', async () =
   await ctx.close();
 });
 
-test('RFC-21: the game drops after the letter, or after the camp list: on reconnect the same camp is rallied, one letter used', async () => {
-  for (const drop of [{ rid: 815, n: 1 }, { rid: 1021, n: 2 }]) {
+test('RFC-21: the game drops after the letter, or after the camp list before it: on reconnect one camp is rallied, one letter used', async () => {
+  for (const drop of [{ rid: 815, n: 1 }, { rid: 1021, n: 1 }]) {
     const { ctx, page } = await open((d) => { __fake.rfc.drop = d; }, drop);
     await start(page, { camps: 1 });
     await waitText(page, '#rfc-foot', /Game disconnected/);
@@ -339,5 +339,23 @@ test('RFC-23: the tool\'s letters don\'t jump the map or close chat; a letter us
   await page.click('#rfc-close');
   await page.evaluate(() => __fake.pushCamp(410, 610));       // a letter from the bag, after the run
   assert.deepEqual(await page.evaluate(() => __fake.jumps), [{ x: 410, y: 610 }], 'the game\'s own jump is back');
+  await ctx.close();
+});
+
+test('RFC-24: a rally ends just as the next letter is used, and the new camp takes its tile: found by the game\'s own "camp found" message, rallied', async () => {
+  const { ctx, page } = await open(() => { Object.assign(__fake.rfc, { rallyMs: 60000, releaseOnLetter: 2 }); });
+  await start(page, { marches: 2, camps: 2 });
+  await waitMsg(page, /Rallied/, 20000);
+  assert.match(await page.textContent('#rfc-root .rfc-msg'), /^Done\. Rallied 2 camps\.$/);
+  assert.deepEqual((await sent(page)).filter((x) => x.rid === 1201).map((x) => x.p.x + ',' + x.p.y), ['401,601', '401,601']);
+  await ctx.close();
+});
+
+test('RFC-25: no "camp found" push (the module isn\'t there): the camp list after the letter still finds the camp', async () => {
+  const { ctx, page } = await open(() => { const R = window.__require; window.__require = (n) => (n === 'PushResponse' ? null : R(n)); __fake.pushCamp = () => {}; });
+  await start(page, { camps: 2 });
+  await waitMsg(page, /Rallied/, 15000);
+  assert.match(await page.textContent('#rfc-root .rfc-msg'), /^Done\. Rallied 2 camps\.$/);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [1021, 815, 1021, 1201, 1021, 815, 1021, 1201]);
   await ctx.close();
 });

@@ -10,7 +10,7 @@
   var C = window.RefugeeCampsCore;
   if (!C) { try { alert('Refugee Camps did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-13.2';
+  var VERSION = '2026-10-13.3';
   var WORKER = window.__RFC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__RFC_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__RFC_TIMEOUT_MS || 10000, CAMP_WAIT_MS = window.__RFC_CAMP_WAIT_MS || 10000;
   var POLL_MS = window.__RFC_POLL_MS || 1000, SETTLE_MS = window.__RFC_SETTLE_MS || 3000, RALLY_MS = window.__RFC_RALLY_MS || C.RALLY_MS;
@@ -50,7 +50,8 @@
   }
   // A letter's camp comes with a push (PUSH_FIND_REFUGEECAMP {x, y}) whose only job is to jump the map to the camp,
   // and that jump closes every open screen, chat included. While one of our letters waits for its camp, the push's
-  // handler does nothing; letters used by hand jump as always (Tex, 2026-10-13). Put back when the run ends.
+  // handler only notes where the camp is (that names our camp exactly); letters used by hand jump as always
+  // (Tex, 2026-10-13). Put back when the run ends.
   function quiet(ms) { window.__RFC_QUIET_UNTIL = ms ? Date.now() + ms : 0; }
   function hush(on) {
     try {
@@ -59,7 +60,10 @@
       if (on && !proto.__rfcOrig) {
         var orig = proto.Handler;
         proto.__rfcOrig = orig;
-        proto.Handler = function () { if (Date.now() < (window.__RFC_QUIET_UNTIL || 0)) return; return orig.apply(this, arguments); };
+        proto.Handler = function (e) {
+          if (Date.now() >= (window.__RFC_QUIET_UNTIL || 0)) return orig.apply(this, arguments);
+          try { var t = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; if (t && t.x != null && t.y != null) window.__RFC_CAMP_PUSH = { x: Number(t.x), y: Number(t.y), at: Date.now() }; } catch (x) {}
+        };
       } else if (!on && proto.__rfcOrig) { proto.Handler = proto.__rfcOrig; delete proto.__rfcOrig; }
     } catch (e) {}
   }
@@ -225,9 +229,9 @@
     if (!(await settle(function () { return vit().point > v.point; }))) { stop("VIT didn't go up after a VIT Capsule"); return false; }
     return true;
   }
-  // The camp list right before a letter, the letter, then the camp it brought: one that wasn't in that list. A camp
-  // can come back on a tile an earlier camp used, so this compares with the list just before, not with the whole run.
-  // 'retry': no letter sent.
+  // The camp list right before a letter, the letter, then the camp it brought: the one the game's "camp found" push
+  // names, else one that wasn't in that list. Camps come back on tiles earlier camps used, even one whose rally ends
+  // just as the letter goes out, so the push comes first. 'retry': no letter sent.
   async function useLetter() {
     var before = await campList();
     if (!before) return null;
@@ -235,6 +239,8 @@
     var n0 = held(C.LETTER);
     setFoot('Using a "Help Me" Letter...', 'ok');
     hush(true); quiet(GAP_MS + TIMEOUT_MS + CAMP_WAIT_MS + 3000);   // no map jump for our own letter
+    var sentAt = Date.now();
+    var pushed = function () { var p = window.__RFC_CAMP_PUSH; return p && p.at >= sentAt ? C.campPoints({ points: [p] })[0] || null : null; };
     var a = await ask('use', { itemid: C.LETTER, amount: 1 });
     if (unsent(a)) return S.running ? 'retry' : null;
     var r = C.classify(a);
@@ -244,10 +250,12 @@
     var counted = left != null ? left === n0 - 1 : await settle(function () { return held(C.LETTER) === n0 - 1; });
     if (!counted) { stop("the letter count didn't add up"); return null; }
     setFoot('Looking for the camp...', 'ok');
+    if (await settle(function () { return !!pushed(); }, Math.min(SETTLE_MS, 1500))) { quiet(3000); return pushed(); }
     var end = Date.now() + CAMP_WAIT_MS;
     while (S.running) {
       var pts = await campList();
       if (!pts) return null;
+      if (pushed()) { quiet(3000); return pushed(); }
       var fresh = C.newCamps(pts, had);
       if (fresh.length) { quiet(3000); return fresh[0]; }  // others that came at once are left alone
       if (Date.now() >= end) { stop('a letter showed no camp, so no more letters were used'); return null; }

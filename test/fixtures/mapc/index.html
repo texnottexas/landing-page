@@ -95,7 +95,10 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         var RF = F.rfc, it = p.itemid;
         if (it === 1700039) {
           if (RF.letters < 1) ans = { s: 3, d: 'item_not_enough' };
-          else { RF.letters--; if (!RF.noCamp) {                                  // spawnAt: the game puts the camp on a free tile it used before
+          else {
+            var ended = RF.camps.filter(function (c) { return c.rallied && c.release; })[0];
+            if (RF.releaseOnLetter && --RF.releaseOnLetter === 0 && ended) { RF.spawnAt = { x: ended.x, y: ended.y }; ended.release(); }   // a rally ends right now: the new camp takes its tile
+            RF.letters--; if (!RF.noCamp) {                                  // spawnAt: the game puts the camp on a free tile it used before
             RF.seq++;
             var spot = RF.spawnAt && !RF.camps.some(function (c) { return c.x === RF.spawnAt.x && c.y === RF.spawnAt.y; }) ? RF.spawnAt : { x: 400 + RF.seq, y: 600 + RF.seq };
             RF.camps.push({ x: spot.x, y: spot.y });
@@ -130,11 +133,13 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
             if (RR.usedLagMs) setTimeout(function () { RR.used++; }, RR.usedLagMs); else RR.used++;   // the game may show the march late
             p.heroList.forEach(function (h) { RR.heroOut[h] = 1; });
             Object.keys(need).forEach(function (id) { RR.unitOut[id] = (RR.unitOut[id] || 0) + need[id]; });
-            setTimeout(function () {                          // the rally is over: everything comes home, the camp is gone
+            camp.release = function () {                      // the rally is over: everything comes home, the camp is gone
+              if (camp.done) return; camp.done = true;
               RR.used--; RR.live--; p.heroList.forEach(function (h) { delete RR.heroOut[h]; });
               Object.keys(need).forEach(function (id) { RR.unitOut[id] -= need[id]; });
               RR.camps = RR.camps.filter(function (c) { return c !== camp; });
-            }, RR.rallyMs);
+            };
+            setTimeout(camp.release, RR.rallyMs);
             ans = { s: 0, d: JSON.stringify({ marchInfo: { marchId: 'r' + n } }) };
           }
         }
