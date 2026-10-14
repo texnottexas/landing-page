@@ -15,7 +15,7 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'Rickroll'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
@@ -169,4 +169,24 @@ test('Refugee Camps tile: for members, game ready, its own overlay and tent icon
   assert.ok(/ refugee-camps-core\.js refugee-camps\.js /.test(cpLine), 'scripts deployed');
   assert.ok(/\n\s*tent: \[/.test(read('ops-kit.js')), 'the tent is drawn');
   assert.match(read('pages/map-collector.html'), /'refugee-camps': \['camp', 'camps'\]/);
+});
+
+// HT Gift Boxes (Tex, 2026-10-13): every member sees the tile; the card asks for the password.
+test('HT Gift Boxes tile: for members, game ready, its own overlay and chest icon, scripts deployed, rules in the deploy gate', () => {
+  const t = list.tools.find((x) => x.id === 'ht-gifts');
+  assert.ok(t, 'listed');
+  assert.equal(t.title, 'HT Gift Boxes');
+  assert.equal(t.gate, 'member');
+  assert.deepEqual(t.ready, ['game']);
+  assert.equal(t.overlay, '#htg-root');
+  assert.equal(t.icon, 'chest');
+  assert.deepEqual(t.scripts, ['ht-gifts-core.js', 'ht-gifts.js']);
+  assert.match(t.desc, /password/);
+  assert.ok(!/—/.test(t.desc) && !/bananas/i.test(t.desc + t.keywords), 'no em dash; the password is not printed');
+  const ver = (read('ht-gifts.js').match(/var VERSION = '([^']+)'/) || [])[1];
+  assert.equal(t.version, ver, 'registry version = script version');
+  assert.ok(/test\/ht-gifts-core\.test\.js/.test(read('.github/workflows/pages.yml')), 'rules run before every deploy');
+  assert.ok(/ ht-gifts-core\.js ht-gifts\.js /.test(cpLine), 'scripts deployed');
+  assert.ok(/\n\s*chest: \[/.test(read('ops-kit.js')), 'the chest is drawn');
+  assert.match(read('pages/map-collector.html'), /'ht-gifts': \['claim', 'claims'\]/);
 });
