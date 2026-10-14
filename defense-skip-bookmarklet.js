@@ -43,7 +43,7 @@
 
   // ================================================================ browser
   if (root.__ADS && root.__ADS.open && document.getElementById('ads-root')) { root.__ADS.flash(); return; }
-  var VERSION = '2026-10-08';
+  var VERSION = '2026-10-14';
   var SKIP_RID = 3700, SIEGE_TYPE = 26, TARGET = {};       // NET wants a target; a plain object is always valid
   var JITTER = root.__ADS_JITTER || [200, 500];             // ms after the window opens, before the clock wait
 
@@ -164,6 +164,7 @@
     rootEl = el('div'); rootEl.id = 'ads-root';
     card = el('div', 'ads-card'); rootEl.appendChild(card);
     document.body.appendChild(rootEl);
+    if (window.OpsDrag) window.OpsDrag.attach(rootEl, { key: 'alliance-defense', handle: '.ads-title' });   // the player can drag the card by its title (Tex)
   }
   function close() {
     if (S.running) finish('Stopped by you.');

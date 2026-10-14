@@ -75,6 +75,7 @@
   videoBtn.id = 'rr-video'; videoBtn.type = 'button';
   root.appendChild(row); root.appendChild(media); root.appendChild(videoBtn); root.appendChild(pill);
   document.body.appendChild(root);
+  if (window.OpsDrag) window.OpsDrag.attach(root, { key: 'rickroll', handle: null, dragButtons: '#rr-pill' });   // drag the player anywhere but its buttons and video; the pill too (Tex)
   S.root = root;
 
   function stop() {

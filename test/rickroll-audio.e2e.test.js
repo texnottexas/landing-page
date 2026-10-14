@@ -34,6 +34,7 @@ test.before(async () => {
   server = http.createServer((req, res) => {
     const name = req.url.split('?')[0];
     if (name === '/rickroll-audio.js') { let js; try { js = fs.readFileSync(path.join(ROOT, 'rickroll-audio.js')); } catch (e) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' }); res.end(js); return; }
+    if (name === '/ops-drag.js') { res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' }); res.end(fs.readFileSync(path.join(ROOT, 'ops-drag.js'))); return; }
     if (name === '/clip.wav') { res.writeHead(200, { 'content-type': 'audio/wav' }); res.end(wav()); return; }
     if (name === '/missing.wav') { res.writeHead(404); res.end(); return; }
     res.writeHead(200, { 'content-type': 'text/html' }); res.end(PAGE);
@@ -185,5 +186,31 @@ test('minimize: the card shrinks to a small pill and the song keeps going (video
   assert.deepEqual(back, { stop: true, pill: false, playing: true, video: true }, 'back as it was, video showing');
   await page.click('#rr-stop');
   assert.equal(await page.$('#rr-root'), null);
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).first().boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('RR-DRAG-1: the player card drags (not from its buttons or video); the minimized pill drags too and still opens on a tap', async () => {
+  const { ctx, page } = await open();
+  await page.addScriptTag({ url: base + 'ops-drag.js' });
+  await launch(page);
+  await page.waitForSelector('#rr-root #rr-min');
+  const a = await cardAt(page, '#rr-root');
+  await dragBy(page, 'text=Never Gonna Give You Up', 0, 200);
+  const b = await cardAt(page, '#rr-root');
+  assert.equal(b.y, a.y + 200);
+  await page.click('#rr-min');
+  await page.waitForSelector('#rr-pill', { state: 'visible' });
+  await dragBy(page, '#rr-pill', 0, 100);
+  assert.equal(await page.evaluate(() => document.getElementById('rr-pill').style.display), 'inline-flex', 'still minimized after a drag');
+  await page.click('#rr-pill');
+  assert.equal(await page.evaluate(() => document.getElementById('rr-pill').style.display), 'none', 'a tap opens it');
   await ctx.close();
 });

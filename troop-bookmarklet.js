@@ -53,16 +53,18 @@
   var body = el('div', 'flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:12px;max-width:760px;width:100%;margin:0 auto;');
   root.appendChild(body);
   var pill = el('div', 'display:none;align-items:center;gap:10px;background:#161b22;border:1px solid #30363d;border-radius:20px;padding:6px 8px 6px 14px;box-shadow:0 4px 14px rgba(0,0,0,.5);font-size:13px;white-space:nowrap;');
+  pill.className = 'tp-pill';                                // the minimised pill drags (Tex)
   var pillText = el('span', '', 'Troop Optimizer');
   var openBtn = el('button', 'background:#1f6feb;color:#fff;border:none;border-radius:14px;padding:5px 12px;font-size:12px;cursor:pointer;', 'Open');
   pill.appendChild(pillText); pill.appendChild(openBtn);
   root.appendChild(pill);
   document.body.appendChild(root);
+  var drag = window.OpsDrag ? window.OpsDrag.attach(root, { key: 'troop', handle: '.tp-pill', active: function () { return pill.style.display !== 'none'; } }) : null;
   function updatePill() {
     var TG = window.TroopGame;
     pillText.textContent = 'Troop Optimizer: lock ' + (TG && TG.lockActive() ? 'on' : 'off') + (state.progress ? ', ' + state.progress : '');
   }
-  minBtn.onclick = function () { root.style.cssText = MINI; head.style.display = 'none'; body.style.display = 'none'; pill.style.display = 'flex'; updatePill(); };
+  minBtn.onclick = function () { root.style.cssText = MINI; head.style.display = 'none'; body.style.display = 'none'; pill.style.display = 'flex'; updatePill(); if (drag) drag.reclamp(); };
   openBtn.onclick = function () { root.style.cssText = FULL; head.style.display = 'flex'; body.style.display = 'flex'; pill.style.display = 'none'; };
   closeBtn.onclick = function () { if (window.TroopGame) { window.TroopGame.stop(); window.TroopGame.removeLock(); } root.remove(); };
 

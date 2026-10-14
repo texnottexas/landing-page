@@ -112,6 +112,7 @@
     card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true');
     dim.addEventListener('click', function () { if (onDismiss) onDismiss(); });
     r.appendChild(dim); r.appendChild(card);
+    if (window.OpsDrag) window.OpsDrag.attach(card, { key: 'ops-center', handle: '.ops-head', css: '.ops-card .ops-head' });   // the player can drag it by the title (Tex)
     return { dim: dim, card: card, remove: function () { dim.remove(); card.remove(); } };
   }
   function header(card, o) {

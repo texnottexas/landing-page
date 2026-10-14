@@ -378,6 +378,7 @@
   window.OpsCenter = { toggle: toggle, close: close, version: '1', _state: S };
   var deps = [];
   if (!window.OpsKit) deps.push(loadScript(BASE + 'ops-kit.js?_=' + Date.now()));
+  if (!window.OpsDrag) deps.push(loadScript(BASE + 'ops-drag.js?_=' + Date.now()));   // cards drag by the title (Tex)
   if (!window.OpsCore) deps.push(loadScript(BASE + 'ops-core.js?_=' + Date.now()));
   Promise.all(deps).then(start, function () {
     window.OpsCenter = null;

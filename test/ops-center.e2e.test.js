@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'ops');
-const OWN = ['ops-center.js', 'ops-kit.js', 'ops-core.js'];
+const OWN = ['ops-center.js', 'ops-kit.js', 'ops-core.js', 'ops-drag.js'];
 const TYPES = { '.js': 'text/javascript', '.json': 'application/json', '.html': 'text/html' };
 
 let server, base, browser;
@@ -407,5 +407,28 @@ test('a usage report that fails changes nothing: the tool still opens and closes
   await page.click('#fake-alpha-close');
   await page.waitForSelector('.ops-card', { timeout: 3000 });
   assert.equal(usage.length, 1, 'tried once, no retry');
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).first().boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('OPS-DRAG-1: the Ops Center menu drags by its title and opens there next time', async () => {
+  const { ctx, page } = await open(DESKTOP);
+  await page.waitForSelector('.ops-card .ops-title');
+  const a = await cardAt(page, '.ops-card');
+  await dragBy(page, '.ops-card .ops-title', -100, 0);
+  const b = await cardAt(page, '.ops-card');
+  assert.deepEqual(b, { x: a.x - 100, y: a.y });
+  await page.click('.ops-card .ops-head [aria-label="Close"]');
+  await page.waitForFunction(() => !document.querySelector('.ops-card'));
+  await page.addScriptTag({ url: base + 'ops-center.js' });
+  await page.waitForSelector('.ops-card .ops-title');
+  assert.deepEqual(await cardAt(page, '.ops-card'), b);
   await ctx.close();
 });

@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['defense-skip-bookmarklet.js'];
+const OWN = ['defense-skip-bookmarklet.js', 'ops-drag.js'];
 const MARCHING = 2147483647;
 
 let server, base, browser;
@@ -33,13 +33,14 @@ test.before(async () => {
 test.after(async () => { await browser.close(); server.close(); });
 
 // The fake game with a siege at `round`, its window open (or the boss marching), then the tool launched.
-async function open(setup, arg) {
+async function open(setup, arg, o) {
   const ctx = await browser.newContext({ viewport: { width: 375, height: 740 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { throw e; });
   await page.goto(base);
   await page.evaluate(() => { __fake.siege = { round: 12, nextTime: 0, winTimes: 12, loseTimes: 0, isEnd: 0, maxRound: 80 }; __fake.openWindow(); });
   if (setup) await page.evaluate(setup, arg);
+  if (o && o.drag) await page.addScriptTag({ url: base + 'ops-drag.js' });
   await page.addScriptTag({ url: base + 'defense-skip-bookmarklet.js' });
   return { ctx, page };
 }
@@ -143,5 +144,25 @@ test('a target at or below the current wave is refused', async () => {
   await page.click('#ads-start');
   assert.match(await page.getAttribute('#ads-target', 'class'), /bad/);
   assert.equal((await skips(page)).length, 0);
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).first().boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('ADS-DRAG-1: the Alliance Defense card drags by its title, even as it redraws every update', async () => {
+  const { ctx, page } = await open(null, null, { drag: true });
+  await page.waitForSelector('#ads-root .ads-title');
+  const a = await cardAt(page, '#ads-root');
+  await dragBy(page, '#ads-root .ads-title', -40, 160);
+  const b = await cardAt(page, '#ads-root');
+  assert.deepEqual(b, { x: a.x - 40, y: a.y + 160 });
+  await page.waitForTimeout(800);
+  assert.deepEqual(await cardAt(page, '#ads-root'), b);
   await ctx.close();
 });
