@@ -10,7 +10,7 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-04.9';
+  var VERSION = '2026-10-14';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
@@ -534,6 +534,7 @@
     body = el('div', 'mapc-body');
     card.appendChild(head); card.appendChild(body); root.appendChild(card);
     document.body.appendChild(root);
+    if (window.OpsDrag) window.OpsDrag.attach(root, { key: 'map-collector', handle: '.mapc-head' });   // the player can drag the card by its title (Tex)
   }
   function removeRoot() { if (root && root.parentNode) root.parentNode.removeChild(root); root = null; }
   // Fold the stats card to one bar (so it does not cover the game) and back; remembered on this browser.

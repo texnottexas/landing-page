@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['ht-gifts.js', 'ht-gifts-core.js', 'ops-tools.json'];
+const OWN = ['ht-gifts.js', 'ht-gifts-core.js', 'ops-tools.json', 'ops-drag.js'];
 const UID = 'test-owner-uid';
 const PW = crypto.createHash('sha256').update('bananas').digest('hex');
 
@@ -281,6 +281,31 @@ test('HTG-18: another tool\'s march request turns up while a claim waits its tur
   await page.evaluate(() => { __fake.htg.pendAfterView = false; __fake.pending.length = 0; });
   await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 902).length >= 1, null, { timeout: 8000 });
   assert.deepEqual(await claims(page), ['150,150']);
+  await page.click('#htg-stop');
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('HTG-19: the card drags by its title and keeps its spot after a relaunch', async () => {
+  const { ctx, page } = await open([]);
+  await page.addScriptTag({ url: base + 'ops-drag.js' });
+  await launch(page);
+  await page.waitForFunction(() => window.__HTG.state().view === 'run');
+  const a = await cardAt(page, '#htg-root');
+  await dragBy(page, '#htg-root .htg-title', 20, 150);
+  const b = await cardAt(page, '#htg-root');
+  assert.deepEqual(b, { x: a.x + 20, y: a.y + 150 });
+  await page.click('#htg-stop'); await page.click('#htg-close');
+  await launch(page);
+  await page.waitForFunction(() => window.__HTG.state().view === 'run');
+  assert.deepEqual(await cardAt(page, '#htg-root'), b);
   await page.click('#htg-stop');
   await ctx.close();
 });

@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['angel-attacks.js', 'angel-attacks-core.js', 'mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json'];
+const OWN = ['angel-attacks.js', 'angel-attacks-core.js', 'mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json', 'ops-drag.js'];
 const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 
@@ -303,5 +303,28 @@ test('ANG-13: at most 8 attacks on the way at once (8 is what the game was seen 
   await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 902).length >= 10, null, { timeout: 25000 });   // after landing, the rest
   const xy = (await attacks(page)).map((s) => s.p.x + ',' + s.p.y);
   assert.equal(new Set(xy).size, xy.length, 'each Angel once');
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('ANG-14: once dragged, the Angel card stays where the player put it instead of placing itself by Mask Boxes', async () => {
+  const { ctx, page } = await open(event, [{}]);
+  await page.addScriptTag({ url: base + 'ops-drag.js' });
+  await launch(page);
+  await page.waitForSelector('#ang-root .ang-title');
+  const a = await cardAt(page, '#ang-root');
+  await dragBy(page, '#ang-root .ang-title', 30, 260);
+  const b = await cardAt(page, '#ang-root');
+  assert.deepEqual(b, { x: a.x + 30, y: a.y + 260 }, 'moved');
+  await page.waitForTimeout(1500);
+  assert.deepEqual(await cardAt(page, '#ang-root'), b);
+  await page.click('#ang-stop');
   await ctx.close();
 });

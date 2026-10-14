@@ -10,7 +10,7 @@
   var C = window.AngelAttacksCore;
   if (!C) { try { alert('Angel Attacks did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-13';
+  var VERSION = '2026-10-14';
   var WORKER = window.__ANG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__ANG_FAST, CHECK_MS = window.__ANG_CHECK_MS || 180000, IDLE_MS = window.__ANG_IDLE_MS || 600000, TIMEOUT_MS = window.__ANG_TIMEOUT_MS || 10000;
   var LIST = 8802, MARCH = 902, BOSS_MARCH = 189;          // what the game used on 2026-10-13; read live when it names them
@@ -244,6 +244,7 @@
     body = el('div', 'ang-body');
     card.appendChild(head); card.appendChild(body); root.appendChild(card);
     document.body.appendChild(root);
+    if (window.OpsDrag) window.OpsDrag.attach(root, { key: 'angels', handle: '.ang-head' });   // the player can drag the card by its title (Tex)
   }
   function removeRoot() { if (root && root.parentNode) root.parentNode.removeChild(root); root = null; }
   function setView(v) {
@@ -279,6 +280,7 @@
   var fullH = 200, forceOpen = false;
   function rectOf(id) { var e = document.getElementById(id); if (!e || !e.isConnected) return null; var r = (e.firstElementChild || e).getBoundingClientRect(); return r.height > 0 ? r : null; }
   function layout() {
+    if (window.OpsDrag && window.OpsDrag.placed('angels')) return { placed: true, top: '', left: '', right: '', fold: false };   // the player put it somewhere
     var m = rectOf('mbx-root'), mc = rectOf('mapc-root'), vw = window.innerWidth, vh = window.innerHeight;
     if (!m) return { top: '', left: '', right: '', fold: false };
     var below = Math.round(m.bottom + 8), limit = (mc && mc.top > m.top ? mc.top : vh) - 8;
@@ -287,7 +289,7 @@
     return { top: Math.round(m.top) + 'px', left: 'auto', right: 'calc(8px + env(safe-area-inset-right))', fold: true };
   }
   function place(L) {
-    if (!root) return;
+    if (!root || L.placed) return;
     if (root.style.top !== L.top) root.style.top = L.top;
     if (root.style.left !== L.left) root.style.left = L.left;
     if (root.style.right !== L.right) root.style.right = L.right;

@@ -15,7 +15,7 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-13.2';
+  var VERSION = '2026-10-14';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
@@ -447,6 +447,7 @@
     body = el('div', 'mbx-body');
     card.appendChild(head); card.appendChild(body); root.appendChild(card);
     document.body.appendChild(root);
+    if (window.OpsDrag) window.OpsDrag.attach(root, { key: 'mask-boxes', handle: '.mbx-head' });   // the player can drag the card by its title (Tex)
   }
   function removeRoot() { if (root && root.parentNode) root.parentNode.removeChild(root); root = null; }
   // Fold the card to one bar and back (remembered); only the running view folds, messages always show in full.

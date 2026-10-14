@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['fun-stuff.js', 'fun-stuff-core.js'];
+const OWN = ['fun-stuff.js', 'fun-stuff-core.js', 'ops-drag.js'];
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 const CATALOG = {
   version: 'test',
@@ -271,5 +271,28 @@ test('an emoji the game no longer knows is refused before the send, and others s
   await tap(page, 'static:303');
   await waitSends(page, 1);
   assert.deepEqual((await sends(page)).map((x) => x.id), [303]);
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('FUN-DRAG-1: the card drags by its title; the emoji grid still scrolls (touch-action only on the title)', async () => {
+  const { ctx, page } = await open();                       // open() launches the tool before the helper is in
+  await page.waitForSelector('#fun-close');
+  await page.click('#fun-close');
+  await page.addScriptTag({ url: base + 'ops-drag.js' });
+  await launch(page);
+  await page.waitForSelector('#fun-root .fun-head');
+  const a = await cardAt(page, '#fun-root');
+  await dragBy(page, '#fun-root .fun-title', -20, 120);
+  const b = await cardAt(page, '#fun-root');
+  assert.deepEqual(b, { x: a.x - 20, y: a.y + 120 });
+  assert.notEqual(await page.evaluate(() => getComputedStyle(document.getElementById('fun-grid')).touchAction), 'none');
   await ctx.close();
 });

@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['map-collector.js', 'map-collector-core.js'];
+const OWN = ['map-collector.js', 'map-collector-core.js', 'ops-drag.js'];
 // The fake worker registers one made-up account; no real uid appears anywhere in tests.
 const OWNER_UID = 'test-owner-uid';
 const OWNER_SK = crypto.createHash('sha256').update(OWNER_UID).digest('hex').slice(0, 16);
@@ -78,6 +78,7 @@ async function start(opts) {
     if (a.attachMs) window.__MAPC_ATTACH_MS = a.attachMs;
     if (a.min) localStorage.setItem('mapc_min_v1', '1');
   }, { uid: o.uid, base, pw: o.pw, left: o.left, goneMs: o.goneMs, autoMs: o.autoMs, downReportMs: o.downReportMs, attachMs: o.attachMs, min: o.min });
+  if (o.drag) await page.addScriptTag({ url: base + 'ops-drag.js' });
   await page.addScriptTag({ url: base + 'map-collector-core.js' });
   await page.addScriptTag({ url: base + 'map-collector.js' });
   return { ctx, page };
@@ -665,5 +666,26 @@ test('REVIEW-MBX #2: Stop while a purchase waits on the shared request clock sen
   await page.waitForTimeout(6000);
   assert.deepEqual((await sent(page)).map((x) => x.rid), [902]);
   assert.equal(await page.evaluate(() => __fake.gems), 1000, 'no gems spent after Stop');
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('MAPC-DRAG-1: the card drags by its title, keeps the spot through its repaints, and saves it', async () => {
+  const { ctx, page } = await start({ drag: true });
+  await page.waitForSelector('#mapc-root .mapc-title');
+  const a = await cardAt(page, '#mapc-root');
+  await dragBy(page, '#mapc-root .mapc-title', 20, -120);     // the card sits at the bottom of the screen: drag it up
+  const b = await cardAt(page, '#mapc-root');
+  assert.deepEqual(b, { x: a.x + 20, y: a.y - 120 });
+  await page.waitForTimeout(1500);
+  assert.deepEqual(await cardAt(page, '#mapc-root'), b);
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('ops_pos_v1_map-collector'))), b);
   await ctx.close();
 });

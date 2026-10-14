@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['refugee-camps.js', 'refugee-camps-core.js', 'ops-tools.json'];
+const OWN = ['refugee-camps.js', 'refugee-camps-core.js', 'ops-tools.json', 'ops-drag.js'];
 const UID = 'test-owner-uid';
 
 let server, base, browser, usageLog;
@@ -373,5 +373,27 @@ test('RFC-26: the game shows 6 marches when the card opens and 7 a moment later 
   await page.waitForFunction(() => __fake.rfc.live === 7, null, { timeout: 15000 });
   await waitText(page, '#rfc-foot', /Waiting for a march \(7 of 7 out\)/);
   await page.click('#rfc-stop');
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('RFC-27: the card drags by its title and keeps its spot after a relaunch', async () => {
+  const { ctx, page } = await open();
+  await page.addScriptTag({ url: base + 'ops-drag.js' });
+  await launch(page);
+  const a = await cardAt(page, '#rfc-root');
+  await dragBy(page, '#rfc-root .rfc-title', 20, 150);
+  const b = await cardAt(page, '#rfc-root');
+  assert.deepEqual(b, { x: a.x + 20, y: a.y + 150 });
+  await page.click('#rfc-close');
+  await launch(page);
+  assert.deepEqual(await cardAt(page, '#rfc-root'), b);
   await ctx.close();
 });

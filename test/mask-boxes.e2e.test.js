@@ -12,7 +12,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json'];
+const OWN = ['mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json', 'ops-drag.js'];
 const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 const T = 260617001;                                     // a box's item is T + its type
@@ -917,5 +917,30 @@ test('PASTE-8: an empty pasted spot is remembered until the list drops it, not j
   await page.waitForTimeout(500);
   const left = await page.evaluate((sk) => JSON.parse(localStorage.getItem('mbx_spots_v1_' + sk))['2656:452:422'] - Date.now(), SK);
   assert.ok(left > 55 * 60000 && left < 57 * 60000, 'remembered until the list drops it: ' + Math.round(left / 60000) + ' min');
+  await ctx.close();
+});
+
+async function dragBy(page, sel, dx, dy) {
+  const b = await page.locator(sel).boundingBox();
+  const x = b.x + 15, y = b.y + b.height / 2;
+  await page.mouse.move(x, y); await page.mouse.down();
+  await page.mouse.move(x + dx / 3, y + dy / 3); await page.mouse.move(x + dx, y + dy); await page.mouse.up();
+}
+const cardAt = (page, sel) => page.evaluate((s) => { const r = document.querySelector(s).getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top) }; }, sel);
+
+test('MBX-DRAG-1: the card drags by its title and keeps its spot after a relaunch', async () => {
+  const { ctx, page } = await open();
+  await page.addScriptTag({ url: base + 'ops-drag.js' });
+  await launch(page);
+  await page.waitForSelector('#mbx-root .mbx-title');
+  const a = await cardAt(page, '#mbx-root');
+  await dragBy(page, '#mbx-root .mbx-title', 20, 150);
+  const b = await cardAt(page, '#mbx-root');
+  assert.deepEqual(b, { x: a.x + 20, y: a.y + 150 });
+  await page.evaluate(() => window.__MBX.stop());
+  await page.evaluate(() => { const r = document.getElementById('mbx-root'); if (r) r.remove(); });
+  await launch(page);
+  await page.waitForSelector('#mbx-root .mbx-title');
+  assert.deepEqual(await cardAt(page, '#mbx-root'), b);
   await ctx.close();
 });

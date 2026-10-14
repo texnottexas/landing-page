@@ -10,7 +10,7 @@
   var C = window.FunStuffCore;
   if (!C) { try { alert('Emoji Sender did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-09';
+  var VERSION = '2026-10-14';
   var CDN = window.__FUN_CDN || 'https://cdn.jsdelivr.net/gh/texnottexas/tw-emoji-assets@44aa813c42e1d8d5ebf57453f69c8762642da5de';
   var LS_RECENT = 'fun_recent_v1', GIF_FLOOR_CFG = 630051;  // GameTools config: the level animated emojis need
 
@@ -134,6 +134,7 @@
     root = el('div'); root.id = 'fun-root';
     card = el('div', 'fun-card'); root.appendChild(card);
     document.body.appendChild(root);
+    if (window.OpsDrag) window.OpsDrag.attach(root, { key: 'fun-stuff', handle: '.fun-head' });   // the player can drag the card by its title (Tex)
   }
   function close() {
     if (timer) { clearInterval(timer); timer = null; }
