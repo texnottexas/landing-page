@@ -12,7 +12,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json', 'ops-drag.js'];
+const OWN = ['mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json', 'ops-drag.js', 'ops-jam.js'];
 const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 const T = 260617001;                                     // a box's item is T + its type
@@ -968,5 +968,20 @@ test('MBX-DRAG-2: with the drag helper missing (404), Map Collector\'s Mask Boxe
   await page.waitForSelector('#mapc-mbx[aria-pressed="false"]');
   await page.click('#mapc-mbx');
   await page.waitForSelector('#mapc-mbx[aria-pressed="true"]', { timeout: 8000 });
+  await ctx.close();
+});
+
+test('MBX-JAM-1 (Tex 2026-10-14): on the folded bar, the note plays Rickroll without opening the card', async () => {
+  const { ctx, page } = await open(() => { localStorage.setItem('mbx_min_v1', '1'); });
+  await page.evaluate((b) => { window.__OPS_BASE = b; }, base);
+  await page.addScriptTag({ url: base + 'ops-drag.js' });
+  await page.addScriptTag({ url: base + 'ops-jam.js' });
+  await launch(page);
+  await page.waitForSelector('#mbx-root .mbx-head .ops-jam');
+  await page.waitForFunction(() => !!document.querySelector('#mbx-root .min'));
+  await page.click('#mbx-root .ops-jam');
+  await page.waitForSelector('#rr-root');
+  assert.ok(await page.evaluate(() => !!document.querySelector('#mbx-root .min')), 'still folded');
+  assert.equal(await page.evaluate(() => localStorage.getItem('ops_pos_v1_mask-boxes')), null, 'a tap is not a drag');
   await ctx.close();
 });

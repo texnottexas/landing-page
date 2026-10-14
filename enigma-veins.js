@@ -8,7 +8,7 @@
   var C = window.EnigmaVeinsCore;
   if (!C) { try { alert('Enigma Veins did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14.2';
+  var VERSION = '2026-10-14.3';
   var WORKER = window.__VEIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__VEIN_FAST, CHECK_MS = window.__VEIN_CHECK_MS || 120000, IDLE_MS = window.__VEIN_IDLE_MS || 600000, TIMEOUT_MS = window.__VEIN_TIMEOUT_MS || 10000;
   var UNSHOWN_MS = window.__VEIN_UNSHOWN_MS || 10000;     // how long a send counts as out before the game's march list shows it
@@ -238,6 +238,7 @@
     ic.setAttribute('width', '18'); ic.setAttribute('height', '18'); ic.setAttribute('viewBox', '0 0 24 24'); ic.setAttribute('aria-hidden', 'true');
     pa.setAttribute('d', 'M6 9l6 6 6-6'); pa.setAttribute('fill', 'none'); pa.setAttribute('stroke', 'currentColor'); pa.setAttribute('stroke-width', '2.2'); pa.setAttribute('stroke-linecap', 'round'); pa.setAttribute('stroke-linejoin', 'round');
     ic.appendChild(pa); mb.appendChild(ic); head.appendChild(mb);
+    if (window.OpsJam) head.insertBefore(window.OpsJam.button(), mb);   // Jam: play Rickroll alongside, from the title row (Tex 2026-10-14)
     head.addEventListener('click', function () { if (card.classList.contains('min')) toggleMin(); });
     body = el('div', 'vein-body');
     card.appendChild(head); card.appendChild(body); root.appendChild(card);

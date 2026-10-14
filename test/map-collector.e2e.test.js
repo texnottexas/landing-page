@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['map-collector.js', 'map-collector-core.js', 'ops-drag.js'];
+const OWN = ['map-collector.js', 'map-collector-core.js', 'ops-drag.js', 'ops-jam.js', 'ops-tools.json'];
 // The fake worker registers one made-up account; no real uid appears anywhere in tests.
 const OWNER_UID = 'test-owner-uid';
 const OWNER_SK = crypto.createHash('sha256').update(OWNER_UID).digest('hex').slice(0, 16);
@@ -79,6 +79,7 @@ async function start(opts) {
     if (a.min) localStorage.setItem('mapc_min_v1', '1');
   }, { uid: o.uid, base, pw: o.pw, left: o.left, goneMs: o.goneMs, autoMs: o.autoMs, downReportMs: o.downReportMs, attachMs: o.attachMs, min: o.min });
   if (o.drag) await page.addScriptTag({ url: base + 'ops-drag.js' });
+  if (o.jam) { await page.evaluate((b) => { window.__OPS_BASE = b; }, base); await page.addScriptTag({ url: base + 'ops-jam.js' }); }
   await page.addScriptTag({ url: base + 'map-collector-core.js' });
   await page.addScriptTag({ url: base + 'map-collector.js' });
   return { ctx, page };
@@ -687,5 +688,15 @@ test('MAPC-DRAG-1: the card drags by its title, keeps the spot through its repai
   await page.waitForTimeout(1500);
   assert.deepEqual(await cardAt(page, '#mapc-root'), b);
   assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('ops_pos_v1_map-collector'))), b);
+  await ctx.close();
+});
+
+test('MAPC-JAM-1 (Tex 2026-10-14): the note in Map Collector\'s title row plays and stops Rickroll', async () => {
+  const { ctx, page } = await start({ jam: true });
+  await page.waitForSelector('#mapc-root .mapc-head .ops-jam');
+  await page.click('#mapc-root .ops-jam');
+  await page.waitForSelector('#rr-root');
+  await page.click('#mapc-root .ops-jam');
+  await page.waitForSelector('#rr-root', { state: 'detached' });
   await ctx.close();
 });

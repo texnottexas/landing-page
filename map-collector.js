@@ -10,7 +10,7 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14';
+  var VERSION = '2026-10-14.2';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
@@ -530,6 +530,7 @@
     ic.setAttribute('width', '18'); ic.setAttribute('height', '18'); ic.setAttribute('viewBox', '0 0 24 24'); ic.setAttribute('aria-hidden', 'true');
     pa.setAttribute('d', 'M6 9l6 6 6-6'); pa.setAttribute('fill', 'none'); pa.setAttribute('stroke', 'currentColor'); pa.setAttribute('stroke-width', '2.2'); pa.setAttribute('stroke-linecap', 'round'); pa.setAttribute('stroke-linejoin', 'round');
     ic.appendChild(pa); mb.appendChild(ic); head.appendChild(mb);
+    if (window.OpsJam) head.insertBefore(window.OpsJam.button(), mb);   // Jam: play Rickroll alongside, from the title row (Tex 2026-10-14)
     head.addEventListener('click', function () { if (card.classList.contains('min')) toggleMin(); });   // the whole bar unfolds
     body = el('div', 'mapc-body');
     card.appendChild(head); card.appendChild(body); root.appendChild(card);

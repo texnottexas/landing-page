@@ -10,7 +10,7 @@
   var C = window.RefugeeCampsCore;
   if (!C) { try { alert('Refugee Camps did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14.2';
+  var VERSION = '2026-10-14.3';
   var WORKER = window.__RFC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__RFC_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__RFC_TIMEOUT_MS || 10000, CAMP_WAIT_MS = window.__RFC_CAMP_WAIT_MS || 10000;
   var POLL_MS = window.__RFC_POLL_MS || 1000, SETTLE_MS = window.__RFC_SETTLE_MS || 3000, UNSHOWN_MS = window.__RFC_UNSHOWN_MS || C.UNSHOWN_MS;
@@ -374,6 +374,7 @@
     ic.setAttribute('width', '18'); ic.setAttribute('height', '18'); ic.setAttribute('viewBox', '0 0 24 24'); ic.setAttribute('aria-hidden', 'true');
     pa.setAttribute('d', 'M6 9l6 6 6-6'); pa.setAttribute('fill', 'none'); pa.setAttribute('stroke', 'currentColor'); pa.setAttribute('stroke-width', '2.2'); pa.setAttribute('stroke-linecap', 'round'); pa.setAttribute('stroke-linejoin', 'round');
     ic.appendChild(pa); mb.appendChild(ic); head.appendChild(mb);
+    if (window.OpsJam) head.insertBefore(window.OpsJam.button(), mb);   // Jam: play Rickroll alongside, from the title row (Tex 2026-10-14)
     head.addEventListener('click', function () { if (card.classList.contains('min')) toggleMin(); });
     body = el('div', 'rfc-body');
     card.appendChild(head); card.appendChild(body); root.appendChild(card);

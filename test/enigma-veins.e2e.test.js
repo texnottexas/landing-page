@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['enigma-veins.js', 'enigma-veins-core.js', 'ops-drag.js'];
+const OWN = ['enigma-veins.js', 'enigma-veins-core.js', 'ops-drag.js', 'ops-jam.js', 'ops-tools.json'];
 const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 
@@ -291,5 +291,20 @@ test('VEIN-17 (live 2026-10-14): the game drops a vein from your list once you h
   await waitText(page, '#vein-stat', /^Sent 2 today · Open 0$/, 8000);
   await page.click('#vein-min');
   await waitText(page, '#vein-mini', /^2$/);
+  await ctx.close();
+});
+
+test('VEIN-JAM-1 (Tex 2026-10-14): Jam in the title row; two quick taps load Rickroll once; stopped from its own card, the note dims', async () => {
+  const { ctx, page } = await open(VEINS, [[{ x: 1, y: 1 }]]);
+  await page.evaluate((b) => { window.__OPS_BASE = b; }, base);
+  await page.addScriptTag({ url: base + 'ops-jam.js' });
+  await launch(page);
+  await page.waitForSelector('#vein-root .vein-head .ops-jam');
+  await page.evaluate(() => { const b = document.querySelector('#vein-root .ops-jam'); b.click(); b.click(); });
+  await page.waitForSelector('#rr-root');
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => window.__rrLoads), 1, 'one load, one song');
+  await page.click('#rr-stop');
+  await page.waitForFunction(() => document.querySelector('#vein-root .ops-jam').getAttribute('aria-pressed') === 'false', null, { timeout: 3000 });
   await ctx.close();
 });

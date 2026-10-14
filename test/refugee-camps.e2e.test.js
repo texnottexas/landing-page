@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['refugee-camps.js', 'refugee-camps-core.js', 'ops-tools.json', 'ops-drag.js'];
+const OWN = ['refugee-camps.js', 'refugee-camps-core.js', 'ops-tools.json', 'ops-drag.js', 'ops-jam.js'];
 const UID = 'test-owner-uid';
 
 let server, base, browser, usageLog;
@@ -411,5 +411,24 @@ test('RFC-27: the card drags by its title and keeps its spot after a relaunch', 
   await page.click('#rfc-close');
   await launch(page);
   assert.deepEqual(await cardAt(page, '#rfc-root'), b);
+  await ctx.close();
+});
+
+test('RFC-JAM-1 (Tex 2026-10-14): the note in the title row plays Rickroll at the registry\'s version, lights, and a second tap stops it; no game request', async () => {
+  const { ctx, page } = await open();
+  await page.evaluate((b) => { window.__OPS_BASE = b; }, base);
+  await page.addScriptTag({ url: base + 'ops-jam.js' });
+  await launch(page);
+  const ver = JSON.parse(require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'ops-tools.json'), 'utf8')).tools.find((t) => t.id === 'rickroll').version;
+  assert.equal(await page.$eval('#rfc-root .rfc-head .ops-jam + #rfc-min', () => true).catch(() => false), true, 'just before the fold chevron');
+  const before = (await page.evaluate(() => __fake.sent.length));
+  await page.click('#rfc-root .ops-jam');
+  await page.waitForSelector('#rr-root');
+  assert.match(await page.evaluate(() => window.__rrSrc), new RegExp('rickroll-audio\\.js\\?v=' + ver.replace(/\./g, '\\.') + '$'));
+  await page.waitForFunction(() => document.querySelector('#rfc-root .ops-jam').getAttribute('aria-pressed') === 'true');
+  await page.click('#rfc-root .ops-jam');
+  await page.waitForSelector('#rr-root', { state: 'detached' });
+  assert.equal(await page.getAttribute('#rfc-root .ops-jam', 'aria-pressed'), 'false');
+  assert.equal(await page.evaluate(() => __fake.sent.length), before, 'Jam sent nothing to the game');
   await ctx.close();
 });
