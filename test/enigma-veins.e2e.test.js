@@ -74,9 +74,9 @@ test('VEIN-1: one mining march to each unmined vein, least time left first, with
   await page.waitForTimeout(600);
   assert.deepEqual(await marches(page), [M(2, 2), M(7, 7), M(1, 1)]);
   assert.deepEqual((await lists(page))[0], { activityId: 83000157, type: 2 });
-  await waitText(page, '#vein-sub', /^On the way \d \/ 6 · Sent 3$/);
+  await waitText(page, '#vein-sub', /^On the way \d \/ 6$/);
   await waitText(page, '#vein-last', /^Sent to 1, 1$/);
-  await waitText(page, '#vein-stat', /^Mined \d+ · Veins up 7$/, 8000);   // all 7 still have time left
+  await waitText(page, '#vein-stat', /^Sent 3 today · Open 3$/, 8000);   // like the game, mined veins leave our list (the 3 we mined, and 3,3); left: mining, on the way, 5-minute
   const cut = await page.evaluate(() => ['vein-stat', 'vein-sub', 'vein-last'].filter((id) => { const e = document.getElementById(id); return e.scrollWidth > e.clientWidth; }));
   assert.deepEqual(cut, [], 'no line is cut off on the 190 px card');
   const text = await page.$eval('#vein-root', (e) => e.textContent);
@@ -281,5 +281,15 @@ test('VEIN-16 (review): stopped while a march answer is on its way and launched 
   await page.waitForTimeout(2000);                                   // the old answer has landed
   assert.deepEqual(await page.evaluate(() => window.__lastSeen.filter((t) => t)), [], 'the old run never wrote into the new card, not even for a moment');
   assert.equal(await page.textContent('#vein-last'), '', 'the new run sent nothing (the vein is in the sent list)');
+  await ctx.close();
+});
+
+test('VEIN-17 (live 2026-10-14): the game drops a vein from your list once you have mined it: the card counts what was sent today, not mined veins in the list', async () => {
+  const { ctx, page } = await open(VEINS, [[{ x: 1, y: 1 }, { x: 2, y: 2 }]]);
+  await launch(page);
+  await page.waitForFunction(() => __fake.vein.veins.every((v) => v.status === 2), null, { timeout: 8000 });   // both mined
+  await waitText(page, '#vein-stat', /^Sent 2 today · Open 0$/, 8000);
+  await page.click('#vein-min');
+  await waitText(page, '#vein-mini', /^2$/);
   await ctx.close();
 });

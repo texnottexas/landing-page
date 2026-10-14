@@ -8,7 +8,7 @@
   var C = window.EnigmaVeinsCore;
   if (!C) { try { alert('Enigma Veins did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14';
+  var VERSION = '2026-10-14.2';
   var WORKER = window.__VEIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__VEIN_FAST, CHECK_MS = window.__VEIN_CHECK_MS || 120000, IDLE_MS = window.__VEIN_IDLE_MS || 600000, TIMEOUT_MS = window.__VEIN_TIMEOUT_MS || 10000;
   var UNSHOWN_MS = window.__VEIN_UNSHOWN_MS || 10000;     // how long a send counts as out before the game's march list shows it
@@ -230,7 +230,7 @@
     card = el('div', 'vein-card');
     var head = el('div', 'vein-head');
     head.appendChild(el('span', 'vein-title', 'Enigma Veins'));
-    var mini = el('span', 'vein-mini'); mini.id = 'vein-mini'; mini.title = 'Mined'; head.appendChild(mini);
+    var mini = el('span', 'vein-mini'); mini.id = 'vein-mini'; mini.title = 'Sent today'; head.appendChild(mini);
     head.appendChild(el('span', 'vein-dot'));
     var mb = el('button'); mb.id = 'vein-min'; mb.type = 'button';
     mb.addEventListener('click', function (e) { e.stopPropagation(); toggleMin(); });
@@ -271,11 +271,12 @@
   function put(id, text) { var e = document.getElementById(id); if (e && e.textContent !== text) { e.textContent = text; e.title = text; } }
   function paint() {
     if (!card || S.view !== 'run') return;
-    put('vein-stat', S.eventId ? 'Mined ' + S.mined + ' · Veins up ' + S.up : 'Enigma Veins');
-    put('vein-sub', 'On the way ' + S.onWay + ' / ' + S.max + ' · Sent ' + S.sentRun);
+    // the game drops a vein from your list once you've mined it (live 2026-10-14), so the card counts sends, not mined veins
+    put('vein-stat', S.eventId ? 'Sent ' + todayCount() + ' today · Open ' + S.up : 'Enigma Veins');
+    put('vein-sub', 'On the way ' + S.onWay + ' / ' + S.max);
     put('vein-foot', S.foot);
     put('vein-last', S.last);
-    put('vein-mini', String(S.mined));
+    put('vein-mini', String(todayCount()));
     var tt = card.querySelector('.vein-title'), tx = S.min ? 'Veins' : 'Enigma Veins';
     if (tt && tt.textContent !== tx) tt.textContent = tx;
     card.className = 'vein-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
