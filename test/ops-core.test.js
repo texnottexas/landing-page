@@ -261,3 +261,8 @@ test('tileStatus: a member\'s tool whose event is off shows Not running and Laun
   assert.deepEqual(OC.tileStatus(tool({ gate: 'code' }), { member: true, unlocked: false, checks: { game: true }, eventOff: true }), { state: 'locked', launch: null });
   assert.deepEqual(OC.EVENT_TEXT, ['The event is running', "The event isn't running now"]);
 });
+
+test('tucked: kept only as true; a tucked tool always sits under "Not running now" (Tex 2026-10-14)', () => {
+  const r = OC.validateTools({ tools: [tool({ id: 't1', tucked: true }), tool({ id: 't2', tucked: 'yes' }), tool({ id: 't3' })] }).tools;
+  assert.deepEqual(r.map((t) => [t.id, t.tucked]), [['t1', true], ['t2', false], ['t3', false]]);
+});

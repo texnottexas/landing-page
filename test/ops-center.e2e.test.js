@@ -51,11 +51,12 @@ async function open(viewport, before, o) {
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
-  if (o && (o.dragFirst || o.events)) await ctx.route('**/ops-tools.json*', async (rt) => {
+  if (o && (o.dragFirst || o.events || o.tucked)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
     j.tools.forEach((t) => {
       if (o.dragFirst && t.id === 'alpha') t.scripts.unshift('ops-drag.js');   // a tool that lists the drag helper first
       if (o.events && o.events[t.id]) t.event = o.events[t.id];                 // a tool tied to an event
+      if (o.tucked && o.tucked.includes(t.id)) t.tucked = true;                 // a tool that always sits under "Not running now"
     });
     rt.fulfill({ response: r, body: JSON.stringify(j) });
   });
@@ -515,5 +516,20 @@ test('OPS-EV-5: when the game\'s activities can\'t be read, every tool stays in 
   await page.waitForSelector('.ops-tile');
   assert.ok((await mainNames(page)).includes('Alpha Tool'));
   assert.equal(await page.$('.ops-tuck'), null);
+  await ctx.close();
+});
+
+test('OPS-EV-6 (Tex 2026-10-14): a tucked tool always sits under "Not running now", even when the game\'s events can\'t be read, and still launches from there', async () => {
+  const { ctx, page } = await open(PHONE, null, { tucked: ['alpha'] });   // no ActivityController in the fake game
+  await page.waitForSelector('.ops-tuck');
+  assert.ok(!(await mainNames(page)).includes('Alpha Tool'));
+  assert.equal(await page.textContent('.ops-tuck'), 'Not running now (1)');
+  await page.click('.ops-tuck');
+  assert.deepEqual(await tuckedNames(page), ['Alpha Tool']);
+  await clickTile(page, 'Alpha Tool');
+  await page.waitForSelector('.ops-btn.primary');
+  assert.equal(await page.textContent('.ops-btn.primary'), 'Launch anyway');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#fake-alpha');
   await ctx.close();
 });

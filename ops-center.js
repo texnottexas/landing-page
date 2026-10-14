@@ -69,7 +69,8 @@
       return { acts: acts, now: now > 0 ? now : Math.floor(Date.now() / 1000) };
     } catch (e) { return null; }
   }
-  function eventOff(t, ev) { return !!(ev && t.event && t.event.length && !C().eventLive(t.event, ev.acts, ev.now)); }
+  // A tool goes under "Not running now" while its event is off, or always when the list says tucked (whatever the read).
+  function eventOff(t, ev) { return !!t.tucked || !!(ev && t.event && t.event.length && !C().eventLive(t.event, ev.acts, ev.now)); }
 
   // ---------------------------------------------------------------- data
   function loadList() {

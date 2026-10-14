@@ -15,7 +15,7 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Rickroll'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
@@ -226,4 +226,10 @@ test('movable cards: each floating tool lists ops-drag.js first, at version 2026
 test('event tools: Angel Attacks 292, Enigma Veins 279, Alliance Defense 26; no other tool has an event', () => {
   const ev = Object.fromEntries(list.tools.filter((t) => t.event.length).map((t) => [t.id, t.event]));
   assert.deepEqual(ev, { 'alliance-defense': [26], angels: [292], 'enigma-veins': [279] });
+});
+
+// Tex, 2026-10-14: TC Squad Sync and Class Talent Reset (EL) always sit under "Not running now"; whoever needs them finds them there.
+test('tucked tools: TC Squad Sync and Class Talent Reset (EL), nothing else', () => {
+  assert.deepEqual(list.tools.filter((t) => t.tucked).map((t) => t.id).sort(), ['class-reset', 'tc-sync']);
+  assert.equal(list.tools.find((t) => t.id === 'class-reset').title, 'Class Talent Reset (EL)');
 });
