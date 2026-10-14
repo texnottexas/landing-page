@@ -15,7 +15,7 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Rickroll'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
@@ -191,9 +191,29 @@ test('HT Gift Boxes tile: for members, game ready, its own overlay and chest ico
   assert.match(read('pages/map-collector.html'), /'ht-gifts': \['claim', 'claims'\]/);
 });
 
+// Enigma Veins (Tex, 2026-10-14): every member; tied to the Enigma Field Hunt (activity type 279).
+test('Enigma Veins tile: for members, game ready, its own overlay and gem icon, scripts deployed, rules in the deploy gate', () => {
+  const t = list.tools.find((x) => x.id === 'enigma-veins');
+  assert.ok(t, 'listed');
+  assert.equal(t.title, 'Enigma Veins');
+  assert.equal(t.gate, 'member');
+  assert.deepEqual(t.ready, ['game']);
+  assert.equal(t.overlay, '#vein-root');
+  assert.equal(t.icon, 'gem');
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'enigma-veins-core.js', 'enigma-veins.js']);
+  assert.match(t.desc, /Enigma Field Hunt/);
+  assert.ok(!/—/.test(t.desc), 'no em dash');
+  const ver = (read('enigma-veins.js').match(/var VERSION = '([^']+)'/) || [])[1];
+  assert.equal(t.version, ver, 'registry version = script version');
+  assert.ok(/test\/enigma-veins-core\.test\.js/.test(read('.github/workflows/pages.yml')), 'rules run before every deploy');
+  assert.ok(/ enigma-veins-core\.js enigma-veins\.js /.test(cpLine), 'scripts deployed');
+  assert.ok(/\n\s*gem: \[/.test(read('ops-kit.js')), 'the gem is drawn');
+  assert.match(read('pages/map-collector.html'), /'enigma-veins': \['vein', 'veins'\]/);
+});
+
 // Movable cards (Tex, 2026-10-14): every floating card's tool loads the drag helper first; the helper ships and is gated.
 test('movable cards: each floating tool lists ops-drag.js first, at version 2026-10-14 or later; the helper deploys and its rules gate', () => {
-  for (const id of ['map-collector', 'mask-boxes', 'fun-stuff', 'angels', 'refugee-camps', 'ht-gifts', 'alliance-defense', 'rickroll', 'troop']) {
+  for (const id of ['map-collector', 'mask-boxes', 'fun-stuff', 'angels', 'refugee-camps', 'ht-gifts', 'enigma-veins', 'alliance-defense', 'rickroll', 'troop']) {
     const t = list.tools.find((x) => x.id === id);
     assert.equal(t.scripts[0], 'ops-drag.js', id);
     assert.ok(t.version >= '2026-10-14', id + ' ' + t.version);   // the version that brought the helper, or a later bump

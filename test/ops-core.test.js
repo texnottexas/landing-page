@@ -230,6 +230,10 @@ test('gift is a known icon', () => {
   assert.equal(OC.validateTools({ tools: [tool({ id: 'g', icon: 'gift' })] }).tools[0].icon, 'gift');
 });
 
+test('gem is a known icon', () => {
+  assert.equal(OC.validateTools({ tools: [tool({ id: 'v', icon: 'gem' })] }).tools[0].icon, 'gem');
+});
+
 test('smile is a known icon', () => {
   assert.equal(OC.validateTools({ tools: [tool({ id: 's', icon: 'smile' })] }).tools[0].icon, 'smile');
 });
