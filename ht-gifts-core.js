@@ -24,15 +24,18 @@
   function giftKey(m, x, y) { return m && m.marchIdStr != null && m.luckyBagNum != null ? String(m.marchIdStr) + ':' + m.luckyBagNum : '@' + x + ',' + y; }
 
   // The gift boxes in a map view worth a claim, best first: fewest claims left (they fill soonest), then soonest ending.
-  // The game's own pick (8852, o.anchor) is added last when the view didn't show that tile at all.
+  // The game's own pick (8852, o.anchor) is added last only when the view held no gift tiles at all and nothing stands
+  // on that tile (a view that missed the area); a view with other gifts but not that one means it is gone.
   function pickGifts(points, o) {
-    var out = [], seen = {}, sent = o.sent || {}, anchorSeen = false;
+    var out = [], seen = {}, sent = o.sent || {}, anchorSeen = false, gifts = 0;
     var recentTile = function (x, y) { var t = sent['@' + x + ',' + y]; return t && o.nowMs - t < XY_TTL_MS; };
     (Array.isArray(points) ? points : []).forEach(function (p) {
-      if (!p || p.pointType !== TYPE) return;
+      if (!p) return;
       var x = Number(p.x), y = Number(p.y), m = p.m || {};
-      if (!(x % 1 === 0 && y % 1 === 0 && x >= 0 && y >= 0)) return;
       if (o.anchor && o.anchor.x === x && o.anchor.y === y) anchorSeen = true;
+      if (p.pointType !== TYPE) return;
+      gifts++;
+      if (!(x % 1 === 0 && y % 1 === 0 && x >= 0 && y >= 0)) return;
       if (o.k != null && p.k != null && Number(p.k) !== Number(o.k)) return;
       var key = giftKey(m, x, y);
       if (seen[key] || sent[key] || recentTile(x, y)) return;
@@ -47,7 +50,7 @@
     });
     out.sort(function (a, b) { return a.claimsLeft !== b.claimsLeft ? a.claimsLeft - b.claimsLeft : a.end - b.end; });
     var A = o.anchor;
-    if (A && !anchorSeen && !recentTile(A.x, A.y) && !sent['@' + A.x + ',' + A.y]) out.push({ x: A.x, y: A.y, key: '@' + A.x + ',' + A.y, claimsLeft: BAG_DEFAULT, end: 0 });
+    if (A && !gifts && !anchorSeen && !recentTile(A.x, A.y) && !sent['@' + A.x + ',' + A.y]) out.push({ x: A.x, y: A.y, key: '@' + A.x + ',' + A.y, claimsLeft: BAG_DEFAULT, end: 0 });
     return out;
   }
 
@@ -80,9 +83,10 @@
     if (h && h.s === 0 && x % 1 === 0 && y % 1 === 0 && x > 0 && y > 0) return { kind: 'gift', x: x, y: y };
     return { kind: 'none' };
   }
-  // 901: the map view's points (it has no s).
+  // 901: the map view's points. A good answer has no s; a refusal ("too frequent") carries one.
   function classifyView(a) {
     if (!a || a.s === 'timeout' || a.s === 'blocked') return { kind: 'silent', points: [] };
+    if (typeof a.s === 'number' && a.s !== 0) return { kind: 'refused', s: a.s, key: typeof a.d === 'string' ? a.d.slice(0, 80) : '', points: [] };
     var d = null; try { d = typeof a.d === 'string' ? JSON.parse(a.d) : a.d; } catch (e) { d = null; }
     return { kind: 'ok', points: d && Array.isArray(d.pointList) ? d.pointList : [] };
   }

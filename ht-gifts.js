@@ -13,7 +13,7 @@
   var WORKER = window.__HTG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__HTG_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__HTG_TIMEOUT_MS || 10000, POLL_MS = window.__HTG_POLL_MS || 1000;
   var BUSY_MS = window.__HTG_BUSY_MS || 10000, IDLE_MS = window.__HTG_IDLE_MS || 30000;
-  var LS_PW = 'htg_pw_v1', LS_SENT = 'htg_sent_v1_', LS_COUNT = 'htg_count_v1_', LS_MIN = 'htg_min_v1';
+  var LS_PW = 'htg_pw_v1', LS_SENT = 'htg_sent_v1_', LS_OWN = 'htg_own_v1_', LS_COUNT = 'htg_count_v1_', LS_MIN = 'htg_min_v1';
   var TARGET = {};
 
   // ---------------------------------------------------------------- game
@@ -70,6 +70,9 @@
   function bump() { S.count = { day: today(), n: todayCount() + 1 }; lsSet(LS_COUNT + S.siteKey, JSON.stringify(S.count)); }
   function syncSent() { if (S.sent.day !== today()) S.sent = C.sentFor(lsJSON(LS_SENT + S.siteKey), today()); }
   function remember(g) { syncSent(); S.sent.keys[g.key] = Date.now(); S.sent.keys['@' + g.x + ',' + g.y] = Date.now(); lsSet(LS_SENT + S.siteKey, JSON.stringify(S.sent)); }
+  // Our gift marches survive a relaunch: the game's march list may not show them.
+  function loadOwn() { var st = lsJSON(LS_OWN + S.siteKey), now = serverSec(); S.own = st && st.day === today() && Array.isArray(st.own) ? st.own.filter(function (c) { return c && c.ret > now; }) : []; }
+  function saveOwn() { var now = serverSec(); S.own = S.own.filter(function (c) { return c.ret > now; }); lsSet(LS_OWN + S.siteKey, JSON.stringify({ day: today(), own: S.own })); }
   function forget(g) { delete S.sent.keys[g.key]; delete S.sent.keys['@' + g.x + ',' + g.y]; lsSet(LS_SENT + S.siteKey, JSON.stringify(S.sent)); }
   function reportUsage() {
     var name = '';
@@ -104,11 +107,13 @@
       (function check() { var wait = P.at + GAP_MS - Date.now(); if (wait <= 0) { P.at = Date.now(); resolve(); } else setTimeout(check, Math.min(wait, 1000)); })();
     });
   }
-  // One request: the shared clock, a fresh check (running, connected), then send. 'stopped' / 'offline': not sent.
-  async function ask(fn, id, p) {
+  // One request: the shared clock, a fresh check (running, connected, and for a march no other march request still
+  // waiting), then send. 'stopped' / 'offline' / 'busy': not sent.
+  async function ask(fn, id, p, march) {
     await pace();
     if (!S.running) return { s: 'stopped' };
     if (!ready() || flight) return { s: 'offline' };
+    if (march) { var N = NET(); if (typeof N.checkRequestIdNoRes === 'function' && N.checkRequestIdNoRes(id)) return { s: 'busy' }; }
     return call(function (cb) { return NET()[fn](id, p, TARGET, cb); });
   }
   function refused(r) { stop(gameText(r.key) || ('the game answered ' + r.s + (r.key ? ' (' + r.key + ')' : ''))); }
@@ -142,6 +147,8 @@
       if (v.s === 'stopped') return;
       if (v.s === 'offline') { await delay(POLL_MS); continue; }
       var V = C.classifyView(v);
+      if (V.kind === 'silent') { await idle(IDLE_MS, "The game didn't answer. Looking again in"); continue; }
+      if (V.kind === 'refused') { refused(V); return; }          // an unknown answer: never claim right after it
       var cands = C.pickGifts(V.points.map(function (p) { return p && p.pointType === I.type ? Object.assign({}, p, { pointType: C.TYPE }) : p; }),
         { me: me(), sent: S.sent.keys, bagCap: bagCap, now: serverSec(), k: homeK(), anchor: { x: Q.x, y: Q.y }, nowMs: Date.now() });
       var busy = false;
@@ -160,14 +167,15 @@
     if (typeof N.checkRequestIdNoRes === 'function' && N.checkRequestIdNoRes(I.march)) { setFoot('The game is busy with a march. Trying again shortly.', 'warn'); return 'busy'; }
     remember(gi);                                          // before the request: a lost answer never brings a second claim
     setFoot('Claiming the gift box at ' + gi.x + ', ' + gi.y + '...', 'ok');
-    var a = await ask('send', I.march, { marchType: I.claim, x: gi.x, y: gi.y });
+    var a = await ask('send', I.march, { marchType: I.claim, x: gi.x, y: gi.y }, true);
     if (a.s === 'stopped') return false;
+    if (a.s === 'busy') { forget(gi); setFoot('The game is busy with a march. Trying again shortly.', 'warn'); return 'busy'; }
     if (a.s === 'offline') { forget(gi); return 'busy'; }
     S.log.push(Date.now()); if (S.log.length > 100) S.log.shift();
     var r = C.classify(a);
     if (r.kind === 'silent') { stop("the game didn't answer a claim"); return false; }
     if (r.kind !== 'ok') { refused(r); return false; }
-    S.own.push(C.ownFromAnswer(parse(a), serverSec()));
+    S.own.push(C.ownFromAnswer(parse(a), serverSec())); saveOwn();
     S.claimedRun++; bump();
     S.last = 'Claimed ' + gi.x + ', ' + gi.y;
     reportUsage(); counts(I); paint();
@@ -293,7 +301,7 @@
   sha256Hex(uid).then(function (h) {
     S.siteKey = h.slice(0, 16);
     S.count = lsJSON(LS_COUNT + S.siteKey);
-    syncSent();
+    syncSent(); loadOwn();
     if (C.checkPassword(lsGet(LS_PW))) begin(); else showPassword(false);
   });
 })();

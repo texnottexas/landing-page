@@ -243,3 +243,44 @@ test('HTG-14: another tool\'s march request still waiting: no claim until it cle
   await page.click('#htg-stop');
   await ctx.close();
 });
+
+test('HTG-15: a map view the game doesn\'t answer: no claim, says so, looks again later', async () => {
+  const { ctx, page } = await open([[130, 130]], () => { __fake.lose901 = 1; });
+  await launch(page);
+  await waitText(page, '#htg-foot', /didn't answer\. Looking again in/);
+  assert.equal((await claims(page)).length, 0, 'no blind claim');
+  await page.click('#htg-stop');
+  await ctx.close();
+});
+
+test('HTG-16: a map view the game refuses ("too frequent"): stops with the game\'s words, no claim', async () => {
+  const { ctx, page } = await open([[131, 131]], () => { __fake.viewError = 'view_too_fast'; });
+  await launch(page);
+  await waitText(page, '#htg-root .htg-msg', /HT Gift Boxes stopped: Too frequent\./);
+  assert.equal((await claims(page)).length, 0);
+  await ctx.close();
+});
+
+test('HTG-17: after a relaunch, claims still on the way count as out even when the game\'s march list doesn\'t show them', async () => {
+  const { ctx, page } = await open(Array.from({ length: 7 }, (_, i) => [140 + i, 140 + i]), () => { Object.assign(__fake.htg, { travelMs: 6000, hideMarches: true }); });
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 902).length >= 5);
+  await page.click('#htg-stop'); await page.click('#htg-close');
+  await launch(page);
+  await page.waitForTimeout(1500);
+  assert.equal((await claims(page)).length, 5, 'still 5 out: no sixth until one is home');
+  await page.click('#htg-stop');
+  await ctx.close();
+});
+
+test('HTG-18: another tool\'s march request turns up while a claim waits its turn: the claim waits; the gift is claimed once it clears', async () => {
+  const { ctx, page } = await open([[150, 150]], () => { __fake.htg.pendAfterView = true; window.__HTG_GAP_MS = 400; });
+  await launch(page);
+  await waitText(page, '#htg-foot', /busy with a march/);
+  assert.equal((await claims(page)).length, 0);
+  await page.evaluate(() => { __fake.htg.pendAfterView = false; __fake.pending.length = 0; });
+  await page.waitForFunction(() => __fake.sent.filter((s) => s.rid === 902).length >= 1, null, { timeout: 8000 });
+  assert.deepEqual(await claims(page), ['150,150']);
+  await page.click('#htg-stop');
+  await ctx.close();
+});

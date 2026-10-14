@@ -42,8 +42,9 @@ test('pickGifts: a tile claimed in the last 35 min is skipped even with another 
   const pts = [gift(1, 1), gift(2, 2)];
   assert.deepEqual(G.pickGifts(pts, O({ sent: { '@1,1': NOW_MS - 60000 } })).map((g) => g.x), [2]);
   assert.deepEqual(G.pickGifts(pts, O({ sent: { '@1,1': NOW_MS - 2200000 } })).map((g) => g.x), [1, 2], 'a tile mark older than 35 min is no bar');
-  const withAnchor = G.pickGifts(pts, O({ anchor: { x: 30, y: 30 } }));
-  assert.deepEqual(withAnchor.map((g) => g.key), ['M1:1', 'M1:2', '@30,30'], 'the view did not show it: claim the game\'s own pick last');
+  assert.deepEqual(G.pickGifts(pts, O({ anchor: { x: 30, y: 30 } })).map((g) => g.key), ['M1:1', 'M1:2'], 'other gifts in view but not the game\'s pick: it is gone, no blind claim');
+  assert.deepEqual(G.pickGifts([], O({ anchor: { x: 30, y: 30 } })).map((g) => g.key), ['@30,30'], 'a view with no gift tiles at all: claim the game\'s own pick');
+  assert.deepEqual(G.pickGifts([{ pointType: 1, x: 30, y: 30, k: 2864, m: {} }], O({ anchor: { x: 30, y: 30 } })), [], 'something else stands on that tile now: no claim');
   assert.deepEqual(G.pickGifts(pts, O({ anchor: { x: 2, y: 2 } })).map((g) => g.key), ['M1:1', 'M1:2'], 'the view showed it: no extra');
   assert.deepEqual(G.pickGifts([gift(2, 2, { receiveBagUidList: ['me'] })], O({ anchor: { x: 2, y: 2 } })), [], 'the view showed it as mine: not added back');
   assert.deepEqual(G.pickGifts([], O({ anchor: { x: 30, y: 30 }, sent: { '@30,30': NOW_MS - 1000 } })), [], 'claimed that tile a moment ago');
@@ -82,6 +83,7 @@ test('answers: claims, the next-gift query and the map view', () => {
   assert.deepEqual(G.classifyView({ c: 901, d: JSON.stringify({ pointList: [{ x: 1 }] }) }), { kind: 'ok', points: [{ x: 1 }] });
   assert.deepEqual(G.classifyView({ s: 'timeout' }), { kind: 'silent', points: [] });
   assert.deepEqual(G.classifyView({ c: 901, d: 'nope' }), { kind: 'ok', points: [] });
+  assert.deepEqual(G.classifyView({ c: 901, s: 3, d: 'view_too_fast' }), { kind: 'refused', s: 3, key: 'view_too_fast', points: [] }, 'a refused view is an unknown answer');
 });
 
 test('gate: at most 10 claims a minute (a runaway guard; the day allows 10)', () => {
