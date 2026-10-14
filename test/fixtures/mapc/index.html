@@ -13,6 +13,7 @@
 // the skip request (sendPB 3700): a window opens, a skip marches the boss, the wave resolves battleMs later.
 // For Angel Attacks: an Angel event (activity with extra.attackMonsterIds + groupId), the Angel list (sendPBV2 8802), carrier attacks (send 902 with isAirCraftCarrier) that land after landMs and join attackMonsterIds, and the march list (NWorldMapData).
 // For HT Gift Boxes: Chip Blessing gift tiles (type 259) in the 901 view, the next claimable gift (sendPBV2 8852) and gift claims (send 902 marchType 257) that land and come home.
+// For Enigma Veins: the Enigma Field Hunt (activity type 279), the vein list (sendPBV2 8623, otherKuangList) and vein marches (send 902 marchType 180, no troops) that arrive, mine and come home.
 // For Refugee Camps: "Help Me" Letters (815) that put a camp by the base, the camp list (1021), the VIT buy (801), VIT capsules (815), rallies (1201) that hold heroes, units and a march for rallyMs, and Quick Deploy's inputs (heroes, units, slot sizes).
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
@@ -32,6 +33,8 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
     heroOut: {}, unitOut: {}, mechas: [] },
   // HT Gift Boxes: Chip Blessing gift boxes (tiles type 259) on the map, the day's claim count and our gift marches
   htg: { gifts: [], received: 0, cap: '10', bagCap: 20, travelMs: 800, claimMode: 'ok', queryMode: 'ok', inview: true, inflight: 0, claimed: {}, marches: {}, maxOut: 0 },
+  // Enigma Veins: the event, the veins on the map (status as the game reports it to this player) and vein marches
+  vein: { event: null, veins: [], mode: 'ok', travelMs: 300, mineMs: 300, maxOut: 0 }, marchType180: 180,
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -71,6 +74,24 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         setTimeout(function () { HG.inflight--; HG.received++; gift.m.receiveBagUidList.push(F.uid); }, HG.travelMs);
         setTimeout(function () { delete HG.marches[mk]; delete F.carrier[mk]; }, HG.travelMs * 2);
         setTimeout(function () { cb({ s: 0, d: JSON.stringify({ marchInfo: { marchId: mk, marchType: 257, marchStartTime: start, marchArrive: arriveSec } }) }); }, 20);
+        return true;
+      }
+      if (rid === 902 && p.marchType === F.marchType180) {   // mine a vein: a march with no troops that arrives, mines, comes home
+        var VN = F.vein;
+        if (VN.mode === 'silent') { if (F.pending.indexOf(902) < 0) F.pending.push(902); return true; }
+        if (VN.mode === 'refuse') { setTimeout(function () { cb({ s: 3, d: 'field_lottery_35' }); }, 20); return true; }
+        var vein = VN.veins.filter(function (v) { return v.x === p.x && v.y === p.y && v.expireMs > Date.now(); })[0];
+        var vout = Object.keys(F.carrier).filter(function (k) { return F.carrier[k].marchType === F.marchType180; }).length;
+        var vbad = !vein ? 'no_vein' : (vein.late || vein.expireMs - Date.now() <= 300000) ? 'field_lottery_37' : vein.status !== 0 ? 'field_lottery_36'
+          : vout >= Number((VN.event && VN.event.para6) || 6) ? 'gourmet_key17'
+          : (p.armyList || []).length || (p.heroList || []).length || (p.armyListNew || []).length ? 'bad_march' : '';
+        if (vbad) { setTimeout(function () { cb({ s: 3, d: vbad }); }, 20); return true; }
+        var vk = 'v' + F.sent.length;
+        vein.status = 3; F.carrier[vk] = { marchType: F.marchType180, realUid: F.uid, target_tx: p.x, target_ty: p.y };
+        VN.maxOut = Math.max(VN.maxOut, vout + 1);
+        setTimeout(function () { vein.status = 1; }, VN.travelMs);
+        setTimeout(function () { vein.status = 2; delete F.carrier[vk]; }, VN.travelMs + VN.mineMs);
+        setTimeout(function () { cb({ s: 0, d: JSON.stringify({ marchInfo: { marchId: vk, marchType: F.marchType180 } }) }); }, 20);
         return true;
       }
       var n = F.sent.length, ans;
@@ -184,6 +205,15 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         setTimeout(function () { cb({ c: 8802, s: ok ? 0 : 3, pbAckV2: { header: ok ? { s: 0 } : { s: 3, d: 'busy' }, data: data } }); }, 20);
         return true;
       }
+      if (rid === 8623) {                                  // the event panel's vein list (Global Veins), as this player sees it
+        var LV = function (v) { return { toString: function () { return String(v); }, toNumber: function () { return Number(v); } }; };
+        var vok = F.vein.mode !== 'listdown';
+        var vdata = vok ? { kuangList: [], otherKuangList: F.vein.veins.filter(function (v) { return v.expireMs > Date.now(); }).map(function (v) {
+          return { uid: 'finder-uid-123', playerInfo: '{"username":"Finder"}', x: v.x, y: v.y, expireTimeMilli: LV(v.expireMs), serverId: 2842, frameId: 0,
+            gatherStatus: v.status, gatherBeginTimeMilli: LV(0), gatherPlayerInfoList: [] }; }) } : null;
+        setTimeout(function () { cb({ c: 8623, pbAckV2: { header: vok ? { s: 0 } : { s: 3, d: 'busy' }, data: vdata } }); }, 20);
+        return true;
+      }
       if (rid === 8852) {                                   // the next gift box the player can claim (the world map's quick button)
         var HQ = F.htg, nowS = Math.floor(Date.now() / 1000);
         var g8 = HQ.queryMode === 'none' ? null : HQ.gifts.filter(function (gi) { return gi.m.receiveBagUidList.indexOf(F.uid) < 0 && gi.m.receiveBagUidList.length < HQ.bagCap && gi.m.endSecsTime > nowS; })[0];
@@ -270,7 +300,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         return out;
       } } };
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
-    if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: (F.activity ? [activity] : []).concat(F.angelEvent ? [F.angelEvent] : []),
+    if (name === 'ActivityController') return { ActivityController: { Instance: { _activityList: (F.activity ? [activity] : []).concat(F.angelEvent ? [F.angelEvent] : []).concat(F.vein.event ? [F.vein.event] : []),
       getActivityByActivitytype: function (t) { return t === 26 && F.siege ? { id: 153, alMonsterSiege: F.siege } : null; } } } };
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
     if (name === 'PlayerInfo') return { default: function () { var u = ''; this.update = function (s) { try { u = JSON.parse(s).username; } catch (e) { u = ''; } }; this.getDisplayName = function () { return u; }; } };
@@ -284,9 +314,9 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       if (t === 'monster_group' && Number(id) === 12) return { cost_energy: 5 };
       if (t === 'alliance_parade') return { bag_reward_num: F.htg.bagCap };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
-    if (name === 'NRequestIdV2') return { NRequestIdV2: { PINK_MECHA_MONSTER_LIST: 8802, FLOAT_PARADE_QUERY_CAN_REWARD_BAG: 8852 } };
+    if (name === 'NRequestIdV2') return { NRequestIdV2: { PINK_MECHA_MONSTER_LIST: 8802, FLOAT_PARADE_QUERY_CAN_REWARD_BAG: 8852, ENIGMA_BEAST_TREASURE_GET_KUANG_LIST: 8623 } };
     if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902, GET_WORLD_INFO: 901, ITEM_USE: 815, BuyEnergry: 801, GetRefugee: 1021, ALLIANCE_Assembly_Create: 1201 } };
-    if (name === 'NWorldMapMarchCommon') return { NMarchType: { MECHA_TREASURE_BOSS: F.marchType189 } };
+    if (name === 'NWorldMapMarchCommon') return { NMarchType: { MECHA_TREASURE_BOSS: F.marchType189, DOMAIN_TREASURE: F.marchType180 } };
     if (name === 'NWorldMapData') return { default: { instance: { get marches() { return F.carrier; } } } };
     if (name === 'PushResponse') return { PUSH_FIND_REFUGEECAMP: PushFindCamp };
     if (name === 'WorldMapCommon') return { MarchType: { CHIP_BLESSING_ITEM_DROP: 256, CHIP_BLESSING_GET_ITEM_DROP_REWARD: 257 }, WorldMapEntityType: { CHIP_BLESSING_ITEMDROP_BUILD: 259 } };
@@ -304,7 +334,9 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'MechaController') return { MechaController: { getInstance: function () { return { getMyMechaList: function () { return F.rfc.mechas; } }; } } };
     var TEXT = { itemdrop_error_1: 'The gift box is gone.', assembly_error_1: 'The rally could not start.', equip_box_16: 'Blessing Key', mask_reward_1: 'Mask Treasure', mask_reward_2: 'Mask HT', mask_reward_3: 'Mask RSS',
       pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached', view_too_fast: 'Too frequent',
-      backup_mecha_lottery_21: 'March failed! A commander can only attack the same Heavy Mothership Angel once!' };
+      backup_mecha_lottery_21: 'March failed! A commander can only attack the same Heavy Mothership Angel once!',
+      field_lottery_37: 'Not enough time remaining on the Vein to start a march.', field_lottery_35: 'March failed! Only one march is allowed on the same Vein at a time.',
+      field_lottery_36: 'Each Vein can only be mined once!', gourmet_key17: 'Too many marches out.' };
     if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return TEXT[k] || k; } } };
     return null;
   };
