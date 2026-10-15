@@ -1,6 +1,6 @@
 /* Learning Lounge core: search, did-you-mean, similar questions, safe answer rendering.
  * No DOM, no network. window.LoungeCore in the browser, module.exports for node tests.
- * Shared by learning-lounge.html (players) and learning-lounge-mentors.html (mentors). */
+ * Shared by learn.html (players) and learn-admin.html (mentors). */
 (function (root) {
   'use strict';
 

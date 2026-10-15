@@ -1,6 +1,6 @@
 'use strict';
-// learning-lounge-mentors.html: the mentor editor. Static server + a routed fake worker with in-memory state.
-// Run: NODE_PATH="$(npm root -g)/@playwright/cli/node_modules" node --test test/learning-lounge-mentors.e2e.test.js
+// learn-admin.html: the mentor editor. Static server + a routed fake worker with in-memory state.
+// Run: NODE_PATH="$(npm root -g)/@playwright/cli/node_modules" node --test test/learn-admin.e2e.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 const W = 'https://push-worker.27tb8s6fct.workers.dev';
 const ROOT = path.join(__dirname, '..');
 const FILES = {
-  '/learning-lounge-mentors.html': [path.join(ROOT, 'pages', 'learning-lounge-mentors.html'), 'text/html'],
+  '/learn-admin.html': [path.join(ROOT, 'pages', 'learn-admin.html'), 'text/html'],
   '/lounge-core.js': [path.join(ROOT, 'lounge-core.js'), 'text/javascript'],
   '/player-data.json': [path.join(__dirname, 'fixtures', 'lounge', 'mentors', 'player-data.json'), 'application/json'],
 };
@@ -46,7 +46,7 @@ test.before(async () => {
     res.writeHead(200, { 'content-type': f[1] }); res.end(fs.readFileSync(f[0]));
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  base = 'http://127.0.0.1:' + server.address().port + '/learning-lounge-mentors.html';
+  base = 'http://127.0.0.1:' + server.address().port + '/learn-admin.html';
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });

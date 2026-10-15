@@ -1,6 +1,6 @@
 'use strict';
-// learning-lounge.html (players search the mentors' Q&A). Against a mocked worker; no network.
-// Run: NODE_PATH="$(npm root -g)/@playwright/cli/node_modules" node --test test/learning-lounge.e2e.test.js
+// learn.html (players search the mentors' Q&A). Against a mocked worker; no network.
+// Run: NODE_PATH="$(npm root -g)/@playwright/cli/node_modules" node --test test/learn.e2e.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -16,13 +16,13 @@ let server, base, browser, data, getStatus, posts, askStatus, getCount;
 test.before(async () => {
   server = http.createServer((req, res) => {
     const u = req.url.split('?')[0];
-    const file = u === '/lounge-core.js' ? path.join(ROOT, 'lounge-core.js') : u === '/learning-lounge.html' ? path.join(ROOT, 'pages', 'learning-lounge.html') : null;
+    const file = u === '/lounge-core.js' ? path.join(ROOT, 'lounge-core.js') : u === '/learn.html' ? path.join(ROOT, 'pages', 'learn.html') : null;
     if (!file || !fs.existsSync(file)) { res.writeHead(404); res.end('nope'); return; }
     res.writeHead(200, { 'content-type': u.endsWith('.js') ? 'text/javascript' : 'text/html' });
     res.end(fs.readFileSync(file));
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  base = 'http://127.0.0.1:' + server.address().port + '/learning-lounge.html';
+  base = 'http://127.0.0.1:' + server.address().port + '/learn.html';
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
