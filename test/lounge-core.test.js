@@ -256,3 +256,22 @@ test('an exact word is highlighted and needs no why-line, even when a synonym el
   assert.deepEqual(r.why, []);
   assert.match(L.highlight(r.entry.question, r.matched), /<mark>armory<\/mark>/);
 });
+
+test('words that are names of built-in object properties are just words (constructor, __proto__, toString)', () => {
+  const idx = L.buildIndex([
+    E('c', 'words', 'What is a constructor in the toString hasOwnProperty guide?', 'The __proto__ answer.', ['valueOf wording'], ['constructor']),
+    E('o', 'words', 'What is HT?', 'Heavy Trooper.'),
+  ], { synonyms: SYN.concat([['constructor', 'builder']]), categories: CATS });
+  for (const q of ['constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf', 'constructor tostring', 'builder']) {
+    const r = L.search(idx, q, { typing: true });
+    assert.ok(Array.isArray(r.results), q);
+    L.search(idx, q, { typing: false });
+  }
+  assert.equal(L.search(idx, 'constructor').results[0].entry.id, 'c');
+  assert.equal(L.search(idx, 'builder').results[0].entry.id, 'c');
+  assert.deepEqual(L.search(IDX, 'constructor').results, []);
+  assert.equal(L.search(IDX, '__proto__').suggestion, null);
+  assert.deepEqual(L.similar(IDX, 'constructor toString'), []);
+  assert.equal(L.highlight('a constructor', ['constructor']), 'a <mark>constructor</mark>');
+  assert.equal(L.highlight('toString x', []), 'toString x');
+});

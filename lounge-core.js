@@ -6,6 +6,13 @@
 
   var SITE = 'https://2864tw.com';
 
+  // Every lookup table keyed by user text is prototype-free, so words like "constructor" or "__proto__" are just words.
+  function dict(src) {
+    var d = Object.create(null);
+    if (src) Object.keys(src).forEach(function (k) { d[k] = src[k]; });
+    return d;
+  }
+
   // Field weights: a hit in the question counts most, the answer body least.
   var FIELD_W = { q: 3, alt: 2.5, kw: 2, cat: 1, ans: 1 };
   var FIELDS = ['q', 'alt', 'kw', 'cat', 'ans'];
@@ -18,7 +25,7 @@
   // It also needs one solid hit (STRONG_W or better) outside the answer body, or two words in the answer.
   var MIN_COVER = 0.5, REL_CUT = 0.35, STRONG_W = 0.7;
 
-  var STOP = {};
+  var STOP = dict();
   ('a an the is are am was were be been being to of in on at for and or but i me my mine we our us you your yours it its ' +
    'this that these those do does did doing done how what whats where when why who whom which can could should would will ' +
    'shall may might must please with there here any some about have has had need want so if then than just also very really ' +
@@ -26,8 +33,8 @@
    'from into by as like know').split(' ').forEach(function (w) { STOP[w] = 1; });
 
   // Chat-speak players type, mapped to the word they mean (most then drop as stopwords).
-  var CHAT = { wat: 'what', wut: 'what', wht: 'what', hw: 'how', u: 'you', ur: 'your', y: 'why', pls: 'please', plz: 'please',
-    '2': 'to', '4': 'for', thx: 'thanks', ty: 'thanks', cuz: 'because', bc: 'because', abt: 'about', wanna: 'want', gonna: 'going' };
+  var CHAT = dict({ wat: 'what', wut: 'what', wht: 'what', hw: 'how', u: 'you', ur: 'your', y: 'why', pls: 'please', plz: 'please',
+    '2': 'to', '4': 'for', thx: 'thanks', ty: 'thanks', cuz: 'because', bc: 'because', abt: 'about', wanna: 'want', gonna: 'going' });
 
   function normalize(s) {
     if (s == null) return '';
@@ -87,7 +94,7 @@
 
   // Synonym groups: each term becomes a key (one stemmed word, or stemmed words joined with _).
   function buildSynonyms(groups) {
-    var syn = { phrases: [], groupsOf: {}, members: [] };
+    var syn = { phrases: [], groupsOf: dict(), members: [] };
     (groups || []).forEach(function (g, gi) {
       var keys = [];
       (Array.isArray(g) ? g : []).forEach(function (term) {
@@ -163,26 +170,26 @@
   function buildIndex(entries, opts) {
     opts = opts || {};
     var syn = buildSynonyms(opts.synonyms);
-    var catName = {};
+    var catName = dict();
     (opts.categories || []).forEach(function (c) { if (c && c.id) catName[c.id] = c.name || ''; });
-    var docs = [], byId = {}, df = {}, real = {}, near = {}, surfaceCount = {}, lenSum = {};
+    var docs = [], byId = dict(), df = dict(), real = dict(), near = dict(), surfaceCount = dict(), lenSum = {};
     FIELDS.forEach(function (f) { lenSum[f] = 0; });
 
     function seeSurface(term, raw) {
-      var m = surfaceCount[term] || (surfaceCount[term] = {});
+      var m = surfaceCount[term] || (surfaceCount[term] = dict());
       m[raw] = (m[raw] || 0) + 1;
     }
 
     (entries || []).forEach(function (e) {
       if (!e || !e.id) return;
-      var d = { entry: e, tf: {}, len: {}, terms: {}, qSet: {}, altSets: [], kwSet: {},
+      var d = { entry: e, tf: {}, len: {}, terms: dict(), qSet: dict(), altSets: [], kwSet: dict(),
         qNorm: normalize(e.question), altNorm: (e.alternates || []).map(normalize) };
       var texts = { q: [e.question], alt: e.alternates || [], kw: e.keywords || [], cat: [catName[e.category_id] || ''], ans: [stripMarkdown(e.answer)] };
       FIELDS.forEach(function (f) {
-        var tf = {}, n = 0;
+        var tf = dict(), n = 0;
         texts[f].forEach(function (text, ti) {
           var toks = analyze(text, syn).filter(function (x) { return !x.stop; });
-          var set = {};
+          var set = dict();
           toks.forEach(function (x, xi) {
             tf[x.t] = (tf[x.t] || 0) + 1; n++; real[x.t] = 1; set[x.t] = 1; d.terms[x.t] = 1;
             if (f !== 'ans') near[x.t] = 1;
@@ -215,7 +222,7 @@
 
     var avg = {};
     FIELDS.forEach(function (f) { avg[f] = docs.length ? Math.max(1, lenSum[f] / docs.length) : 1; });
-    var surface = {};
+    var surface = dict();
     Object.keys(surfaceCount).forEach(function (t) {
       var best = null, bc = -1, m = surfaceCount[t];
       Object.keys(m).forEach(function (r) { if (m[r] > bc) { bc = m[r]; best = r; } });
@@ -242,7 +249,7 @@
 
   // Every index term a query word could mean, with how much each is worth.
   function expand(index, t, typing) {
-    var out = {};
+    var out = dict();
     function add(term, w, kind) {
       if (!index.df[term]) return;
       if (!out[term] || out[term].w < w) out[term] = { term: term, w: w, kind: kind };
@@ -362,7 +369,7 @@
 
   // Did you mean: swap each word that only matched loosely (or not at all) for the nearest real word.
   function suggest(index, query, toks) {
-    var swaps = {}, changed = false;
+    var swaps = dict(), changed = false;
     toks.forEach(function (x) {
       if (index.df[x.t] || x.t.indexOf('_') !== -1) return;
       if (synonymsOf(index.syn, x.t).some(function (s) { return index.df[s]; })) return;
@@ -385,7 +392,7 @@
   // Existing questions close to a new one (mentor page: duplicate warning, "add as another wording").
   function similar(index, text, opts) {
     opts = opts || {};
-    var set = {};
+    var set = dict();
     tokenize(text, index.syn).forEach(function (t) { if (!STOP[t]) set[t] = 1; });
     if (!Object.keys(set).length) return [];
     var out = [];
@@ -422,7 +429,7 @@
 
   // Escaped text with matched words wrapped in <mark>.
   function highlight(text, terms) {
-    var want = {};
+    var want = dict();
     (terms || []).forEach(function (t) {
       want[t] = 1;
       if (t.indexOf('_') !== -1) t.split('_').forEach(function (p) { want[p] = 1; });
