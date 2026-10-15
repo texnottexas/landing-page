@@ -738,44 +738,12 @@
     .beta-modal-content { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 2rem; max-width: 420px; width: 100%; box-shadow: 0 8px 32px rgba(0,0,0,0.5); text-align: center; position: relative; }
     .beta-modal-title { font-size: 1.15rem; font-weight: 700; margin-bottom: .35rem; }
     .beta-modal-desc { font-size: .8rem; color: var(--muted); margin-bottom: 1.25rem; }
-    .beta-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: .6rem; }
     .beta-card { display: flex; flex-direction: column; align-items: center; gap: .4rem; background: var(--surface); border: 2px solid var(--border); border-radius: 10px; padding: .75rem .4rem; text-decoration: none; color: var(--text); transition: all .2s; cursor: pointer; aspect-ratio: 1; justify-content: center; }
     .beta-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.3); }
     .beta-card-icon { width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
     .beta-card-icon svg { width: 32px; height: 32px; }
     .beta-card-label { font-size: .68rem; font-weight: 600; text-align: center; line-height: 1.3; }
-    /* Tier 1: Hero card */
-    @keyframes armory-glow {
-      0%   { border-color: var(--accent); box-shadow: 0 0 15px rgba(121,192,255,0.25); }
-      33%  { border-color: var(--army);   box-shadow: 0 0 15px rgba(63,185,80,0.25); }
-      66%  { border-color: var(--air);    box-shadow: 0 0 15px rgba(210,153,34,0.25); }
-      100% { border-color: var(--accent); box-shadow: 0 0 15px rgba(121,192,255,0.25); }
-    }
-    .beta-hero-card {
-      grid-column: 1 / -1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: .75rem;
-      background: var(--surface);
-      border: 2px solid var(--accent);
-      border-radius: 12px;
-      padding: 1rem 1.5rem;
-      text-decoration: none;
-      color: var(--text);
-      cursor: pointer;
-      transition: all .2s;
-      animation: armory-glow 6s ease-in-out infinite;
-    }
-    .beta-hero-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 20px rgba(121,192,255,.3);
-      animation: none;
-      border-color: var(--accent);
-    }
-    .beta-hero-card .beta-card-icon { width: 40px; height: 40px; }
-    .beta-hero-card .beta-card-icon svg { width: 40px; height: 40px; }
-    .beta-hero-card .beta-card-label { font-size: .95rem; font-weight: 700; }
+    /* home-next: the "My Armory Report" hero card, its .beta-cards row and the armory-glow keyframes are retired */
     /* Other tools grid */
     .beta-tools-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; margin-top: .75rem; }
     .beta-tools-grid .beta-card { aspect-ratio: auto; padding: .6rem .4rem; }
@@ -1809,21 +1777,25 @@
       .nu-cta { width: 100%; }
     }
 
-    /* ── The arc: six spokes, every 36°, on a half circle around the unchanged hub ──
+    /* ── The arc: six spokes, every 36°, on a half circle around the hub ──
        --arc-w is the nav's own width (the sizing script right after the nav keeps it exact;
        this default is close enough for the first paint). Spoke size --S, radius --R and the
        hub's centre line --cy follow from it. Each spoke carries cos/sin of its angle
        (180°, 144°, 108°, 72°, 36°, 0°) as --c/--s. One layout from 320 to 1920.
        Size: neighbours sit 2R·sin 18° = 0.618 R apart, and at phone widths R = (W - S) / 2,
        so S = 0.236 W - 8 px keeps a 10 px gap between circles (69 px at 360, 76 at 390,
-       124 px from ~560 px wide). R grows with S up to 352 px (296 x 124/104). */
+       124 px from ~560 px wide). R grows with S up to 352 px (296 x 124/104).
+       Hub (Tex 2026-10-15, "feels weirdly small"): --H = 1.35 x the spoke, from the same maths,
+       capped at 2R - S - 20 px so it always keeps 10 px from every spoke (all six sit at R from
+       its centre). Its look is unchanged; only its size and its text size follow --H. */
     .arc {
       --arc-w: min(1000px, calc(100vw - 32px));
       --S: clamp(48px, calc(var(--arc-w) * .236 - 8px), 124px);
       --R: min(352px, calc((var(--arc-w) - var(--S)) / 2));
+      --H: min(calc(var(--S) * 1.35), calc(var(--R) * 2 - var(--S) - 20px));
       --cy: calc(14px + var(--S) / 2 + var(--R));
       position: relative; width: 100%; max-width: 1000px;
-      height: calc(var(--cy) + max(64px, var(--S) / 2 + 14px));
+      height: calc(var(--cy) + max(var(--H), var(--S)) / 2 + 14px);
       margin-top: 4px;
     }
     .arc-ring { position: absolute; left: calc(50% - var(--R)); top: calc(var(--cy) - var(--R));
@@ -1842,12 +1814,24 @@
     .arc .wheel-item .w-icon svg { width: clamp(22px, calc(var(--S) * .29), 36px); height: clamp(22px, calc(var(--S) * .29), 36px); }
     .arc .wheel-item .w-label { max-width: none; }
     .arc .wheel-item .w-short { display: none; text-align: center; line-height: 1.15; }
-    .arc .wheel-center { top: var(--cy); }
+    /* the hub at the arc's centre, sized by --H; text keeps its old ratio to the circle
+       (desktop 1.3rem / 100 px, phone 1.15rem / 96 px; "fk boats" .45rem / 100 px, 3 px gap) */
+    .arc .wheel-center { top: var(--cy); width: var(--H); height: var(--H); font-size: calc(var(--H) * .208); }
+    .arc .wheel-sub { font-size: calc(var(--H) * .072); margin-top: calc(var(--H) * .03); }
+    @media (max-width: 500px) {
+      .arc .wheel-center { font-size: calc(var(--H) * .192); }
+    }
     @media (max-width: 600px) {
       /* phones: the short label (real text, so Google Translate rewrites it); the full name stays in aria-label */
       .arc .wheel-item { font-size: clamp(10px, calc(var(--S) * .15), 12px); padding: 0 4px; }
       .arc .wheel-item .w-label { display: none; }
       .arc .wheel-item .w-short { display: inline; }
+      .arc .ws-two .ws-1 { display: none; }
+      .arc .ws-two { font-size: .94em; }
+    }
+    @media (min-width: 480px) and (max-width: 600px) {
+      .arc .ws-two { font-size: 1em; }
+      .arc .ws-two .ws-1, .arc .ws-two .ws-2 { display: block; }
     }
 
     /* ── Today + grouped bars (the old unlabelled inner icons, now labelled) ── */
@@ -2047,8 +2031,8 @@
     </section>
 
     <!-- The arc (home-next, replaces the .wheel-wrap ring): six spokes, left to right, with their
-         original attributes and SVGs, every 36° on a half circle around the unchanged hub.
-         Mathomhouse moved to the Community bars (Tex 2026-10-15). -->
+         original attributes and SVGs, every 36° on a half circle around the hub. Tex 2026-10-15:
+         Mathomhouse and Join 2864 moved to the Community bars; Armory Report (out of beta) took Join's slot. -->
     <nav class="arc" id="homeArc" aria-label="Main">
       <div class="arc-ring" aria-hidden="true"></div>
       <a href="#" class="wheel-item" style="--c:-1;--s:0" aria-label="March Setups" data-modal="defense-modal">
@@ -2067,13 +2051,13 @@
         <span class="w-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg></span>
         <span class="w-label">Calendar</span><span class="w-short" aria-hidden="true">Calendar</span>
       </a>
-      <a href="#" class="wheel-item" style="--c:0.8090;--s:0.5878" aria-label="Join 2864" data-modal="join-modal">
-        <span class="w-icon" aria-hidden="true"><svg viewBox="5 15 90 65" fill="currentColor"><path d="m79.602 23.699-23.801 10.301-23.801-8.6992c-0.60156-0.19922-1.1992-0.19922-1.6992 0l-4.6016 1.5c-1.1992 0.39844-1.3984 2-0.39844 2.6992l16.301 10.602-20.398 8.8008-10.801-7.3008c-0.60156-0.40234-1.4023-0.60156-2.1016-0.40234l-1.1016 0.19922c-1.3008 0.30078-2 1.6016-1.5 2.8008l5.5 13.102c2.1016 5 8.8008 5.3984 13.801 3.1992l26.699-10.199-5 27.602c-0.19922 1.3008 1.1992 2.3008 2.3008 1.6016l3.8984-2.3984c0.5-0.30078 0.80078-0.69922 1-1.1992l15.199-32.699 27.102-14c1.1016-0.60156 1.3984-2.1016 0.5-3-4.0977-4.207-11.398-5.0078-17.098-2.5078z"/></svg></span>
-        <span class="w-label">Join 2864</span><span class="w-short" aria-hidden="true">Join</span>
+      <a href="armory-report" class="wheel-item" style="--c:0.8090;--s:0.5878" aria-label="Armory Report">
+        <span class="w-icon" aria-hidden="true"><svg viewBox="0 0 100 100" fill="currentColor"><path d="M91.06,19.11a1.36,1.36,0,0,0-1-1.48Q70.47,9,50.9.22a2.12,2.12,0,0,0-1.9,0Q29.49,8.92,9.95,17.57a1.52,1.52,0,0,0-1,1.66q0,7.21,0,14.42V45.19a57.47,57.47,0,0,0,12.5,36A52.12,52.12,0,0,0,48.11,99.7a6.23,6.23,0,0,0,3.82,0c11.51-3.46,20.58-10.31,27.68-19.87A57.3,57.3,0,0,0,90.3,54.54,59,59,0,0,0,91,45.83C91.1,36.93,91,28,91.06,19.11Zm-6.92,27.4a48.62,48.62,0,0,1-.59,7.23,47.62,47.62,0,0,1-8.88,21,43.87,43.87,0,0,1-23,16.5,5.2,5.2,0,0,1-3.17,0A43.36,43.36,0,0,1,26.38,75.88,47.61,47.61,0,0,1,15.89,46V36.4c0-4,0-8,0-11.95H16a1.25,1.25,0,0,1,.86-1.38Q33.05,15.89,49.25,8.65a1.74,1.74,0,0,1,1.57,0Q67.07,15.9,83.33,23.1a1.13,1.13,0,0,1,.81,1.23V46.51Z"/><path d="M78.14,50c-0.08,1-.18,2.09-0.37,3.13a39.5,39.5,0,0,1-7.38,17.45,36.49,36.49,0,0,1-19.1,13.71,4.32,4.32,0,0,1-2.66,0,36.49,36.49,0,0,1-19.1-13.71,39.5,39.5,0,0,1-7.38-17.45C22,52.07,21.87,51,21.79,50h0c-0.09-1.09-.13-2.19-0.14-3.3v-18a1,1,0,0,1,.71-1.07l27-12a1.26,1.26,0,0,1,.39-0.12,0.5,0.5,0,0,1,.28,0,1.26,1.26,0,0,1,.39.12l27,12a1,1,0,0,1,.71,1.07v18c0,1.11-.05,2.21-0.14,3.3h0.17Z"/></svg></span>
+        <span class="w-label">Armory Report</span><span class="w-short" aria-hidden="true">Armory</span>
       </a>
       <a href="heroes-awakening" class="wheel-item" style="--c:1;--s:0" aria-label="Heroes Awakening">
         <span class="w-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/></svg></span>
-        <span class="w-label">Heroes Awakening</span><span class="w-short" aria-hidden="true">Awaken</span>
+        <span class="w-label">Heroes Awakening</span><span class="w-short ws-two" aria-hidden="true"><span class="ws-1">Hero</span> <span class="ws-2">Awakening</span></span>
       </a>
       <a href="passwords.html" target="_blank" rel="noopener noreferrer" class="wheel-center notranslate" onclick="fetch('https://rickroll-counter.27tb8s6fct.workers.dev',{method:'POST',mode:'cors'}).catch(function(){})">2864<span class="wheel-sub">fk boats</span></a>
     </nav>
@@ -2119,6 +2103,7 @@
       <section class="home-col" aria-labelledby="hgCommunity">
         <h2 class="home-h" id="hgCommunity">Community</h2>
         <a href="#" id="heartRosterBtn" class="bar"><span class="bar-ic ic-blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span><span class="bar-tx"><span class="bar-tt">Player roster</span><span class="bar-st">Find anyone on the server</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+        <a href="#" data-modal="join-modal" class="bar"><span class="bar-ic ic-green" aria-hidden="true"><svg viewBox="5 15 90 65" fill="currentColor"><path d="m79.602 23.699-23.801 10.301-23.801-8.6992c-0.60156-0.19922-1.1992-0.19922-1.6992 0l-4.6016 1.5c-1.1992 0.39844-1.3984 2-0.39844 2.6992l16.301 10.602-20.398 8.8008-10.801-7.3008c-0.60156-0.40234-1.4023-0.60156-2.1016-0.40234l-1.1016 0.19922c-1.3008 0.30078-2 1.6016-1.5 2.8008l5.5 13.102c2.1016 5 8.8008 5.3984 13.801 3.1992l26.699-10.199-5 27.602c-0.19922 1.3008 1.1992 2.3008 2.3008 1.6016l3.8984-2.3984c0.5-0.30078 0.80078-0.69922 1-1.1992l15.199-32.699 27.102-14c1.1016-0.60156 1.3984-2.1016 0.5-3-4.0977-4.207-11.398-5.0078-17.098-2.5078z"/></svg></span><span class="bar-tx"><span class="bar-tt">Join 2864</span><span class="bar-st">Transfer to Server 2864</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
         <a href="#" id="wheelFeedbackBtn" class="bar"><span class="bar-ic ic-blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="bar-tx"><span class="bar-tt">Feedback</span><span class="bar-st">Report a bug or ask for a feature</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
         <a href="/roadmap" class="bar"><span class="bar-ic ic-purple" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span><span class="bar-tx"><span class="bar-tt">Roadmap</span><span class="bar-st">What&#39;s being built next</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
         <a href="https://mathomhouse.github.io/index.html" target="_blank" rel="noopener noreferrer" class="bar"><span class="bar-ic ic-teal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg></span><span class="bar-tx"><span class="bar-tt notranslate" translate="no">Mathomhouse</span><span class="bar-st">Top War guides and tools (opens a new site)</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
@@ -2138,13 +2123,7 @@
       <button class="modal-close-btn" id="beta-modal-close">&times;</button>
       <h2 class="beta-modal-title">Beta Features</h2>
       <p class="beta-modal-desc">These tools are in active development. Feedback welcome!</p>
-      <div class="beta-cards">
-        <!-- Tier 1: Hero card -->
-        <a href="armory-report.html" class="beta-hero-card">
-          <span class="beta-card-icon"><svg viewBox="0 0 100 100" fill="currentColor"><path d="M91.06,19.11a1.36,1.36,0,0,0-1-1.48Q70.47,9,50.9.22a2.12,2.12,0,0,0-1.9,0Q29.49,8.92,9.95,17.57a1.52,1.52,0,0,0-1,1.66q0,7.21,0,14.42V45.19a57.47,57.47,0,0,0,12.5,36A52.12,52.12,0,0,0,48.11,99.7a6.23,6.23,0,0,0,3.82,0c11.51-3.46,20.58-10.31,27.68-19.87A57.3,57.3,0,0,0,90.3,54.54,59,59,0,0,0,91,45.83C91.1,36.93,91,28,91.06,19.11Zm-6.92,27.4a48.62,48.62,0,0,1-.59,7.23,47.62,47.62,0,0,1-8.88,21,43.87,43.87,0,0,1-23,16.5,5.2,5.2,0,0,1-3.17,0A43.36,43.36,0,0,1,26.38,75.88,47.61,47.61,0,0,1,15.89,46V36.4c0-4,0-8,0-11.95H16a1.25,1.25,0,0,1,.86-1.38Q33.05,15.89,49.25,8.65a1.74,1.74,0,0,1,1.57,0Q67.07,15.9,83.33,23.1a1.13,1.13,0,0,1,.81,1.23V46.51Z"/><path d="M78.14,50c-0.08,1-.18,2.09-0.37,3.13a39.5,39.5,0,0,1-7.38,17.45,36.49,36.49,0,0,1-19.1,13.71,4.32,4.32,0,0,1-2.66,0,36.49,36.49,0,0,1-19.1-13.71,39.5,39.5,0,0,1-7.38-17.45C22,52.07,21.87,51,21.79,50h0c-0.09-1.09-.13-2.19-0.14-3.3v-18a1,1,0,0,1,.71-1.07l27-12a1.26,1.26,0,0,1,.39-0.12,0.5,0.5,0,0,1,.28,0,1.26,1.26,0,0,1,.39.12l27,12a1,1,0,0,1,.71,1.07v18c0,1.11-.05,2.21-0.14,3.3h0.17Z"/></svg></span>
-          <span class="beta-card-label">My Armory Report</span>
-        </a>
-      </div>
+      <!-- home-next: "My Armory Report" is out of beta (Tex 2026-10-15); it is a main spoke on the arc now -->
       <div class="beta-tools-grid">
         <a href="heroes.html" class="beta-card">
           <span class="beta-card-icon"><svg viewBox="0 0 100 100" fill="currentColor"><path d="M39.9,56.2l-7.7-10.8c-1.9-2.6-2-6.3-0.2-9c0.2-0.3,2.4-3.5,6.8-6.7c-16.5,7.4-34.5,21.4-36,23.8c-2.5,4,11.5,5.6,14,19.2c2.1,11.9,18,17.6,20.4,11.9c2.3-5.6,5-10.8,7.9-15.4l0.8-9.7C43.4,59.3,41.3,58.1,39.9,56.2z"/><path d="M93.1,26.6H60c-17,0-24.8,11.3-25.1,11.8c-1,1.5-1,3.5,0.1,5l7.7,10.8c0.9,1.2,2.2,1.8,3.6,1.8c0.9,0,1.8-0.3,2.5-0.8c0.2-0.2,0.4-0.4,0.6-0.6l0,3.1l-2.7,32.6c-0.2,2.7,1.8,5,4.5,5.3c2.7,0.2,5-1.8,5.3-4.5l2.6-31.3H61L63.6,91c0.2,2.5,2.3,4.5,4.9,4.5c0.1,0,0.3,0,0.4,0c2.7-0.2,4.7-2.6,4.5-5.3l-2.7-32.6l-0.2-22.3h22.7c2.4,0,4.4-2,4.4-4.4C97.5,28.5,95.5,26.6,93.1,26.6z M49.5,48.6l-5.3-7.4c1.2-1.1,3-2.4,5.4-3.6L49.5,48.6z"/><circle cx="60" cy="14.2" r="9.8"/></svg></span>

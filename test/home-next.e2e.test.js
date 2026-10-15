@@ -147,9 +147,10 @@ async function shot(page, name, opts) {
 }
 const visible = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; }, sel);
 const txt = (page, sel) => page.$eval(sel, (e) => e.textContent.replace(/\s+/g, ' ').trim());
-// six spokes since Tex moved Mathomhouse to a Community bar (2026-10-15)
-const SPOKES_FULL = ['March Setups', 'Beta Features', 'Titan Canyon', 'Calendar', 'Join 2864', 'Heroes Awakening'];
-const SPOKES_SHORT = ['Marches', 'Beta', 'Titan', 'Calendar', 'Join', 'Awaken'];
+// six spokes (Tex 2026-10-15): Mathomhouse and Join 2864 moved to Community bars, Armory Report took Join's slot.
+// On phones "Heroes Awakening" reads "Awakening" until "Hero" over "Awakening" fits (from 480 px wide).
+const SPOKES_FULL = ['March Setups', 'Beta Features', 'Titan Canyon', 'Calendar', 'Armory Report', 'Heroes Awakening'];
+const SPOKES_SHORT = ['Marches', 'Beta', 'Titan', 'Calendar', 'Armory', 'Awakening'];
 const MATHOM = 'https://mathomhouse.github.io/index.html';
 
 // ── layout ──
@@ -190,12 +191,28 @@ test('HN-LAYOUT: one layout from 320 to 1920, no sideways scroll, 6 spokes + hub
     });
     assert.equal(arc.n, 6, width + ': 6 spokes');
     assert.equal(arc.hubs, 1, width + ': one hub');
-    assert.equal(arc.hub.w, width <= 500 ? 96 : 100, width + ': the hub keeps its size');
+    // the hub: about 1.35 x a spoke, at least 10 px from every spoke (all six sit at R from its centre),
+    // so also clear of the dashed ring's ends; text in its old ratio to the circle; its look unchanged
+    assert.ok(Math.abs(arc.hub.w - arc.spokes[0].d * 1.35) <= 1.5, width + ': hub ' + arc.hub.w + ' vs spoke ' + arc.spokes[0].d.toFixed(1));
+    for (let i = 0; i < 6; i++) {
+      const a = arc.spokes[i];
+      const clear = Math.hypot(a.x - arc.hub.x, a.y - arc.hub.y) - a.d / 2 - arc.hub.w / 2;
+      assert.ok(clear >= 10, width + ': hub only ' + clear.toFixed(1) + ' px from spoke ' + i);
+    }
+    const hubLook = await page.evaluate(() => {
+      const h = document.querySelector('nav.arc .wheel-center'), cs = getComputedStyle(h), sub = getComputedStyle(h.querySelector('.wheel-sub'));
+      return { font: parseFloat(cs.fontSize) / h.offsetWidth, sub: parseFloat(sub.fontSize) / h.offsetWidth, border: cs.borderTopWidth, radius: cs.borderRadius,
+        bg: cs.backgroundColor === getComputedStyle(document.querySelector('.home-grid .bar')).backgroundColor ? 'bar' : cs.backgroundColor, anim: cs.animationName };
+    });
+    assert.ok(Math.abs(hubLook.font - (width <= 500 ? 0.192 : 0.208)) < 0.004, width + ': "2864" size ratio ' + hubLook.font.toFixed(3));
+    assert.ok(Math.abs(hubLook.sub - 0.072) < 0.004, width + ': "fk boats" size ratio ' + hubLook.sub.toFixed(3));
+    assert.deepEqual([hubLook.border, hubLook.radius, hubLook.anim], ['2px', '50%', 'center-shimmer, center-text-shimmer'], width + ': hub look');
     const R = Math.hypot(arc.spokes[0].x - arc.hub.x, arc.spokes[0].y - arc.hub.y);
     for (let i = 0; i < 6; i++) {
       const a = arc.spokes[i];
       // evenly spread: 180°, 144°, 108°, 72°, 36°, 0° around the hub, all on one radius
-      const ang = Math.atan2(arc.hub.y - a.y, a.x - arc.hub.x) * 180 / Math.PI;
+      let ang = Math.atan2(arc.hub.y - a.y, a.x - arc.hub.x) * 180 / Math.PI;
+      if (ang < -90) ang += 360;   // level with the hub can read as -180°
       assert.ok(Math.abs(ang - (180 - 36 * i)) < 0.6, width + ': spoke ' + i + ' at ' + ang.toFixed(1) + '°');
       assert.ok(Math.abs(Math.hypot(a.x - arc.hub.x, a.y - arc.hub.y) - R) < 1, width + ': spoke ' + i + ' on the radius');
       if (i > 0) {
@@ -210,6 +227,28 @@ test('HN-LAYOUT: one layout from 320 to 1920, no sideways scroll, 6 spokes + hub
     // bigger spokes now that there are six: ~69 px at 360, 124 px from tablet up
     const want = width >= 768 ? 124 : width >= 390 ? 75 : width >= 360 ? 68 : 58;
     assert.ok(arc.spokes[0].d >= want - 0.5, width + ': spoke size ' + arc.spokes[0].d.toFixed(1) + ' < ' + want);
+    // every label and icon stays inside its circle (glyph boxes vs the inner edge) from 360 up;
+    // "Hero" over "Awakening" only where it keeps 3 px
+    if (width >= 360) {
+      const fit = await page.evaluate(() => [...document.querySelectorAll('nav.arc .wheel-item')].map((a) => {
+        const c = a.getBoundingClientRect(), cx = c.left + c.width / 2, cy = c.top + c.height / 2, rin = c.width / 2 - 1;
+        const boxes = [a.querySelector('.w-icon svg').getBoundingClientRect()];
+        const tw = document.createTreeWalker(a, NodeFilter.SHOW_TEXT); let n;
+        while ((n = tw.nextNode())) {
+          if (!n.nodeValue.trim() || !n.parentElement.getClientRects().length) continue;
+          const rg = document.createRange(); rg.selectNodeContents(n);
+          for (const b of rg.getClientRects()) if (b.width > 0) boxes.push(b);
+        }
+        let min = 1e9;
+        for (const b of boxes) for (const [x, y] of [[b.left, b.top], [b.right, b.top], [b.left, b.bottom], [b.right, b.bottom]]) min = Math.min(min, rin - Math.hypot(x - cx, y - cy));
+        return [a.getAttribute('aria-label'), a.innerText.replace(/\s+/g, ' ').trim(), Math.round(min * 10) / 10];
+      }));
+      for (const [name, shown, clear] of fit) {
+        assert.ok(clear >= (shown === 'Hero Awakening' ? 3 : 1), width + ': "' + shown + '" (' + name + ') is ' + clear + ' px from the edge');
+      }
+      const hero = fit.find((f) => f[0] === 'Heroes Awakening')[1];
+      assert.equal(hero, width > 600 ? 'Heroes Awakening' : width >= 480 ? 'Hero Awakening' : 'Awakening', width + ': the Heroes Awakening label');
+    }
 
     const small = await page.evaluate(() => {
       const sel = 'header a, header button, #bannerChips a, #bannerChips button, #nextUp a, nav.arc a, .home-grid a, .site-footer a, #rc-wrap';
@@ -231,6 +270,8 @@ test('HN-LAYOUT: one layout from 320 to 1920, no sideways scroll, 6 spokes + hub
 
     if ([360, 768, 1280, 1440].includes(width)) await shot(page, String(width), { fullPage: true });
     if ([360, 768, 1440].includes(width)) await shot(page, width + '-6spokes', { fullPage: true });
+    if ([360, 390, 1440].includes(width)) await shot(page, width + '-hub', { fullPage: true });
+    if ([390, 1440].includes(width)) await shot(page, width + '-armory', { fullPage: true });
     if (width === 1280 && SHOTS) {
       await page.evaluate(() => window.toggleTheme());
       await page.waitForTimeout(600);   // the body's 0.3 s colour transition
@@ -280,7 +321,18 @@ test('HN-NAV: each spoke, bar, header button and chip opens what it opened befor
   await opens('nav.arc .wheel-item[data-modal="defense-modal"]', 'defense-modal');
   await opens('nav.arc .wheel-item[data-modal="beta-modal"]', 'beta-modal');
   await opens('nav.arc .wheel-item[data-modal="cal-modal"]', 'cal-modal');
-  await opens('nav.arc .wheel-item[data-modal="join-modal"]', 'join-modal');
+  // Beta Features: the armory card is gone (out of beta), the eight tools stay
+  await closeAll(page);
+  await page.click('nav.arc .wheel-item[data-modal="beta-modal"]');
+  await page.waitForSelector('#beta-modal.active');
+  assert.deepEqual(await page.$eval('#beta-modal', (m) => ({ hero: m.querySelectorAll('.beta-hero-card, .beta-cards').length, armory: m.querySelectorAll('a[href^="armory-report"]').length,
+    tools: [...m.querySelectorAll('.beta-tools-grid .beta-card .beta-card-label')].map((l) => l.textContent) })),
+  { hero: 0, armory: 0, tools: ['Heroes', 'Bases', 'Decor Index', 'Enigma Beasts', 'HT Chips', 'Battle Report Viewer', 'Rockfield Optimizer', 'Chaos Crafting'] });
+  await closeAll(page);
+  // Armory Report: a main spoke in Join's old slot, same tab, clean link
+  const armory = await page.$eval('nav.arc .wheel-item[aria-label="Armory Report"]', (a) => ({ i: [...a.parentNode.querySelectorAll('.wheel-item')].indexOf(a), href: a.getAttribute('href'), target: a.getAttribute('target'), label: a.querySelector('.w-label').textContent, short: a.querySelector('.w-short').textContent }));
+  assert.deepEqual(armory, { i: 4, href: 'armory-report', target: null, label: 'Armory Report', short: 'Armory' });
+  assert.equal(await page.locator('nav.arc [data-modal="join-modal"]').count(), 0, 'Join 2864 is a Community bar now');
   const hrefs = await page.$$eval('nav.arc .wheel-item', (as) => as.map((a) => a.getAttribute('href')));
   assert.equal(hrefs.length, 6);
   assert.ok(!hrefs.includes(MATHOM), 'Mathomhouse is a Community bar now, not a spoke');
@@ -290,6 +342,7 @@ test('HN-NAV: each spoke, bar, header button and chip opens what it opened befor
 
   // the bars (the old inner icons, now labelled)
   await opens('#heartRosterBtn', 'roster-modal');
+  await opens('.home-grid .bar[data-modal="join-modal"]', 'join-modal');
   await opens('#wheelFeedbackBtn', 'feedback-modal');
   await opens('.home-grid .bar[data-modal="unit-modal"]', 'unit-modal');
   await opens('.today-link', 'cal-modal');
@@ -298,8 +351,9 @@ test('HN-NAV: each spoke, bar, header button and chip opens what it opened befor
   assert.equal(await bar('Learning Lounge').getAttribute('href'), '/learn');
   // Mathomhouse: the last Community bar, same link as the old spoke, new tab, the name not translated
   const mh = await page.$$eval('#hgCommunity ~ .bar', (bs) => bs.map((b) => [b.querySelector('.bar-tt').textContent, b.getAttribute('href'), b.getAttribute('target'), b.getAttribute('rel'), b.querySelector('.bar-tt').classList.contains('notranslate'), b.querySelector('.bar-st').textContent]));
-  assert.deepEqual(mh.map((b) => b[0]), ['Player roster', 'Feedback', 'Roadmap', 'Mathomhouse']);
-  assert.deepEqual(mh[3], ['Mathomhouse', MATHOM, '_blank', 'noopener noreferrer', true, 'Top War guides and tools (opens a new site)']);
+  assert.deepEqual(mh.map((b) => b[0]), ['Player roster', 'Join 2864', 'Feedback', 'Roadmap', 'Mathomhouse']);
+  assert.equal(mh[1][5], 'Transfer to Server 2864');
+  assert.deepEqual(mh[4], ['Mathomhouse', MATHOM, '_blank', 'noopener noreferrer', true, 'Top War guides and tools (opens a new site)']);
   // a tap opens it in a new tab (external requests are aborted here, so watch the request)
   const [mreq, mpop] = await Promise.all([ctx.waitForEvent('request', (r) => r.url().startsWith('https://mathomhouse.github.io/')),
     ctx.waitForEvent('page'), bar('Mathomhouse').click()]);
@@ -730,10 +784,15 @@ test('HN-A11Y: spokes are reachable by Tab in arc order with a visible focus rin
   assert.deepEqual(errs, []);
   await ctx.close();
 
-  const ph = await open({ width: 360, time: SVS_UNTIL + H });
-  const labels = await ph.page.$$eval('nav.arc .wheel-item', (as) => as.map((a) => [a.getAttribute('aria-label'),
-    getComputedStyle(a.querySelector('.w-short')).display !== 'none' && getComputedStyle(a.querySelector('.w-label')).display === 'none' ? a.querySelector('.w-short').textContent : 'not shown']));
-  assert.deepEqual(labels, SPOKES_FULL.map((f, i) => [f, SPOKES_SHORT[i]]));
+  const shownLabels = (pg) => pg.$$eval('nav.arc .wheel-item', (as) => as.map((a) => [a.getAttribute('aria-label'),
+    getComputedStyle(a.querySelector('.w-label')).display === 'none' ? a.querySelector('.w-short').innerText.replace(/\s+/g, ' ') : 'full label shown']));
+  let ph = await open({ width: 360, time: SVS_UNTIL + H });
+  assert.deepEqual(await shownLabels(ph.page), SPOKES_FULL.map((f, i) => [f, SPOKES_SHORT[i]]));
+  await ph.ctx.close();
+  ph = await open({ width: 480, time: SVS_UNTIL + H });
+  const at480 = await shownLabels(ph.page);
+  assert.deepEqual(at480[5], ['Heroes Awakening', 'Hero Awakening'], '"Hero" over "Awakening" where it fits');
+  assert.equal(await ph.page.$eval('nav.arc .ws-two', (e) => e.innerText), 'Hero\nAwakening', 'two lines');
   await ph.ctx.close();
 });
 
