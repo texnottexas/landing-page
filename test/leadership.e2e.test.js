@@ -384,6 +384,7 @@ test('HOME-CHIP: the Leadership chip shows for a DOG R4, and nothing else does',
   assert.equal(await dog.page.locator('#rotations-cta').count(), 0);
   const html = await dog.page.content();
   assert.ok(!/rotation\.html/.test(html), 'no rotation.html link left on the homepage');
+  assert.deepEqual(dog.errs.filter((e) => /leadership|roster/i.test(e)), [], 'the chip code never throws');
   await dog.ctx.close();
   const mss = await homePage({ siteKey: 'dddddddddddddddd', name: 'Willow' });
   assert.equal(await chipCount(mss.page), 1, 'MSS in any letter case');
@@ -398,6 +399,7 @@ test('HOME-CHIP: the Leadership chip shows for a DOG R4, and nothing else does',
   }
   const down = await homePage({ siteKey: 'aaaaaaaaaaaaaaaa', name: 'Tex' }, 500);
   assert.equal(await chipCount(down.page), 0, 'roster fetch 500 fails closed');
+  assert.deepEqual(down.errs.filter((e) => /leadership|roster/i.test(e)), [], 'a failed roster fetch never throws');
   await down.ctx.close();
 });
 
