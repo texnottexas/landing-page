@@ -138,7 +138,7 @@ body > .skiptranslate{display:none !important;}
   </section>
   <div class="searchbar">
     <div class="sfield">
-      <input id="ll-search" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search the Learning Lounge" placeholder="Ask anything, e.g. how do I get my armory" />
+      <input id="ll-search" type="search" maxlength="120" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search the Learning Lounge" placeholder="Ask anything, e.g. how do I get my armory" />
       <button id="ll-clear" type="button" aria-label="Clear" hidden>&times;</button>
     </div>
     <div id="ll-count" aria-live="polite"></div>
@@ -193,7 +193,7 @@ body > .skiptranslate{display:none !important;}
 
   var params = new URLSearchParams(location.search);
   var fresh = params.get('fresh') === '1';
-  var data = null, index = null, cats = [], catById = {}, secNo = {}, chapNo = {}, byId = {};
+  var data = null, index = null, cats = [], catById = {}, secNo = {}, chapNo = {}, byId = Object.create(null);
   var state = { single: null, chapter: null };
   var debounceT = null, missT = null, sentMisses = new Set();
 
@@ -234,7 +234,7 @@ body > .skiptranslate{display:none !important;}
 
   function prepare() {
     index = LC.buildIndex(data.entries, { synonyms: data.synonyms || [], categories: data.categories });
-    catById = {}; byId = {}; secNo = {}; chapNo = {};
+    catById = {}; byId = Object.create(null); secNo = {}; chapNo = {};
     data.categories.forEach(function (c) { catById[c.id] = c; });
     data.entries.forEach(function (e) { byId[e.id] = e; });
     cats = data.categories.slice().sort(function (a, b) { return (a.sort - b.sort) || String(a.name).localeCompare(String(b.name)); });
@@ -391,7 +391,7 @@ body > .skiptranslate{display:none !important;}
   // ── misses ──
   function logMiss(q) {
     var n = LC.normalize(q);
-    if (n.length < 3 || sentMisses.has(n)) return;
+    if (n.length < 3 || n.length > 120 || sentMisses.has(n)) return;
     if (LC.search(index, q, { typing: false, limit: 1 }).results.length) return;
     sentMisses.add(n);
     var s = JSON.stringify({ q: q });

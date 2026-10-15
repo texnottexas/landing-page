@@ -209,6 +209,11 @@ test('P-DEEPLINK: #q-known opens it, #q-nope says it is gone, ?q= runs the searc
   await t.page.waitForFunction(() => /That question isn't here any more\./.test(document.body.innerText));
   assert.equal(await t.page.locator('#ll-search').isVisible(), true);
   await t.ctx.close();
+  t = await open('#q-constructor');
+  await t.page.waitForFunction(() => /That question isn't here any more\./.test(document.body.innerText));
+  assert.equal(await t.page.locator('#ll-results .ll-card').count(), 0);
+  assert.equal(await t.page.getAttribute('#ll-search', 'maxlength'), '120');
+  await t.ctx.close();
   t = await open('?q=how%20do%20i%20sign%20up%20titan%20canyon');
   await t.page.waitForSelector('#ll-results .ll-card');
   assert.equal(await t.page.inputValue('#ll-search'), 'how do i sign up titan canyon');

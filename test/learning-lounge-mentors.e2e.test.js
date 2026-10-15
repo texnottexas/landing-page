@@ -33,8 +33,8 @@ function fresh() {
     mentors: [{ siteKey: 'aaaaaaaaaaaaaaaa', name: 'Lady🐞', alliance: 'DOG', rank: 4, role: 'mentor', appointed: false, notify: 1, blocked: false },
       { siteKey: 'zzzzzzzzzzzzzzzz', name: 'Gary', alliance: 'MSS', rank: 5, role: 'lead', appointed: false, notify: 0, blocked: false },
       { siteKey: 'yyyyyyyyyyyyyyyy', name: 'Samyaza', alliance: 'DOG', rank: 2, role: 'mentor', appointed: true, notify: 0, blocked: false }],
-    changelog: [{ id: 5, at: Date.now() - 3600e3, actorName: 'Tex', action: 'entry', target: 'q-armory-what', summary: 'Edited armory answer' }],
-    older: [{ id: 4, at: Date.now() - 7200e3, actorName: 'Gary', action: 'category', target: 'armory', summary: 'Renamed chapter' }],
+    changelog: [{ id: 5, at: Date.now() - 3600e3, actorName: 'Tex', action: 'entry', target: 'entry:q-armory-what', summary: 'Edited armory answer' }],
+    older: [{ id: 4, at: Date.now() - 7200e3, actorName: 'Gary', action: 'category', target: 'category:armory', summary: 'Renamed chapter' }],
     saveAnswers: [], nextVersion: 2,
   };
 }
@@ -63,6 +63,7 @@ async function route(route) {
   if (m === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS });
   let body = null; try { body = req.postData() ? JSON.parse(req.postData()) : null; } catch (e) { /* none */ }
   calls.push({ method: m, path: p, search: u.search, body, auth: req.headers()['authorization'] || null });
+  if (st.over && st.over[p]) { const o = st.over[p](body, m); if (o) return fulfil(o[0], o[1]); }
   if (p === '/lounge/handshake') {
     if (st.signinError) return fulfil(st.signinError.status, { error: st.signinError.error });
     if (st.needPass && body.passphrase !== 'opensesame') return fulfil(403, { error: 'passphrase' });
@@ -85,7 +86,7 @@ async function route(route) {
   if (p === '/lounge/mentor') { const t = st.mentors.find((x) => x.siteKey === body.siteKey) || { siteKey: body.siteKey, name: 'New', alliance: 'DOG', rank: 1, role: 'mentor', appointed: true, notify: 0, blocked: false }; Object.assign(t, body); if (body.appointed === false) t.role = null; return fulfil(200, { mentor: t }); }
   if (p === '/lounge/signout-all') return fulfil(200, { ok: true });
   if (p === '/lounge/changelog') return fulfil(200, { changelog: u.searchParams.get('before') ? st.older : [] });
-  if (p === '/lounge/change') return fulfil(200, { change: { ...st.changelog[0], before: { question: 'old text' }, after: { question: 'new text' } } });
+  if (p === '/lounge/change') return fulfil(200, { change: { ...(st.changelog.find((c) => String(c.id) === u.searchParams.get('id')) || st.changelog[0]), before: { question: 'old text' }, after: { question: 'new text' } } });
   if (p === '/lounge/restore') return fulfil(200, { ok: true });
   return fulfil(404, { error: 'nope' });
 }
@@ -373,5 +374,151 @@ test('M-ROLELOST: 403 not_mentor on save keeps the text, shows the notice, drops
   await page.waitForFunction(() => /Your mentor access changed, so this wasn't saved/.test(document.getElementById('lm-banner').innerText));
   assert.equal(await page.inputValue('#lm-a'), 'Over there.');
   assert.equal(await page.evaluate(() => localStorage.getItem('ll_mentor_v1')), null);
+  await ctx.close();
+});
+
+const hasText = (page, re) => page.waitForFunction((src) => new RegExp(src).test(document.body.innerText), re.source);
+
+test('M-FIX3: chapter name inputs cap at 40', async () => {
+  const { ctx, page } = await open(); await tab(page, 'chapters');
+  assert.equal(await page.getAttribute('#lm-nc-name', 'maxlength'), '40');
+  assert.equal(await page.getAttribute('#lm-chapters input[aria-label="Chapter name"]', 'maxlength'), '40');
+  await ctx.close();
+});
+
+test('M-FIX4: wordings, keywords and same-word groups show a note when over the caps', async () => {
+  const { ctx, page } = await open();
+  await page.click('#lm-new');
+  await page.fill('#lm-alts', Array.from({ length: 26 }, (_, i) => 'w' + i).join('\n'));
+  await hasText(page, /At most 25 other wordings/);
+  await page.fill('#lm-alts', 'x'.repeat(201));
+  await hasText(page, /200 characters at most/);
+  await page.fill('#lm-kws', Array.from({ length: 26 }, (_, i) => 'k' + i).join(', '));
+  await hasText(page, /At most 25 keywords/);
+  await page.fill('#lm-kws', 'k'.repeat(41));
+  await hasText(page, /40 characters at most/);
+  await page.fill('#lm-q', 'Q'); await page.fill('#lm-a', 'A'); await page.selectOption('#lm-cat', 'armory');
+  const before = calls.filter((c) => c.path === '/lounge/entry').length;
+  await page.click('#lm-save');
+  await hasText(page, /Please fix the notes above/);
+  assert.equal(calls.filter((c) => c.path === '/lounge/entry').length, before, 'nothing sent');
+  await page.click('#lm-close'); await tab(page, 'words');
+  const inp = page.locator('.lm-syn-add input').first();
+  await inp.fill('y'.repeat(41)); await page.locator('.lm-syn-add button', { hasText: 'Add' }).first().click();
+  await hasText(page, /40 characters at most. Shorten it/);
+  for (let i = 0; i < 11; i++) { await page.locator('.lm-syn-add input').first().fill('t' + i); await page.keyboard.press('Enter'); }
+  await page.locator('.lm-syn-add input').first().fill('extra'); await page.keyboard.press('Enter');
+  await hasText(page, /At most 12 words in a group/);
+  await ctx.close();
+});
+
+test('M-FIX5: un-appointing an R4 who is still a mentor by rank keeps the row, a plain appointee leaves', async () => {
+  st.mentors[2].rank = 4; st.me = { ...st.me, role: 'lead' };
+  st.over = { '/lounge/mentor': (b) => (b.appointed === false ? [200, { mentor: { ...st.mentors[2], appointed: false, role: 'mentor' } }] : null) };
+  const { ctx, page } = await open(); await tab(page, 'mentors');
+  await page.locator('.lm-mrow', { hasText: 'Samyaza' }).locator('.lm-remove').click();
+  await hasText(page, /Done\./);
+  assert.equal(await page.locator('.lm-mrow', { hasText: 'Samyaza' }).count(), 1);
+  assert.equal(await page.locator('.lm-mrow', { hasText: 'Samyaza' }).locator('.lm-remove').count(), 0);
+  await ctx.close();
+});
+
+test('M-FIX6: a rank of 0 prints no stray separator', async () => {
+  st.mentors[2].rank = 0; st.me = { ...st.me, rank: 0 };
+  const { ctx, page } = await open(); await tab(page, 'mentors');
+  const t = await page.locator('.lm-mrow', { hasText: 'Samyaza' }).innerText();
+  assert.ok(!/^\s*·|·\s*·/.test(t.split('\n').join(' ').replace('Alerts on new questions', '')), t);
+  assert.ok(!/R0/.test(t));
+  assert.ok(!/·/.test(await page.innerText('#lm-chip')) || !/· ·/.test(await page.innerText('#lm-chip')));
+  await ctx.close();
+});
+
+test('M-FIX7: adding a chapter that exists says so', async () => {
+  st.over = { '/lounge/category': () => [409, { error: 'exists' }] };
+  const { ctx, page } = await open(); await tab(page, 'chapters');
+  await page.fill('#lm-nc-name', 'Armory'); await page.click('#lm-nc-add');
+  await hasText(page, /There is already a chapter called that\./);
+  await ctx.close();
+});
+
+test('M-FIX8: delete not_empty message; lone chapter: empty deletes with moveTo empty, non-empty is told to make another', async () => {
+  st.over = { '/lounge/category/delete': () => [409, { error: 'not_empty' }] };
+  let t = await open(); await tab(t.page, 'chapters');
+  await t.page.locator('#lm-chapters .card').first().locator('button', { hasText: 'Delete' }).first().click();
+  await t.page.click('.lm-del-go');
+  await hasText(t.page, /Someone added a question to that chapter just now\. Try again\./);
+  await t.ctx.close();
+  st = fresh(); calls = [];
+  st.cats = [st.cats[0]]; st.entries = st.entries.filter((e) => e.category_id !== 'armory').map((e) => ({ ...e, category_id: 'zzz' }));
+  st.entries = [];
+  t = await open(); await tab(t.page, 'chapters');
+  await t.page.locator('#lm-chapters .card button', { hasText: 'Delete' }).first().click();
+  await t.page.click('.lm-del-go');
+  await t.page.waitForFunction(() => true);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(last('/lounge/category/delete').body.moveTo, '');
+  await t.ctx.close();
+  st = fresh(); calls = [];
+  st.cats = [st.cats[0]];
+  t = await open(); await tab(t.page, 'chapters');
+  await t.page.locator('#lm-chapters .card button', { hasText: 'Delete' }).first().click();
+  await hasText(t.page, /Make another chapter first, then move these questions there\./);
+  assert.equal(await t.page.locator('.lm-del-go').count(), 0);
+  await t.ctx.close();
+});
+
+test('M-FIX9: Restore only for entry/category/synonyms rows; cannot_restore has its own message', async () => {
+  st.changelog = [
+    { id: 7, at: Date.now(), actorName: 'Tex', action: 'mentor', target: 'mentor:abc', summary: 'Appointed X' },
+    { id: 5, at: Date.now(), actorName: 'Tex', action: 'entry', target: 'entry:q-armory-what', summary: 'Edited' }];
+  st.over = { '/lounge/restore': () => [409, { error: 'cannot_restore' }] };
+  const { ctx, page } = await open(); await tab(page, 'history');
+  await page.locator('.lm-crow[data-id="7"]').click(); await page.waitForSelector('#lm-diff');
+  assert.equal(await page.locator('#lm-restore').count(), 0);
+  await page.locator('.lm-crow[data-id="5"]').click(); await page.waitForSelector('#lm-restore');
+  await page.click('#lm-restore');
+  await hasText(page, /This kind of change can't be undone here\./);
+  await ctx.close();
+});
+
+test('M-FIX10: a 403 on first load drops the pass and shows the sign-in with that message', async () => {
+  st.over = { '/lounge/admin': () => [403, { error: 'blocked' }] };
+  const { ctx, page } = await open({ signedIn: false });
+  await page.evaluate(() => localStorage.setItem('ll_mentor_v1', JSON.stringify({ token: 'stored', expires: Date.now() + 3600e3 })));
+  await page.reload();
+  await page.waitForSelector('#lm-signin:not([hidden])');
+  await hasText(page, /Your mentor access is paused/);
+  assert.equal(await page.evaluate(() => localStorage.getItem('ll_mentor_v1')), null);
+  await ctx.close();
+});
+
+test('M-FIX11: unreachable worker on first load shows Try again and keeps the pass', async () => {
+  let down = true;
+  st.over = { '/lounge/admin': () => (down ? [503, { error: 'x' }] : null) };
+  const { ctx, page } = await open({ signedIn: false });
+  await page.evaluate(() => localStorage.setItem('ll_mentor_v1', JSON.stringify({ token: 'stored', expires: Date.now() + 3600e3 })));
+  await page.reload();
+  await hasText(page, /The Lounge can't be reached right now\./);
+  assert.equal(await page.locator('#lm-signin').isVisible(), false);
+  assert.ok(await page.evaluate(() => localStorage.getItem('ll_mentor_v1')));
+  down = false;
+  await page.click('#lm-down-retry');
+  await page.waitForSelector('#lm-chip:not([hidden])');
+  await ctx.close();
+});
+
+test('M-FIX12: after a re-sign-in from the overlay, the admin load runs again', async () => {
+  let first = true;
+  st.over = { '/lounge/entry': () => { if (first) { first = false; return [401, { error: 'expired' }]; } return null; } };
+  const { ctx, page } = await open();
+  await page.click('#lm-new');
+  await page.fill('#lm-q', 'Fresh?'); await page.fill('#lm-a', 'Yes'); await page.selectOption('#lm-cat', 'armory');
+  await page.click('#lm-save');
+  await page.waitForSelector('#lm-signin:not([hidden])');
+  const n = calls.filter((c) => c.path === '/lounge/admin').length;
+  await signIn(page);
+  await page.waitForFunction(() => document.getElementById('lm-signin').hidden);
+  await new Promise((r) => setTimeout(r, 500));
+  assert.ok(calls.filter((c) => c.path === '/lounge/admin').length > n, 'admin reloaded');
   await ctx.close();
 });

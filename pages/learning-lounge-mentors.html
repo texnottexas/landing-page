@@ -91,6 +91,13 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
   </div>
 </div>
 
+<div id="lm-down" hidden>
+  <div class="box" style="max-width:480px;margin:40px auto;padding:20px">
+    <p class="err" id="lm-down-msg" role="alert"></p>
+    <div class="row"><button class="pri" id="lm-down-retry" type="button">Try again</button></div>
+  </div>
+</div>
+
 <main id="lm-app" hidden>
   <div class="err" id="lm-lost" role="alert"></div>
   <div class="tabs" role="tablist">
@@ -127,7 +134,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     <div id="lm-chapters"></div>
     <h3 class="sec">Add chapter</h3>
     <div class="card">
-      <label for="lm-nc-name">Name</label><input id="lm-nc-name" maxlength="80">
+      <label for="lm-nc-name">Name</label><input id="lm-nc-name" maxlength="40">
       <label for="lm-nc-blurb">Short blurb</label><input id="lm-nc-blurb" maxlength="200">
       <label for="lm-nc-sort">Sort</label><input id="lm-nc-sort" type="number" value="99">
       <div class="row" style="margin-top:10px"><button class="pri" id="lm-nc-add">Add chapter</button></div>
@@ -181,8 +188,10 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
   <select id="lm-cat"></select>
   <label for="lm-alts">Other ways people ask this (one per line)</label>
   <textarea id="lm-alts" rows="3"></textarea>
+  <div class="err" id="lm-alts-note"></div>
   <label for="lm-kws">Keywords (comma separated)</label>
   <input id="lm-kws">
+  <div class="err" id="lm-kws-note"></div>
   <label for="lm-status">Status</label>
   <select id="lm-status"><option value="draft">Draft</option><option value="published">Published</option></select>
   <div class="err" id="lm-err" role="alert"></div>
@@ -232,7 +241,8 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     if (n == null || n === '') return '';
     var v = Number(n);
     if (isNaN(v)) return String(n);
-    return v >= 1 && v <= 5 ? 'R' + v : (RANKS[v] || 'R' + n);
+    if (v < 1 || v > 9) return '';
+    return v <= 5 ? 'R' + v : (RANKS[v] || 'R' + n);
   }
   function catName(id) { var c = S.categories.filter(function (x) { return x.id === id; })[0]; return c ? c.name : ''; }
   function rebuild() { S.index = LC.buildIndex(S.entries, { synonyms: S.groups, categories: S.categories }); }
@@ -258,7 +268,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     return call(method, path, body).then(function (r) {
       if (r.status === 403 && ['not_mentor', 'blocked', 'not_on_roster'].indexOf(r.data && r.data.error) >= 0) { accessLost(); return r; }
       if (r.status !== 401) return r;
-      return askSignin().then(function (ok) { return ok ? call(method, path, body) : r; });
+      return askSignin().then(function (ok) { return ok ? call(method, path, body).then(function (r2) { loadAdmin(); return r2; }) : r; });
     });
   }
   function askSignin() {
@@ -338,6 +348,15 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
   function loadAdmin() {
     return call('GET', '/lounge/admin').then(function (r) {
       if (r.status === 401 || !S.token) { signOutQuiet(); return; }
+      if (r.status === 0 || r.status >= 500) {
+        $('lm-signin').hidden = true; $('lm-app').hidden = true;
+        $('lm-down-msg').textContent = "The Lounge can't be reached right now."; $('lm-down').hidden = false; return;
+      }
+      $('lm-down').hidden = true;
+      if (r.status === 403 && ['not_mentor', 'blocked', 'not_on_roster'].indexOf(r.data && r.data.error) >= 0) {
+        try { localStorage.removeItem(KEY); } catch (e) { /* none */ }
+        S.token = null; showSignin(false); $('lm-signin-err').textContent = SIGNIN_ERR[r.data.error]; return;
+      }
       if (r.status !== 200) { showSignin(false); $('lm-signin-err').textContent = SIGNIN_ERR[r.data && r.data.error] || "Couldn't load right now. Try again in a moment."; return; }
       var d = r.data;
       S.me = d.me || S.me; S.entries = d.entries || []; S.categories = (d.categories || []).slice().sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); });
@@ -420,7 +439,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     $('lm-q').value = e.question || ''; $('lm-a').value = e.answer || '';
     $('lm-cat').value = e.category_id || ''; $('lm-alts').value = (e.alternates || []).join('\n'); $('lm-kws').value = (e.keywords || []).join(', ');
     $('lm-status').value = e.status === 'published' ? 'published' : 'draft';
-    $('lm-banner').textContent = ''; $('lm-yours').hidden = true; $('lm-err').textContent = '';
+    $('lm-banner').textContent = ''; $('lm-alts-note').textContent = ''; $('lm-kws-note').textContent = ''; $('lm-yours').hidden = true; $('lm-err').textContent = '';
     $('lm-editor-title').textContent = D.entry ? 'Edit question' : 'New question';
     $('lm-q').maxLength = S.limits.question || 200; $('lm-a').maxLength = S.limits.answer || 5000;
     $('lm-editor').hidden = false;
@@ -458,6 +477,17 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     if (alts.map(LC.normalize).indexOf(LC.normalize(typed)) < 0) alts.push(typed);
     $('lm-alts').value = alts.join('\n'); D.dirty = true;
   }
+  function capNotes() {
+    var lines = $('lm-alts').value.split('\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    var kws = $('lm-kws').value.split(',').map(function (x) { return x.trim(); }).filter(Boolean);
+    var a = '', k = '';
+    if (lines.length > 25) a = 'At most 25 other wordings. Remove ' + (lines.length - 25) + '.';
+    else if (lines.some(function (x) { return x.length > 200; })) a = 'Each wording can be 200 characters at most. Shorten the long one.';
+    if (kws.length > 25) k = 'At most 25 keywords. Remove ' + (kws.length - 25) + '.';
+    else if (kws.some(function (x) { return x.length > 40; })) k = 'Each keyword can be 40 characters at most. Shorten the long one.';
+    $('lm-alts-note').textContent = a; $('lm-kws-note').textContent = k;
+    return !a && !k;
+  }
   function draft(statusOverride) {
     var lines = $('lm-alts').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
     var alts = []; lines.forEach(function (l) { if (alts.indexOf(l) < 0) alts.push(l); });
@@ -478,6 +508,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     if (!e.question) { err.textContent = SAVE_ERR.question; return; }
     if (!e.answer) { err.textContent = SAVE_ERR.answer; return; }
     if (!e.category_id) { err.textContent = SAVE_ERR.category; return; }
+    if (!capNotes()) { err.textContent = 'Please fix the notes above first.'; return; }
     if (e.alternates.length > (S.limits.alternates || 25)) { err.textContent = 'At most ' + (S.limits.alternates || 25) + ' other wordings.'; return; }
     if (e.keywords.length > (S.limits.keywords || 25)) { err.textContent = 'At most ' + (S.limits.keywords || 25) + ' keywords.'; return; }
     var body = { entry: e }; if (D.entry) body.version = D.entry.version;
@@ -585,7 +616,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     var box = clear($('lm-chapters'));
     S.categories.forEach(function (c) {
       var n = S.entries.filter(function (e) { return e.category_id === c.id; }).length;
-      var name = h('input', { value: c.name, maxlength: '80', 'aria-label': 'Chapter name' });
+      var name = h('input', { value: c.name, maxlength: '40', 'aria-label': 'Chapter name' });
       var blurb = h('input', { value: c.blurb || '', maxlength: '200', 'aria-label': 'Chapter blurb' });
       var sort = h('input', { type: 'number', value: String(c.sort || 0), 'aria-label': 'Sort' });
       var msg = h('div', { class: 'msg' }), slot = h('div', {});
@@ -601,39 +632,47 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     });
   }
   function deleteForm(c, n) {
-    var sel = h('select', { 'aria-label': 'Move questions to' });
-    S.categories.filter(function (x) { return x.id !== c.id; }).forEach(function (x) { sel.appendChild(h('option', { value: x.id, text: x.name })); });
+    var others = S.categories.filter(function (x) { return x.id !== c.id; });
     var err = h('div', { class: 'err' });
+    if (!others.length && n > 0) return h('div', { style: 'margin-top:8px' }, [h('div', { class: 'err lm-del-none', text: 'Make another chapter first, then move these questions there.' })]);
+    var sel = h('select', { 'aria-label': 'Move questions to' });
+    others.forEach(function (x) { sel.appendChild(h('option', { value: x.id, text: x.name })); });
     var go = btn('Delete chapter', 'warn lm-del-go', function () {
-      if (!sel.value) { err.textContent = 'Pick a chapter to move them to.'; return; }
-      authed('POST', '/lounge/category/delete', { id: c.id, moveTo: sel.value }).then(function (r) {
-        if (r.status === 200) loadAdmin(); else err.textContent = r.data && r.data.error === 'move_to' ? 'Pick a chapter that still exists.' : "Couldn't delete that chapter. Try again.";
+      if (n > 0 && !sel.value) { err.textContent = 'Pick a chapter to move them to.'; return; }
+      authed('POST', '/lounge/category/delete', { id: c.id, moveTo: n > 0 ? sel.value : '' }).then(function (r) {
+        if (r.status === 200) loadAdmin();
+        else err.textContent = r.data && r.data.error === 'not_empty' ? 'Someone added a question to that chapter just now. Try again.' : r.data && r.data.error === 'move_to' ? 'Pick a chapter that still exists.' : "Couldn't delete that chapter. Try again.";
       });
     });
-    return h('div', { style: 'margin-top:8px' }, [h('label', { text: 'Move its ' + n + ' questions to:' }), sel, err, h('div', { class: 'row', style: 'margin-top:6px' }, [go])]);
+    var kids = n > 0 ? [h('label', { text: 'Move its ' + n + ' questions to:' }), sel] : [];
+    return h('div', { style: 'margin-top:8px' }, kids.concat([err, h('div', { class: 'row', style: 'margin-top:6px' }, [go])]));
   }
   function addChapter() {
     var name = $('lm-nc-name').value.trim(); if (!name) { flash($('lm-ch-msg'), 'Give the chapter a name.', true); return; }
     authed('POST', '/lounge/category', { category: { name: name, blurb: $('lm-nc-blurb').value.trim(), sort: Number($('lm-nc-sort').value) || 0 } }).then(function (r) {
       if (r.status === 200) { $('lm-nc-name').value = ''; $('lm-nc-blurb').value = ''; loadAdmin(); flash($('lm-ch-msg'), 'Added.'); }
-      else flash($('lm-ch-msg'), r.data.error === 'full' ? 'There are too many chapters already.' : "Couldn't add it. Try again.", true);
+      else flash($('lm-ch-msg'), r.data.error === 'exists' ? 'There is already a chapter called that.' : r.data.error === 'full' ? 'There are too many chapters already.' : "Couldn't add it. Try again.", true);
     });
   }
 
   // ── same words ──
   function renderGroups() {
     var box = clear($('lm-groups'));
+    if (S.gnote && !S.groups[S.gnote.gi]) S.gnote = null;
     S.groups.forEach(function (g, gi) {
       var chips = h('div', { class: 'chips' });
       g.forEach(function (t, ti) {
-        chips.appendChild(h('span', { class: 'chipx' }, [t, h('button', { type: 'button', 'aria-label': 'Remove ' + t, text: '×', onclick: function () { g.splice(ti, 1); renderGroups(); } })]));
+        chips.appendChild(h('span', { class: 'chipx' }, [t, h('button', { type: 'button', 'aria-label': 'Remove ' + t, text: '×', onclick: function () { g.splice(ti, 1); S.gnote = null; renderGroups(); } })]));
       });
       var inp = h('input', { placeholder: 'Add a word', 'aria-label': 'Add a word' });
-      function addTerm() { var v = inp.value.trim(); if (v && g.indexOf(v) < 0) { g.push(v); renderGroups(); var again = $('lm-groups').querySelectorAll('.lm-syn-add input')[gi]; if (again) again.focus(); } }
+      function addTerm() { var v = inp.value.trim(); if (v && g.indexOf(v) < 0) {
+        if (v.length > 40) { S.gnote = { gi: gi, text: 'Each word can be 40 characters at most. Shorten it.' }; renderGroups(); return; }
+        if (g.length >= 12) { S.gnote = { gi: gi, text: 'At most 12 words in a group. Remove one first.' }; renderGroups(); return; }
+        S.gnote = null; g.push(v); renderGroups(); var again = $('lm-groups').querySelectorAll('.lm-syn-add input')[gi]; if (again) again.focus(); } }
       inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addTerm(); } });
-      var row = h('div', { class: 'row lm-syn-add', style: 'margin-top:8px' }, [inp, btn('Add', '', addTerm), btn('Delete group', 'warn', function () { S.groups.splice(gi, 1); renderGroups(); })]);
+      var row = h('div', { class: 'row lm-syn-add', style: 'margin-top:8px' }, [inp, btn('Add', '', addTerm), btn('Delete group', 'warn', function () { S.groups.splice(gi, 1); S.gnote = null; renderGroups(); })]);
       inp.style.flex = '1 1 140px'; inp.style.width = 'auto';
-      box.appendChild(h('div', { class: 'card' }, [chips, row]));
+      box.appendChild(h('div', { class: 'card' }, [chips, row, S.gnote && S.gnote.gi === gi ? h('div', { class: 'err lm-syn-note', text: S.gnote.text }) : null]));
     });
   }
   function saveSynonyms() {
@@ -673,7 +712,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
       var msg = $('lm-mentor-msg');
       if (r.status !== 200) { flash(msg, r.data.error === 'cannot_block_lead' ? "You can't pause a lead." : "Couldn't do that. Try again.", true); return; }
       var m = r.data.mentor, i = S.mentors.map(function (x) { return x.siteKey; }).indexOf(m.siteKey);
-      if (body.appointed === false && i >= 0) S.mentors.splice(i, 1); else if (i >= 0) S.mentors[i] = m; else S.mentors.push(m);
+      if (body.appointed === false && i >= 0 && !m.role && !m.blocked) S.mentors.splice(i, 1); else if (i >= 0) S.mentors[i] = m; else S.mentors.push(m);
       flash(msg, 'Done.'); renderMentors();
     });
   }
@@ -714,6 +753,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
     });
   }
   function pretty(v) { return v == null ? '(nothing)' : (typeof v === 'string' ? v : JSON.stringify(v, null, 2)); }
+  function canRestore(t) { t = String(t || ''); return t.indexOf('entry:') === 0 || t.indexOf('category:') === 0 || t === 'synonyms'; }
   function showChange(c) {
     authed('GET', '/lounge/change?id=' + encodeURIComponent(c.id)).then(function (r) {
       var box = clear($('lm-diffwrap'));
@@ -724,11 +764,11 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
         h('div', { class: 'diff', style: 'margin-top:8px' }, [
           h('div', {}, [h('div', { class: 'why', text: 'Before' }), h('pre', { text: pretty(ch.before) })]),
           h('div', {}, [h('div', { class: 'why', text: 'After' }), h('pre', { text: pretty(ch.after) })])]),
-        h('div', { class: 'row', style: 'margin-top:8px' }, [h('button', { id: 'lm-restore', type: 'button', class: 'pri', text: 'Restore this version', onclick: function () {
+        h('div', { class: 'row', style: 'margin-top:8px' }, !canRestore(ch.target) ? [] : [h('button', { id: 'lm-restore', type: 'button', class: 'pri', text: 'Restore this version', onclick: function () {
           if (!confirm('Restore this version? The current text is replaced.')) return;
           authed('POST', '/lounge/restore', { changeId: ch.id }).then(function (rr) {
             if (rr.status === 200) { clear($('lm-diffwrap')).appendChild(h('p', { class: 'msg', text: 'Restored.' })); loadAdmin(); }
-            else $('lm-diffwrap').appendChild(h('p', { class: 'err', text: "Couldn't restore that. Try again." }));
+            else { var old = $('lm-diffwrap').querySelector('.lm-restore-err'); if (old) old.remove(); $('lm-diffwrap').appendChild(h('p', { class: 'err lm-restore-err', text: rr.data && rr.data.error === 'cannot_restore' ? "This kind of change can't be undone here." : "Couldn't restore that. Try again." })); }
           });
         } })])
       ]));
@@ -736,6 +776,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
   }
 
   // ── wiring ──
+  $('lm-down-retry').addEventListener('click', function () { $('lm-down').hidden = true; loadAdmin(); });
   $('lm-signin-go').addEventListener('click', submitSignin);
   ['lm-uid', 'lm-pass'].forEach(function (id) { $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') submitSignin(); }); });
   $('lm-signin-cancel').addEventListener('click', function () { $('lm-signin').hidden = true; if (signinWait) { var w = signinWait; signinWait = null; w.res(false); } });
@@ -747,6 +788,7 @@ details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; over
   $('lm-new').addEventListener('click', function () { if (!$('lm-editor').hidden && D.dirty && !confirm('Start a new question? Your unsaved changes will be lost.')) return; openDrawer(null); });
   $('lm-close').addEventListener('click', function () { closeDrawer(false); });
   ['lm-q', 'lm-a', 'lm-cat', 'lm-alts', 'lm-kws', 'lm-status'].forEach(function (id) { $(id).addEventListener('input', function () { D.dirty = true; }); });
+  ['lm-alts', 'lm-kws'].forEach(function (id) { $(id).addEventListener('input', capNotes); });
   $('lm-a').addEventListener('input', renderPreview);
   $('lm-q').addEventListener('input', function () { clearTimeout(simTimer); simTimer = setTimeout(renderSimilar, 200); });
   $('lm-save').addEventListener('click', function () { save(); });
