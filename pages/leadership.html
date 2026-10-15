@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Leadership - Server 2864</title>
+<style>
+:root { --bg:#0d1117; --surface:#161b22; --card:#1c2128; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --accent:#79c0ff; --green:#3fb950; --blue:#388bfd; --yellow:#d29922; --red:#f85149;
+  --display:"Bahnschrift","DIN Condensed","DIN Alternate","Avenir Next Condensed","Arial Narrow",sans-serif; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: dark; }
+body { background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; min-height: 100vh; overflow-x: hidden; }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+button, input, select, textarea { font: inherit; color: var(--text); }
+button { cursor: pointer; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; min-height: 44px; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .55; cursor: default; }
+button.pri { background: var(--blue); border-color: var(--blue); color: #fff; }
+button.warn { border-color: var(--red); color: var(--red); }
+button.ghost { background: none; }
+input, select, textarea { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; min-height: 44px; width: 100%; max-width: 100%; }
+textarea { min-height: 96px; resize: vertical; }
+input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 4px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row > * { min-width: 0; }
+.grow { flex: 1 1 160px; }
+.hint { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.msg { font-size: 14px; margin: 8px 0; color: var(--accent); }
+.err { color: var(--red); font-size: 14px; margin: 8px 0; }
+header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+header h1 { font: 700 22px var(--display); letter-spacing: .02em; flex: 1 1 140px; }
+header a.home { text-decoration: none; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; color: var(--text); }
+header a.home svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chip { background: var(--card); border: 1px solid var(--border); border-radius: 99px; padding: 6px 12px; font-size: 13px; overflow-wrap: anywhere; }
+main { max-width: 960px; margin: 0 auto; padding: 16px; }
+.box { max-width: 480px; margin: 40px auto; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+#ld-signin.overlay { position: fixed; inset: 0; z-index: 100; background: rgba(13,17,23,.94); overflow-y: auto; padding: 0 12px; }
+#ld-signin h2 { font: 700 20px var(--display); margin-bottom: 8px; }
+h2.sec { font: 700 20px var(--display); letter-spacing: .02em; margin: 24px 0 8px; }
+h3.grp { font: 700 15px var(--display); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.links { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+a.ld-link { display: block; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; text-decoration: none; color: var(--text); min-height: 44px; overflow-wrap: anywhere; }
+a.ld-link:hover { border-color: var(--accent); }
+a.ld-link .t { font-weight: 600; color: var(--accent); }
+a.ld-link .d { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 8px 0; overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.chips button { border-radius: 99px; padding: 6px 12px; }
+.chips button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+.counter { color: var(--muted); font-size: 12px; text-align: right; }
+.pill { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; border-radius: 99px; padding: 2px 8px; border: 1px solid var(--border); color: var(--muted); }
+.pill.new { color: var(--accent); border-color: var(--accent); }
+.pill.discussing { color: var(--yellow); border-color: var(--yellow); }
+.pill.planned { color: var(--blue); border-color: var(--blue); }
+.pill.done { color: var(--green); border-color: var(--green); }
+.pill.lead { color: var(--accent); border-color: var(--accent); }
+.idea .ttl { font-weight: 700; font-size: 16px; margin: 6px 0 2px; }
+.idea .det { white-space: pre-wrap; margin: 4px 0; }
+.idea .by { color: var(--muted); font-size: 13px; }
+.idea .acts { margin-top: 8px; }
+.idea .acts select { width: auto; }
+button.ld-vote[aria-pressed="true"] { background: rgba(121,192,255,.15); border-color: var(--accent); color: var(--accent); }
+.cm { border-top: 1px solid var(--border); padding: 8px 0; }
+.cm .tx { white-space: pre-wrap; }
+.cm .by { color: var(--muted); font-size: 12px; }
+.warnbox { background: rgba(210,153,34,.15); border: 1px solid var(--yellow); border-radius: 6px; padding: 10px; margin: 8px 0; }
+.warnbox .cur { white-space: pre-wrap; margin: 6px 0; color: var(--muted); }
+@media (max-width: 600px) { main { padding: 12px; } .links { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <a class="home" href="https://2864tw.com" aria-label="Home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg></a>
+  <h1>Leadership</h1>
+  <span class="chip" id="ld-chip" hidden></span>
+  <button id="ld-signout" class="ghost" type="button" hidden>Sign out</button>
+</header>
+
+<div id="ld-signin" hidden>
+  <div class="box">
+    <h2>Leadership sign in</h2>
+    <p class="hint">Enter your in-game UID (the 12 or 13 digit number on your in-game profile). It is checked once and only a sign-in pass is kept in this browser.</p>
+    <label for="ld-uid">Your in-game ID</label>
+    <input id="ld-uid" inputmode="numeric" autocomplete="off">
+    <div class="err" id="ld-signin-err" role="alert"></div>
+    <div class="row"><button class="pri" id="ld-signin-go" type="button">Sign in</button><button class="ghost" id="ld-signin-cancel" type="button" hidden>Not now</button></div>
+  </div>
+</div>
+
+<div id="ld-down" hidden>
+  <div class="box">
+    <p class="err" id="ld-down-msg" role="alert"></p>
+    <div class="row"><button class="pri" id="ld-down-retry" type="button">Try again</button></div>
+  </div>
+</div>
+
+<main id="ld-app" hidden>
+  <div class="err" id="ld-lost" role="alert"></div>
+
+  <h2 class="sec" style="margin-top:4px">Quick links</h2>
+  <div id="ld-links"></div>
+  <p class="hint">Each page still asks for its own password.</p>
+
+  <h2 class="sec">Seal Stone Chaos planning ideas</h2>
+  <div class="chips" id="ld-filters" role="group" aria-label="Filter ideas"></div>
+
+  <div class="card" id="ld-addbox">
+    <h3 class="grp" style="margin-top:0">Add an idea</h3>
+    <label for="ld-title">Title</label>
+    <input id="ld-title" maxlength="120" autocomplete="off">
+    <div class="counter" id="ld-title-count">0 / 120</div>
+    <label for="ld-details">Details</label>
+    <textarea id="ld-details" maxlength="2000" rows="4"></textarea>
+    <div class="counter" id="ld-details-count">0 / 2000</div>
+    <div class="err" id="ld-add-err" role="alert"></div>
+    <div class="row"><button class="pri" id="ld-add" type="button">Add idea</button></div>
+  </div>
+
+  <div id="ld-ideas"></div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+  var KEY = 'ld_pass_v1';
+  var ORDER = ['new', 'discussing', 'planned', 'done', 'parked'];
+  var LABEL = { new: 'New', discussing: 'Discussing', planned: 'Planned', done: 'Done', parked: 'Parked' };
+  var S = { token: null, me: null, links: [], statuses: ORDER, ideas: [], filter: 'all' };
+  var UI = { open: {}, cdraft: {}, editing: {}, cerr: {} };
+  var $ = function (id) { return document.getElementById(id); };
+
+  function h(tag, props, kids) {
+    var el = document.createElement(tag);
+    Object.keys(props || {}).forEach(function (k) {
+      if (k === 'text') el.textContent = props[k]; else if (k === 'class') el.className = props[k];
+      else if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2), props[k]); else el.setAttribute(k, props[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return el;
+  }
+  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); return el; }
+  function ago(t) {
+    var ms = typeof t === 'number' ? (t < 1e12 ? t * 1000 : t) : Date.parse(t);
+    if (!ms) return '';
+    var s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 60) return 'just now'; if (s < 3600) return Math.round(s / 60) + ' min ago';
+    if (s < 86400) return Math.round(s / 3600) + 'h ago'; return Math.round(s / 86400) + 'd ago';
+  }
+  var RANKS = { 6: 'Vice Leader', 7: 'Matriarch', 8: 'War Cmdr', 9: 'Ambassador' };
+  function rankLabel(n) {
+    if (n == null || n === '') return '';
+    var v = Number(n);
+    if (isNaN(v)) return String(n);
+    if (v < 1 || v > 9) return '';
+    return v <= 5 ? 'R' + v : (RANKS[v] || 'R' + n);
+  }
+  function isLead() { return !!(S.me && S.me.role === 'lead'); }
+  function safeHref(u) {
+    u = String(u || '');
+    return /^https:\/\//i.test(u) || /^[a-z0-9][a-z0-9._\/-]*(\?[^\s]*)?$/i.test(u) ? u : '';
+  }
+
+  // ── network ──
+  function call(method, path, body, noAuth) {
+    var headers = {};
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (S.token && !noAuth) headers.Authorization = 'Bearer ' + S.token;
+    return fetch(WORKER + path, { method: method, headers: headers, body: body === undefined ? undefined : JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { status: r.status, data: d }; }); })
+      .catch(function () { return { status: 0, data: { error: 'network' } }; });
+  }
+  var DOWN = "Can't reach the leadership page right now. Try again in a moment.";
+  var ERR = {
+    title: 'Add a title of up to 120 characters.',
+    details: 'Details can be up to 2000 characters.',
+    text: 'Write a comment of up to 500 characters.',
+    version: 'That idea changed. Load the latest and try again.',
+    not_yours: 'Only the author or a lead can change this.',
+    leads_only: 'Only leads can change the status.',
+    not_found: 'That idea is gone.',
+    full: 'The board is full for now.',
+    status: 'That status is not available.'
+  };
+  function errText(r) {
+    if (r.status === 0 || r.status >= 500) return DOWN;
+    return ERR[r.data && r.data.error] || "That didn't work. Try again in a moment.";
+  }
+  var ACCESS = ['not_leadership', 'not_on_roster'];
+  function accessLost() {
+    try { localStorage.removeItem(KEY); } catch (e) { /* none */ }
+    S.token = null;
+    $('ld-lost').textContent = "Your leadership access changed, so this wasn't saved. Copy your text if you need it, then ask an R5.";
+  }
+  var signinWait = null;
+  // Runs an action. A 401 asks for sign in again and keeps whatever was typed; a 403 about access drops the pass.
+  function authed(method, path, body) {
+    return call(method, path, body).then(function (r) {
+      if (r.status === 403 && ACCESS.indexOf(r.data && r.data.error) >= 0) { accessLost(); return r; }
+      if (r.status !== 401) return r;
+      return askSignin().then(function () { r.signedOut = true; return r; });
+    });
+  }
+  function askSignin() {
+    if (signinWait) return signinWait.promise;
+    var w = {}; w.promise = new Promise(function (res) { w.res = res; }); signinWait = w;
+    showSignin(true);
+    return w.promise;
+  }
+
+  // ── sign in ──
+  function storedPass() {
+    try {
+      var v = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (!v || !v.token) return null;
+      if (typeof v.expires === 'number' && v.expires < Date.now()) return null;
+      return v;
+    } catch (e) { return null; }
+  }
+  var SIGNIN_ERR = {
+    not_leadership: 'This page is for DOG and MSS R4s, R5s and appointed officers.',
+    not_on_roster: "That ID isn't on the Server 2864 roster yet.",
+    locked: 'Too many tries, wait a few minutes.', rate_limited: 'Too many tries, wait a few minutes.',
+    uid_required: 'Enter the numbers only.'
+  };
+  function showSignin(overlay, message) {
+    var el = $('ld-signin');
+    el.hidden = false; el.classList.toggle('overlay', !!overlay);
+    $('ld-signin-cancel').hidden = !overlay;
+    $('ld-signin-err').textContent = message || '';
+    $('ld-down').hidden = true;
+    try {
+      var id = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
+      var u = id && id.siteKey && localStorage.getItem('armory_uid_' + id.siteKey);
+      if (u && !$('ld-uid').value) $('ld-uid').value = String(u).replace(/\D/g, '');
+    } catch (e) { /* none */ }
+    if (!overlay) $('ld-app').hidden = true;
+    setTimeout(function () { $('ld-uid').focus(); }, 0);
+  }
+  function submitSignin() {
+    var uid = $('ld-uid').value.replace(/\D/g, '');
+    var err = $('ld-signin-err'); err.textContent = '';
+    $('ld-signin-go').disabled = true;
+    call('POST', '/lead/handshake', { uid: uid }, true).then(function (r) {
+      $('ld-signin-go').disabled = false;
+      var code = r.data && r.data.error;
+      if (r.status === 200 && r.data.token) {
+        S.token = r.data.token; S.me = r.data.me || S.me;
+        try { localStorage.setItem(KEY, JSON.stringify({ token: r.data.token, expires: r.data.expires })); } catch (e) { /* none */ }
+        $('ld-uid').value = '';
+        $('ld-signin').hidden = true; $('ld-signin').classList.remove('overlay');
+        $('ld-lost').textContent = '';
+        if (signinWait) { var w = signinWait; signinWait = null; w.res(true); loadHome(true); } else loadHome();
+        return;
+      }
+      err.textContent = SIGNIN_ERR[code] || (r.status === 0 || r.status >= 500 ? DOWN : "Couldn't sign in right now. Try again in a moment.");
+    });
+  }
+  function signOut() {
+    try { localStorage.removeItem(KEY); } catch (e) { /* none */ }
+    S.token = null; S.me = null; S.ideas = []; S.links = [];
+    $('ld-chip').hidden = true; $('ld-signout').hidden = true;
+    showSignin(false);
+  }
+  function setChip() {
+    var m = S.me; if (!m) return;
+    var chip = clear($('ld-chip'));
+    chip.appendChild(document.createTextNode([m.name, rankLabel(m.rank), m.alliance].filter(Boolean).join(' · ')));
+    if (m.role === 'lead') chip.appendChild(h('span', { class: 'pill lead', text: 'Lead', style: 'margin-left:6px' }));
+    chip.hidden = false; $('ld-signout').hidden = false;
+  }
+
+  // ── load ──
+  function loadHome(keepMsg) {
+    return call('GET', '/lead/home').then(function (r) {
+      if (r.status === 401 || !S.token) { try { localStorage.removeItem(KEY); } catch (e) { /* none */ } S.token = null; showSignin(false); return; }
+      if (r.status === 0 || r.status >= 500) {
+        $('ld-signin').hidden = true; $('ld-app').hidden = true;
+        $('ld-down-msg').textContent = DOWN; $('ld-down').hidden = false; return;
+      }
+      $('ld-down').hidden = true;
+      if (r.status === 403 && ACCESS.indexOf(r.data && r.data.error) >= 0) {
+        try { localStorage.removeItem(KEY); } catch (e) { /* none */ }
+        S.token = null; showSignin(false, SIGNIN_ERR[r.data.error]); return;
+      }
+      if (r.status !== 200) { showSignin(false, "Couldn't load right now. Try again in a moment."); return; }
+      var d = r.data;
+      S.me = d.me || S.me; S.links = d.links || []; S.ideas = d.ideas || [];
+      S.statuses = (d.statuses && d.statuses.length) ? d.statuses : ORDER;
+      setChip();
+      $('ld-signin').hidden = true; $('ld-app').hidden = false;
+      if (!keepMsg) $('ld-lost').textContent = '';
+      renderLinks(); renderFilters(); renderIdeas();
+    });
+  }
+
+  // ── quick links ──
+  function renderLinks() {
+    var box = clear($('ld-links'));
+    S.links.forEach(function (g) {
+      box.appendChild(h('h3', { class: 'grp', text: g.group }));
+      var grid = h('div', { class: 'links' });
+      (g.items || []).forEach(function (it) {
+        var href = safeHref(it.url);
+        var a = h('a', { class: 'ld-link', target: '_blank', rel: 'noopener' }, [h('div', { class: 't', text: it.title }), h('div', { class: 'd', text: it.desc || '' })]);
+        if (href) a.setAttribute('href', href);
+        grid.appendChild(a);
+      });
+      box.appendChild(grid);
+    });
+  }
+
+  // ── ideas ──
+  function statusRank(s) { var i = ORDER.indexOf(s); return i < 0 ? ORDER.length : i; }
+  function sorted() {
+    return S.ideas.slice().sort(function (a, b) {
+      return statusRank(a.status) - statusRank(b.status) || (b.votes || 0) - (a.votes || 0) || (b.createdAt || 0) - (a.createdAt || 0);
+    });
+  }
+  function renderFilters() {
+    var box = clear($('ld-filters'));
+    var opts = [['all', 'All', S.ideas.length]].concat(ORDER.map(function (s) {
+      return [s, LABEL[s], S.ideas.filter(function (i) { return i.status === s; }).length];
+    }));
+    opts.forEach(function (o) {
+      var b = h('button', { type: 'button', 'data-status': o[0], 'aria-pressed': S.filter === o[0] ? 'true' : 'false', text: o[1] + ' ' + o[2] });
+      b.addEventListener('click', function () { S.filter = o[0]; renderFilters(); renderIdeas(); });
+      box.appendChild(b);
+    });
+  }
+  function putIdea(idea) {
+    var i = -1; S.ideas.forEach(function (x, n) { if (x.id === idea.id) i = n; });
+    if (i >= 0) S.ideas[i] = idea; else S.ideas.push(idea);
+  }
+  function dropIdea(id) { S.ideas = S.ideas.filter(function (x) { return x.id !== id; }); delete UI.editing[id]; delete UI.open[id]; delete UI.cdraft[id]; }
+  function refresh() { renderFilters(); renderIdeas(); }
+  function ideaCard(idea) {
+    var id = idea.id;
+    var card = h('div', { class: 'card idea', 'data-id': String(id), 'data-status': idea.status });
+    var ed = UI.editing[id];
+    card.appendChild(h('span', { class: 'pill ld-pill ' + idea.status, text: LABEL[idea.status] || idea.status }));
+    if (ed) {
+      var t = h('input', { class: 'ld-etitle', maxlength: '120', 'aria-label': 'Title' }); t.value = ed.title;
+      var d = h('textarea', { class: 'ld-edetails', maxlength: '2000', rows: '4', 'aria-label': 'Details' }); d.value = ed.details;
+      t.addEventListener('input', function () { ed.title = t.value; });
+      d.addEventListener('input', function () { ed.details = d.value; });
+      card.appendChild(t); card.appendChild(d);
+      if (ed.conflict) {
+        card.appendChild(h('div', { class: 'warnbox ld-conflict', role: 'alert' }, [
+          'Someone else changed this.',
+          h('div', { class: 'cur', text: ed.conflict.title + (ed.conflict.details ? '\n' + ed.conflict.details : '') }),
+          h('button', { class: 'ld-reload', type: 'button', text: 'Load latest', onclick: function () {
+            putIdea(ed.conflict); ed.version = ed.conflict.version; ed.conflict = null; ed.err = ''; refresh();
+          } })
+        ]));
+      }
+      if (ed.err) card.appendChild(h('div', { class: 'err ld-cerr', role: 'alert', text: ed.err }));
+      card.appendChild(h('div', { class: 'row acts' }, [
+        h('button', { class: 'pri ld-esave', type: 'button', text: 'Save', onclick: function () { saveEdit(idea); } }),
+        h('button', { class: 'ghost ld-ecancel', type: 'button', text: 'Cancel', onclick: function () { delete UI.editing[id]; refresh(); } })
+      ]));
+      return card;
+    }
+    card.appendChild(h('div', { class: 'ttl', text: idea.title }));
+    if (idea.details) card.appendChild(h('div', { class: 'det', text: idea.details }));
+    card.appendChild(h('div', { class: 'by', text: 'by ' + idea.authorName + ' · ' + ago(idea.createdAt) }));
+    if (UI.cerr[id]) card.appendChild(h('div', { class: 'err ld-cerr', role: 'alert' }, [UI.cerr[id]]));
+    var acts = h('div', { class: 'row acts' });
+    acts.appendChild(h('button', { class: 'ld-vote', type: 'button', 'aria-pressed': idea.myVote ? 'true' : 'false', 'aria-label': 'Plus one', text: '+1 ' + (idea.votes || 0), onclick: function () { vote(idea); } }));
+    var n = (idea.comments || []).length;
+    var open = !!UI.open[id];
+    acts.appendChild(h('button', { class: 'ld-ctoggle', type: 'button', 'aria-expanded': open ? 'true' : 'false', text: 'Comments ' + n, onclick: function () { UI.open[id] = !UI.open[id]; refresh(); } }));
+    if (idea.mine || isLead()) {
+      acts.appendChild(h('button', { class: 'ld-edit', type: 'button', text: 'Edit', onclick: function () { UI.editing[id] = { title: idea.title, details: idea.details || '', version: idea.version, conflict: null, err: '' }; refresh(); } }));
+      acts.appendChild(h('button', { class: 'warn ld-remove', type: 'button', text: 'Remove', onclick: function () { removeIdea(idea); } }));
+    }
+    if (isLead()) {
+      var sel = h('select', { class: 'ld-status', 'aria-label': 'Status' });
+      S.statuses.forEach(function (s) { sel.appendChild(h('option', { value: s, text: LABEL[s] || s })); });
+      sel.value = idea.status;
+      sel.addEventListener('change', function () { setStatus(idea, sel.value); });
+      acts.appendChild(sel);
+    }
+    card.appendChild(acts);
+    if (open) {
+      var box = h('div', { class: 'ld-comments' });
+      (idea.comments || []).forEach(function (c) {
+        var cm = h('div', { class: 'cm', 'data-cid': String(c.id) }, [
+          h('div', { class: 'tx', text: c.text }),
+          h('div', { class: 'by', text: c.authorName + ' · ' + ago(c.createdAt) })
+        ]);
+        if (c.mine || isLead()) cm.appendChild(h('button', { class: 'ghost ld-cdel', type: 'button', text: 'Remove', onclick: function () { delComment(idea, c); } }));
+        box.appendChild(cm);
+      });
+      var ta = h('textarea', { class: 'ld-ctext', maxlength: '500', rows: '2', 'aria-label': 'Add a comment' });
+      ta.value = UI.cdraft[id] || '';
+      ta.addEventListener('input', function () { UI.cdraft[id] = ta.value; });
+      box.appendChild(ta);
+      box.appendChild(h('div', { class: 'row', style: 'margin-top:6px' }, [h('button', { class: 'pri ld-cadd', type: 'button', text: 'Add comment', onclick: function () { addComment(idea); } })]));
+      card.appendChild(box);
+    }
+    return card;
+  }
+  function renderIdeas() {
+    var box = clear($('ld-ideas'));
+    var rows = sorted().filter(function (i) { return S.filter === 'all' || i.status === S.filter; });
+    if (!rows.length) box.appendChild(h('p', { class: 'hint', text: 'No ideas here yet.' }));
+    rows.forEach(function (i) { box.appendChild(ideaCard(i)); });
+  }
+
+  // after any action: a signed-out answer keeps the text and shows the sign-in; true when the action should stop
+  function stop(r, setErr) {
+    if (r.signedOut) { setErr('Sign in again, then press the button once more. Your text is kept.'); return true; }
+    if (r.status === 403 && ACCESS.indexOf(r.data && r.data.error) >= 0) { setErr(''); return true; }
+    return false;
+  }
+  function cardErr(id) { return function (m) { if (m) UI.cerr[id] = m; else delete UI.cerr[id]; refresh(); }; }
+
+  function addIdea() {
+    var title = $('ld-title').value.trim(), details = $('ld-details').value;
+    var err = $('ld-add-err'); err.textContent = '';
+    $('ld-add').disabled = true;
+    authed('POST', '/lead/idea', { idea: { title: title, details: details } }).then(function (r) {
+      $('ld-add').disabled = false;
+      if (r.status === 200 && r.data.idea) {
+        putIdea(r.data.idea); $('ld-title').value = ''; $('ld-details').value = ''; counters(); S.filter = 'all'; refresh(); return;
+      }
+      if (stop(r, function (m) { err.textContent = m; })) return;
+      err.textContent = errText(r);
+    });
+  }
+  function vote(idea) {
+    authed('POST', '/lead/idea/vote', { id: idea.id, vote: !idea.myVote }).then(function (r) {
+      if (r.status === 200 && r.data.idea) { delete UI.cerr[idea.id]; putIdea(r.data.idea); refresh(); return; }
+      if (stop(r, cardErr(idea.id))) return;
+      if (r.data && r.data.error === 'not_found') { dropIdea(idea.id); refresh(); return; }
+      cardErr(idea.id)(errText(r));
+    });
+  }
+  function setStatus(idea, status) {
+    authed('POST', '/lead/idea/status', { id: idea.id, status: status, version: idea.version }).then(function (r) {
+      if (r.status === 200 && r.data.idea) { delete UI.cerr[idea.id]; putIdea(r.data.idea); refresh(); return; }
+      if (r.status === 409 && r.data && r.data.idea) { putIdea(r.data.idea); UI.cerr[idea.id] = 'Someone else changed this. The latest is shown.'; refresh(); return; }
+      if (stop(r, cardErr(idea.id))) { refresh(); return; }
+      UI.cerr[idea.id] = errText(r); refresh();
+    });
+  }
+  function saveEdit(idea) {
+    var ed = UI.editing[idea.id]; if (!ed) return;
+    authed('POST', '/lead/idea', { idea: { id: idea.id, title: ed.title.trim(), details: ed.details }, version: ed.version }).then(function (r) {
+      if (r.status === 200 && r.data.idea) { delete UI.editing[idea.id]; putIdea(r.data.idea); refresh(); return; }
+      if (r.status === 409 && r.data && r.data.error === 'conflict' && r.data.idea) { ed.conflict = r.data.idea; ed.err = ''; refresh(); return; }
+      if (stop(r, function (m) { ed.err = m; })) { refresh(); return; }
+      ed.err = errText(r); refresh();
+    });
+  }
+  function removeIdea(idea) {
+    if (!window.confirm('Remove this idea and its comments?')) return;
+    authed('POST', '/lead/idea/delete', { id: idea.id, version: idea.version }).then(function (r) {
+      if (r.status === 200) { dropIdea(idea.id); refresh(); return; }
+      if (r.status === 409 && r.data && r.data.idea) { putIdea(r.data.idea); UI.cerr[idea.id] = 'Someone else changed this, so it was not removed. The latest is shown.'; refresh(); return; }
+      if (r.data && r.data.error === 'not_found') { dropIdea(idea.id); refresh(); return; }
+      if (stop(r, cardErr(idea.id))) { refresh(); return; }
+      UI.cerr[idea.id] = errText(r); refresh();
+    });
+  }
+  function addComment(idea) {
+    var text = (UI.cdraft[idea.id] || '').trim(); if (!text) return;
+    authed('POST', '/lead/idea/comment', { id: idea.id, text: text }).then(function (r) {
+      if (r.status === 200 && r.data.idea) { delete UI.cdraft[idea.id]; delete UI.cerr[idea.id]; putIdea(r.data.idea); refresh(); return; }
+      if (stop(r, cardErr(idea.id))) return;
+      cardErr(idea.id)(errText(r));
+    });
+  }
+  function delComment(idea, c) {
+    authed('POST', '/lead/comment/delete', { id: c.id }).then(function (r) {
+      if (r.status === 200 && r.data.idea) { putIdea(r.data.idea); refresh(); return; }
+      if (stop(r, cardErr(idea.id))) return;
+      cardErr(idea.id)(errText(r));
+    });
+  }
+
+  // ── form counters ──
+  function counters() {
+    $('ld-title-count').textContent = $('ld-title').value.length + ' / 120';
+    $('ld-details-count').textContent = $('ld-details').value.length + ' / 2000';
+  }
+
+  $('ld-signin-go').addEventListener('click', submitSignin);
+  $('ld-uid').addEventListener('keydown', function (e) { if (e.key === 'Enter') submitSignin(); });
+  $('ld-uid').addEventListener('input', function () { this.value = this.value.replace(/\D/g, ''); });
+  $('ld-signin-cancel').addEventListener('click', function () {
+    $('ld-signin').hidden = true; $('ld-signin').classList.remove('overlay');
+    if (signinWait) { var w = signinWait; signinWait = null; w.res(false); }
+  });
+  $('ld-signout').addEventListener('click', signOut);
+  $('ld-down-retry').addEventListener('click', function () { $('ld-down').hidden = true; if (S.token) loadHome(); else showSignin(false); });
+  $('ld-title').addEventListener('input', counters);
+  $('ld-details').addEventListener('input', counters);
+  $('ld-add').addEventListener('click', addIdea);
+
+  var p = storedPass();
+  if (p) { S.token = p.token; loadHome(); } else showSignin(false);
+})();
+</script>
+</body>
+</html>

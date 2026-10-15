@@ -1776,7 +1776,7 @@
     @media (max-width: 500px) {
       .banner-wrap-outer { padding-bottom: 38px; }
       #version-badge { bottom: 6px !important; left: 8px !important; }
-      #rotations-cta { bottom: 6px !important; right: 8px !important; }
+      #leadership-cta { bottom: 6px !important; right: 8px !important; }
     }
 
     /* Version badge — opposite side of rocket, bottom-left of banner */
@@ -5221,10 +5221,10 @@
           clearLink.addEventListener('click', function() {
             localStorage.setItem('playerIdentity', 'anonymous');
             // This bypasses saveIdentity() (a different modal/script block),
-            // so re-sync the Rotations CTA here too — a real player clearing
+            // so re-sync the Leadership CTA here too — a real player clearing
             // their identity from prefs is the same downgrade case as
             // switching to guest from the picker.
-            if (window.syncRotationsCta) window.syncRotationsCta();
+            if (window.syncLeadershipCta) window.syncLeadershipCta();
             var greet = document.getElementById('identity-greeting');
             if (greet) greet.style.display = 'none';
             renderIdentityTab();
@@ -5738,15 +5738,15 @@
 
       function saveIdentity(val) {
         try { localStorage.setItem(STORAGE_KEY, typeof val === 'string' ? val : JSON.stringify(val)); } catch(e) {}
-        // Re-sync the Rotations CTA (bottom-right of the banner) the instant
+        // Re-sync the Leadership CTA (bottom-right of the banner) the instant
         // identity changes — covers the picker, the guest path, the
         // skip/anonymous path, and the migration/rescue paths below, in
         // both directions (gaining eligibility and losing it), without a
         // page reload. Guarded because this script block runs before the
-        // Rotations CTA script defines the hook, but saveIdentity() itself
+        // Leadership CTA script defines the hook, but saveIdentity() itself
         // only ever runs later, from a user gesture or an async callback,
-        // by which point window.syncRotationsCta is already defined.
-        if (window.syncRotationsCta) window.syncRotationsCta();
+        // by which point window.syncLeadershipCta is already defined.
+        if (window.syncLeadershipCta) window.syncLeadershipCta();
       }
 
       function showGreeting(identity) {
@@ -6410,13 +6410,11 @@
   })();
   </script>
 
-  <!-- ═══ Rotations CTA (banner corner) ═══
-       Replaces the retired Artemis II celebration replay button (that
-       celebration and its fireworks canvas were removed entirely — the
-       replay button was its only remaining trigger; auto-show was already
-       disabled, and no version-badge/release-notes/URL-param path opened it). -->
+  <!-- ═══ Leadership CTA (banner corner) ═══
+       Sits where the retired Rotations chip was. Shown only to DOG/MSS R4+
+       roster players (see isLeadershipEligible below). -->
   <style>
-    #rotations-cta {
+    #leadership-cta {
       display: none; position: absolute; bottom: -20px; right: 12px; z-index: 200;
       align-items: center; justify-content: center;
       background: rgba(13,17,23,.85); border: 1px solid rgba(121,192,255,.3);
@@ -6424,17 +6422,17 @@
       backdrop-filter: blur(4px); font-size: .68rem; font-weight: 700;
       color: #79c0ff; text-decoration: none; letter-spacing: .03em;
       box-shadow: 0 0 8px rgba(121,192,255,.2), 0 0 0 0 rgba(121,192,255,.3);
-      animation: rotations-cta-glow 3s ease-in-out infinite;
+      animation: leadership-cta-glow 3s ease-in-out infinite;
       transition: box-shadow .15s, border-color .15s, background .15s;
     }
-    #rotations-cta:hover, #rotations-cta:focus-visible {
+    #leadership-cta:hover, #leadership-cta:focus-visible {
       border-color: rgba(121,192,255,.8);
       background: rgba(121,192,255,.12);
       box-shadow: 0 0 16px rgba(121,192,255,.5), 0 0 0 0 rgba(121,192,255,.3);
       animation-play-state: paused;
     }
-    #rotations-cta:focus-visible { outline: 2px solid #79c0ff; outline-offset: 2px; }
-    @keyframes rotations-cta-glow {
+    #leadership-cta:focus-visible { outline: 2px solid #79c0ff; outline-offset: 2px; }
+    @keyframes leadership-cta-glow {
       0%, 100% { box-shadow: 0 0 6px rgba(121,192,255,.2), 0 0 0 0 rgba(121,192,255,.3); }
       50%       { box-shadow: 0 0 14px rgba(121,192,255,.5), 0 0 6px rgba(63,185,80,.15); }
     }
@@ -6442,17 +6440,33 @@
 
   <script>
   (function () {
-    // Rotations CTA is shown only to identified, non-guest S2864 roster
-    // players. Same gate idiom as getStoredIdentity() elsewhere on this
-    // page: 'anonymous' string, missing key, guest objects, and malformed
-    // JSON all fail closed (no button). siteKey (not just a name) is
-    // required so a self-typed guest name can't qualify.
-    function isRotationsEligible() {
+    // Leadership CTA is shown only to identified, non-guest roster players
+    // whose roster row says DOG or MSS and rank 4 or higher. Everything fails
+    // closed: 'anonymous', missing key, guest objects, malformed JSON, a
+    // roster that won't load, or a player missing from it. The roster is
+    // fetched once and cached.
+    var rosterRows = null, rosterLoading = false;
+    function loadRoster() {
+      if (rosterRows || rosterLoading) return;
+      rosterLoading = true;
+      try {
+        fetch('player-data.json').then(function (r) { if (!r.ok) throw new Error('roster'); return r.json(); })
+          .then(function (rows) { rosterRows = Array.isArray(rows) ? rows : []; rosterLoading = false; syncLeadershipCta(); })
+          .catch(function () { rosterLoading = false; });
+      } catch (e) { rosterLoading = false; }
+    }
+    function isLeadershipEligible() {
       try {
         var raw = localStorage.getItem('playerIdentity');
         if (!raw || raw === 'anonymous') return false;
         var id = JSON.parse(raw);
-        return !!(id && !id.guest && id.siteKey);
+        if (!(id && !id.guest && id.siteKey)) return false;
+        if (!rosterRows) { loadRoster(); return false; }
+        var row = null;
+        for (var k = 0; k < rosterRows.length; k++) { if (rosterRows[k] && rosterRows[k].siteKey === id.siteKey) { row = rosterRows[k]; break; } }
+        if (!row) return false;
+        var al = String(row.alliance || '').toUpperCase();
+        return (al === 'DOG' || al === 'MSS') && Number(row.rank) >= 4;
       } catch (e) { return false; }
     }
 
@@ -6460,8 +6474,8 @@
     // the edges of the banner image without being clipped (.banner itself
     // has overflow:hidden so we can't place them inside it). This wrapper
     // and the version badge are unconditional and built exactly once, for
-    // every visitor regardless of identity — only the Rotations CTA below
-    // is gated, and only the CTA is toggled by syncRotationsCta() below.
+    // every visitor regardless of identity — only the Leadership CTA below
+    // is gated, and only the CTA is toggled by syncLeadershipCta() below.
     var bannerEl = document.querySelector('.banner');
     var bannerWrap = null;
     if (bannerEl && bannerEl.parentNode) {
@@ -6471,7 +6485,7 @@
       bannerEl.parentNode.insertBefore(bannerWrap, bannerEl);
       bannerWrap.appendChild(bannerEl);
 
-      // Version badge — bottom-left of banner (opposite of the Rotations CTA)
+      // Version badge — bottom-left of banner (opposite of the Leadership CTA)
       var vBadge = document.createElement('button');
       vBadge.id = 'version-badge';
       var vLabel = document.createElement('span');
@@ -6481,7 +6495,7 @@
       bannerWrap.appendChild(vBadge);
     }
 
-    // Rotations CTA sync — idempotent: creates the element when eligible,
+    // Leadership CTA sync — idempotent: creates the element when eligible,
     // removes it when not, and is a no-op if already in the right state.
     // Safe to call repeatedly (on load, and again any time identity is
     // written elsewhere on the page) without ever duplicating the node.
@@ -6489,33 +6503,33 @@
     // CSS-hidden), so there's no link for them to find via view-source or
     // DOM inspection either — and a player who becomes ineligible in-session
     // (e.g. switches to guest) has the element removed, not just hidden.
-    function syncRotationsCta() {
-      var existing = document.getElementById('rotations-cta');
-      if (!isRotationsEligible()) {
+    function syncLeadershipCta() {
+      var existing = document.getElementById('leadership-cta');
+      if (!isLeadershipEligible()) {
         if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
         return;
       }
       if (existing) return;
-      var rotationsBtn = document.createElement('a');
-      rotationsBtn.id = 'rotations-cta';
-      rotationsBtn.href = 'rotation.html';
-      rotationsBtn.title = 'Weekly alliance rotation schedule';
-      rotationsBtn.setAttribute('aria-label', 'View the weekly alliance rotation schedule');
-      rotationsBtn.textContent = 'Rotations';
-      rotationsBtn.style.display = 'flex';
+      var leadershipBtn = document.createElement('a');
+      leadershipBtn.id = 'leadership-cta';
+      leadershipBtn.href = 'leadership.html';
+      leadershipBtn.title = 'Leadership page for DOG and MSS officers';
+      leadershipBtn.setAttribute('aria-label', 'Open the Leadership page');
+      leadershipBtn.textContent = 'Leadership';
+      leadershipBtn.style.display = 'flex';
       if (bannerWrap) {
-        bannerWrap.appendChild(rotationsBtn);
+        bannerWrap.appendChild(leadershipBtn);
       } else {
-        rotationsBtn.style.position = 'fixed'; rotationsBtn.style.bottom = '1.25rem'; rotationsBtn.style.right = '1.25rem';
-        document.body.appendChild(rotationsBtn);
+        leadershipBtn.style.position = 'fixed'; leadershipBtn.style.bottom = '1.25rem'; leadershipBtn.style.right = '1.25rem';
+        document.body.appendChild(leadershipBtn);
       }
     }
     // Exposed so the identity-writing code below (saveIdentity, further
     // down the page) can re-sync the CTA the instant identity changes in
     // session, without a reload.
-    window.syncRotationsCta = syncRotationsCta;
+    window.syncLeadershipCta = syncLeadershipCta;
 
-    syncRotationsCta();
+    syncLeadershipCta();
   })();
   </script>
 
@@ -6663,7 +6677,7 @@
       .then(function (data) {
         releaseData = data;
 
-        // Create version badge (placed by the Rotations CTA script — bottom-left of banner)
+        // Create version badge (placed by the Leadership CTA script — bottom-left of banner)
         var badge = document.getElementById('version-badge');
         if (badge) {
           badge.style.display = 'flex';
