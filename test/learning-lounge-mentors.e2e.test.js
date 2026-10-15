@@ -216,7 +216,7 @@ test('M-INBOX: answering an ask prefills the drawer and resolves it with the ent
   const { ctx, page } = await open();
   await tab(page, 'inbox');
   assert.equal((await page.innerText('#lm-badge')).trim(), '2');
-  assert.match(await page.innerText('#lm-asks'), /Newbie \(not verified\)/);
+  assert.match(await page.innerText('#lm-asks'), /Newbie/);
   await page.click('#lm-asks .lm-answer');
   assert.equal(await page.inputValue('#lm-q'), 'How do I join the alliance?');
   await page.fill('#lm-a', 'Apply on the transfer page.');

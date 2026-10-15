@@ -141,7 +141,7 @@ test('P-MISS: a no-match query plus Enter posts one miss and shows the Ask card 
   await page.waitForSelector('#ll-nomatch');
   assert.match(await text(page, '#ll-nomatch'), /Nothing yet for that/);
   await page.waitForFunction(() => document.getElementById('ll-ask-q') && document.getElementById('ll-ask-q').value === 'zzqx flurb');
-  assert.equal(await page.inputValue('#ll-ask-name'), 'Tex');
+  assert.match(await page.innerText('#ll-ask-who'), /asking anonymously/);
   await page.press('#ll-search', 'Enter');
   await page.waitForTimeout(200);
   const miss = posts.filter((p) => p.path === '/lounge/miss');
@@ -163,17 +163,17 @@ test('P-MISS-IDLE: a miss is logged after a quiet spell, but not for a query tha
   await ctx.close();
 });
 
-test('P-ASK: sending posts question and name, shows thanks; 429 and 400 show their text', async () => {
-  const { ctx, page } = await open();
+test('P-ASK: sending posts question and siteKey, shows thanks; 429 and 400 show their text', async () => {
+  const { ctx, page } = await open('', { identity: { name: 'Sam', siteKey: 'abcdef0123456789', alliance: 'DOG' } });
   await page.waitForSelector('#ll-chapters .ll-chap');
   await page.click('a[href="#ll-ask"], #ll-ask-link');
   await page.fill('#ll-ask-q', 'How do I frobnicate the squad?');
-  await page.fill('#ll-ask-name', 'Sam');
+  assert.match(await page.innerText('#ll-ask-who'), /You're asking as Sam\./);
   await page.click('#ll-ask-send');
   await page.waitForFunction(() => /Sent\. A mentor will add the answer here, check back soon\./.test(document.getElementById('ll-ask').textContent));
   const a = posts.filter((p) => p.path === '/lounge/ask');
   assert.equal(a.length, 1);
-  assert.deepEqual(JSON.parse(a[0].body), { question: 'How do I frobnicate the squad?', name: 'Sam' });
+  assert.deepEqual(JSON.parse(a[0].body), { question: 'How do I frobnicate the squad?', siteKey: 'abcdef0123456789' });
   askStatus = 429;
   await page.click('#ll-ask-send');
   await page.waitForFunction(() => /Too many questions from here right now, try again later\./.test(document.getElementById('ll-ask').textContent));
@@ -184,6 +184,21 @@ test('P-ASK: sending posts question and name, shows thanks; 429 and 400 show the
   await page.click('#ll-ask-send');
   await page.waitForFunction(() => /Couldn't send, try again\./.test(document.getElementById('ll-ask').textContent));
   assert.equal(await page.locator('#ll-ask-send').isDisabled(), false);
+  await ctx.close();
+});
+
+test('P-ASK-ANON: no identity sends question only and shows the anonymous line', async () => {
+  const { ctx, page } = await open();
+  await page.waitForSelector('#ll-chapters .ll-chap');
+  const before = posts.length;
+  await page.click('#ll-ask-link');
+  await page.fill('#ll-ask-q', 'Anon question here?');
+  assert.match(await page.innerText('#ll-ask-who'), /You're asking anonymously\. Pick your name on the homepage so a mentor knows who asked\./);
+  assert.equal(await page.locator('#ll-ask-name').count(), 0);
+  await page.click('#ll-ask-send');
+  await page.waitForFunction(() => /Sent\./.test(document.getElementById('ll-ask').textContent));
+  const a = posts.slice(before).filter((p) => p.path === '/lounge/ask');
+  assert.deepEqual(JSON.parse(a[0].body), { question: 'Anon question here?' });
   await ctx.close();
 });
 

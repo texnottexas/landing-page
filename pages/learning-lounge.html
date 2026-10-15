@@ -118,6 +118,7 @@ footer .fk{margin-top:12px; font-size:.75rem; color:var(--muted); animation:shim
 body{top:0 !important;}
 body > .skiptranslate{display:none !important;}
 #google_translate_element{position:absolute; left:-9999px; opacity:0; pointer-events:none;}
+.muted{color:var(--muted); font-size:.9rem; margin:4px 0 10px;}
 </style>
 </head>
 <body>
@@ -168,8 +169,7 @@ body > .skiptranslate{display:none !important;}
     <h2>Ask the mentors</h2>
     <label for="ll-ask-q">Your question</label>
     <textarea id="ll-ask-q" maxlength="300"></textarea>
-    <label for="ll-ask-name">Your name (optional)</label>
-    <input id="ll-ask-name" maxlength="40" autocomplete="off" />
+    <p id="ll-ask-who" class="muted"></p>
     <button type="button" class="btn" id="ll-ask-send">Send</button>
     <p id="ll-ask-msg" aria-live="polite"></p>
   </section>
@@ -188,7 +188,7 @@ body > .skiptranslate{display:none !important;}
   var $ = function (id) { return document.getElementById(id); };
   var el = { search: $('ll-search'), clear: $('ll-clear'), count: $('ll-count'), dym: $('ll-dym'), skel: $('ll-skel'), down: $('ll-down'),
     gone: $('ll-gone'), backRow: $('ll-back-row'), chapTitle: $('ll-chap-title'), results: $('ll-results'), nomatch: $('ll-nomatch'),
-    chapters: $('ll-chapters'), askWrap: $('ll-ask-wrap'), ask: $('ll-ask'), askQ: $('ll-ask-q'), askName: $('ll-ask-name'),
+    chapters: $('ll-chapters'), askWrap: $('ll-ask-wrap'), ask: $('ll-ask'), askQ: $('ll-ask-q'), askWho: $('ll-ask-who'),
     askSend: $('ll-ask-send'), askMsg: $('ll-ask-msg') };
 
   var params = new URLSearchParams(location.search);
@@ -419,17 +419,26 @@ body > .skiptranslate{display:none !important;}
     if (!question) { el.askMsg.textContent = 'Please write a little more.'; return; }
     el.askSend.disabled = true; el.askMsg.textContent = '';
     fetch(WORKER + '/lounge/ask', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ question: question, name: el.askName.value.trim() }) }).then(function (r) {
+      body: JSON.stringify(asker ? { question: question, siteKey: asker.siteKey } : { question: question }) }).then(function (r) {
       el.askMsg.textContent = r.status === 200 ? 'Sent. A mentor will add the answer here, check back soon.'
         : r.status === 429 ? 'Too many questions from here right now, try again later.'
         : r.status === 400 ? 'Please write a little more.' : "Couldn't send, try again.";
     }).catch(function () { el.askMsg.textContent = "Couldn't send, try again."; })
       .then(function () { el.askSend.disabled = false; });
   });
+  var asker = null;
   try {
     var id = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
-    if (id && typeof id.name === 'string' && id.name && id.name !== 'anonymous') el.askName.value = id.name.slice(0, 40);
+    if (id && typeof id === 'object' && !id.guest && typeof id.name === 'string' && id.name &&
+        typeof id.siteKey === 'string' && /^[a-f0-9]{16}$/.test(id.siteKey)) asker = { name: id.name, siteKey: id.siteKey };
   } catch (e) { /* no identity */ }
+  if (asker) el.askWho.textContent = "You're asking as " + asker.name + '.';
+  else {
+    el.askWho.appendChild(document.createTextNode("You're asking anonymously. Pick your name on the "));
+    var hl = document.createElement('a'); hl.href = 'https://2864tw.com'; hl.textContent = 'homepage';
+    el.askWho.appendChild(hl);
+    el.askWho.appendChild(document.createTextNode(' so a mentor knows who asked.'));
+  }
 
   // ── input ──
   el.search.addEventListener('input', function () {
