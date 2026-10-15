@@ -369,7 +369,7 @@ test('HN-NAV: each spoke, bar, header button and chip opens what it opened befor
   assert.equal(await bar('Pay portal').getAttribute('href'), 'https://h5.topwargame.com/h5game/bullionPayNew/index.html');
   assert.equal(await bar('Pay portal').getAttribute('target'), '_blank');
   assert.match(await bar('Pay portal').getAttribute('rel'), /noopener/);
-  assert.deepEqual(await page.$$eval('.home-grid .home-h', (hs) => hs.map((h) => h.textContent.trim())), ['Today', 'Community', 'Rewards and help']);
+  assert.deepEqual(await page.$$eval('.home-grid .home-h', (hs) => hs.map((h) => h.textContent.trim())), ['Upcoming', 'Community', 'Rewards and help']);
 
   // header: feedback, settings, theme, bell, identity chip, version badge, leadership chip
   await opens('#feedbackBtn', 'feedback-modal');
