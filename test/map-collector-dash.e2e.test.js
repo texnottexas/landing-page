@@ -60,7 +60,7 @@ test.before(async () => {
       usageAsked.push({ days: u.searchParams.get('days'), pw: req.headers['x-map-collector-password'] });
       const since = days === 1 ? USAGE_TODAY : '2026-10-02';
       res.writeHead(state.usage ? 200 : 403, Object.assign({ 'content-type': 'application/json' }, cors));
-      res.end(JSON.stringify(state.usage ? { ok: true, today: USAGE_TODAY, since, days, rows: USAGE_ROWS.filter((x) => x.day >= since) } : { ok: false, error: 'not_allowed' }));
+      res.end(JSON.stringify(state.usage ? { ok: true, today: USAGE_TODAY, since, days, rows: USAGE_ROWS.concat(state.usageExtra || []).filter((x) => x.day >= since) } : { ok: false, error: 'not_allowed' }));
       return;
     }
     if (req.url.startsWith('/ops-tools.json')) {
@@ -399,4 +399,32 @@ test('USAGE-3: the period switch sets the usage days too and adds each player up
 test('USAGE-4: the real page lets itself read ops-tools.json (connect-src has self) for the tool titles', () => {
   const csp = fs.readFileSync(PAGE, 'utf8').match(/connect-src ([^;"]*)/)[1];
   assert.match(csp, /'self'/);
+});
+
+// Tex 2026-10-15: the Ops Center logs the players it turns away with their home server; the panel names them plainly
+// and shows the server beside the name.
+test('USAGE-5: players turned away show their home server, as Not from 2864 (rickrolled) or Not on the roster', async () => {
+  state.usage = true;
+  state.usageExtra = [
+    { day: USAGE_TODAY, siteKey: 'eeeeeeeeeeeeeeee', name: 'Stranger', tool: 'outsider', version: '1', opens: 2, count: null, server: 619, firstAt: NOW - 50e3, lastAt: NOW - 30e3 },
+    { day: USAGE_TODAY, siteKey: 'ffffffffffffffff', name: 'New Guy', tool: 'not-on-roster', version: '1', opens: 1, count: null, server: 2864, firstAt: NOW - 40e3, lastAt: NOW - 40e3 },
+    { day: USAGE_TODAY, siteKey: '1111111111111111', name: 'Mystery', tool: 'not-on-roster', version: '1', opens: 1, count: null, server: null, firstAt: NOW - 45e3, lastAt: NOW - 45e3 }
+  ];
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-usage-list .usage-player');
+  const rows = await page.$$eval('#dash-usage-list .usage-player', (els) => els.slice(0, 3).map((e) => ({
+    name: e.querySelector('.usage-name').textContent,
+    server: (e.querySelector('.usage-server') || { textContent: '' }).textContent,
+    tools: [...e.querySelectorAll('.usage-tool')].map((t) => t.textContent)
+  })));
+  assert.deepEqual(rows, [
+    { name: 'Stranger', server: 'S619', tools: ['Not from 2864 (rickrolled) ×2'] },
+    { name: 'New Guy', server: 'S2864', tools: ['Not on the roster'] },
+    { name: 'Mystery', server: '', tools: ['Not on the roster'] }
+  ]);
+  assert.deepEqual((await usagePlayers(page)).find((p) => p.name === 'Samson').tools, ['Mask Mystery Boxes · 12 boxes', 'Snapshot ×2'], 'members unchanged');
+  assert.equal(await page.$$eval('#dash-usage-list .usage-player .usage-server', (els) => els.length), 2, 'only rows that carry a server show one');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 375), 'no sideways scroll');
+  state.usageExtra = null;
+  await ctx.close();
 });

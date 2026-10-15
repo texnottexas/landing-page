@@ -16,7 +16,8 @@
     view: null, toolId: null, query: '', root: null, modal: null, sub: null, grid: null, tiles: {},
     timer: null, waitTimer: null, tracker: null, tool: null, observer: null, tick: null, fab: null, fabHidden: false, keyHandler: null,
     tuck: null, tuckOpen: false, offKey: '',        // the folded "Not running now" row
-    reg: {}, regAsked: null                          // registries the worker says this player is in ({mapcollector: true}); who was asked
+    reg: {}, regAsked: null,                         // registries the worker says this player is in ({mapcollector: true}); who was asked
+    visitor: null, visitorLogged: null, rolling: false  // a player turned away: {sk, server, away}; logged this launch; Rickroll loading
   };
 
   // ---------------------------------------------------------------- small helpers
@@ -88,7 +89,10 @@
     var id = uid();
     if (!id) { S.member = null; S.memberErr = 'wait'; S.siteKey = null; return Promise.resolve(); }
     var home = homeServer();
-    if (home && home !== HOME_SERVER) { S.member = null; S.memberErr = 'not'; S.siteKey = null; return Promise.resolve(); }   // not on 2864, roster or not
+    if (home && home !== HOME_SERVER) {                 // not on 2864, roster or not
+      S.member = null; S.memberErr = 'not'; S.siteKey = null;
+      return sha256Hex(id).then(function (h) { S.visitor = { sk: h.slice(0, 16), server: home, away: true }; }, function () {});
+    }
     return sha256Hex(id).then(function (h) {
       var sk = h.slice(0, 16), cached = lsGet(LS.member, null);
       S.siteKey = sk;                                   // owner-only tiles are matched on this
@@ -110,7 +114,7 @@
         return;
       }
       return load.then(function (m) {
-        if (!m) { S.member = null; S.memberErr = 'not'; return; }
+        if (!m) { S.member = null; S.memberErr = 'not'; S.visitor = { sk: sk, server: home, away: false }; return; }
         S.member = m; S.memberErr = null;
       });
     }).catch(function () { S.member = null; S.memberErr = 'net'; });
@@ -159,6 +163,27 @@
           if (was !== j.show && S.view === 'menu' && S.grid) renderGrid();
         }, function () {});
     });
+  }
+  // Players the Ops Center turns away (Tex 2026-10-15) are logged once per launch with their in-game name and home server:
+  // tool 'outsider' from another server, 'not-on-roster' on 2864. siteKey from the UID as for members, never the UID.
+  function reportVisitor() {
+    var v = S.visitor;
+    if (!v || S.visitorLogged === v.sk) return;
+    S.visitorLogged = v.sk;
+    var body = { siteKey: v.sk, name: String(playerName() || 'Unknown').slice(0, 40), tool: v.away ? 'outsider' : 'not-on-roster', version: '1', open: true };
+    if (v.server >= 1 && v.server <= 99999 && v.server % 1 === 0) body.server = v.server;
+    try {
+      fetch(WORKER + '/ops/usage', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, cache: 'no-store', keepalive: true, body: JSON.stringify(body) }).catch(function () {});
+    } catch (e) {}
+  }
+  // ...and those from another server get Rickroll, loaded the way Jam loads it, while the restricted message stays up.
+  // Nothing new loads while it plays; a failed load says nothing.
+  function rollVisitor() {
+    var t = S.visitor && S.visitor.away ? alongsideTool() : null;
+    if (!t || S.rolling || alongsideOn(t)) return;
+    S.rolling = true;
+    function done() { S.rolling = false; }
+    loadToolScripts(t).then(done, done);
   }
   function toolById(id) { return S.list ? S.list.tools.filter(function (t) { return t.id === id; })[0] : null; }
   function statusOf(tool, ck) { return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events), alongsideOn: !!tool.alongside && alongsideOn(tool) }); }
@@ -215,7 +240,7 @@
     if (S.listErr) { K().toast(b, 'Couldn\'t load the tool list. Check your connection.', 'Retry', function () { start(); }); return; }
     if (!S.list) { K().note(b, 'Loading tools...'); return; }
     if (S.memberErr === 'net') { K().toast(b, 'Couldn\'t check your membership right now.', 'Retry', function () { refreshMember(); }); return; }
-    if (S.memberErr === 'not') { restrictedNote(b); return; }
+    if (S.memberErr === 'not') { restrictedNote(b); rollVisitor(); return; }
     if (S.memberErr === 'wait') { K().note(b, 'Waiting for the game to finish loading...'); waitForGame(); return; }
     var search = K().input({ placeholder: 'Search tools', label: 'Search tools' });
     search.value = S.query;
@@ -452,9 +477,12 @@
     S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
     if (fresh) reportUse(t);
     if (S.view) { closeCard(); if (!trackerBusy()) { stopObserver(); hideFab(); removeRoot(); } }
+    loadToolScripts(t).catch(function () { ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.'); });
+  }
+  function loadToolScripts(t) {
     var chain = Promise.resolve();
     t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag and Jam helpers are optional
-    chain.catch(function () { ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.'); });
+    return chain;
   }
   function hideFab() { if (S.fab) { S.fab.remove(); S.fab = null; } }
 
@@ -481,6 +509,7 @@
     regFromStore();
     if (S.view === 'menu') openMenu();
     askRegistered();
+    if (S.memberErr === 'not') reportVisitor();
   }
   function toggle() {
     if (!S.started) return;                             // still loading: the first tap opens the menu

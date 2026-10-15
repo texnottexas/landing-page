@@ -682,3 +682,81 @@ test('OPS-REG-6: with no registry tool in the list, the Ops Center never asks', 
   assert.equal(visibleAsks(usage).length, 0);
   await ctx.close();
 });
+
+// Tex 2026-10-15: players the Ops Center turns away are logged once per launch with their name and home server
+// (tool 'outsider' from another server, 'not-on-roster' on 2864; siteKey from the UID, never the UID). Players from
+// another server also get Rickroll, started the way Jam starts it, while the restricted message stays up.
+const usageReports = (usage) => usage.filter((u) => u.url === WORKER + '/ops/usage').map((u) => JSON.parse(u.body));
+const rrCount = (page) => page.$$eval('#rr-root', (els) => els.length);
+async function waitReports(page, usage, n) { for (let i = 0; i < 30 && usageReports(usage).length < n; i++) await page.waitForTimeout(100); }
+
+test('OPS-OUT-1: from another server: the message stays, Rickroll starts at its list version, and the visit is logged with name and server', async () => {
+  const { ctx, page, usage } = await open(PHONE, () => { window.__fake.server = 619; }, { alongside: true });
+  await assertRestricted(page);
+  await page.waitForSelector('#rr-root', { timeout: 3000 });
+  assert.equal(await rrCount(page), 1);
+  assert.match(await page.evaluate(() => window.__rrSrc), /fake-rickroll\.js\?v=1$/);
+  assert.equal(await page.$$eval('.ops-note', (n) => n.filter((e) => e.textContent.includes('influx')).length), 1, 'the message is still up');
+  await waitReports(page, usage, 1);
+  assert.deepEqual(usageReports(usage), [{ siteKey: '03c2cd3196b2f243', name: 'Tester', tool: 'outsider', version: '1', open: true, server: 619 }]);
+  assert.ok(usage.every((u) => !String(u.body || '').includes('1000000000001')), 'no UID');
+  await ctx.close();
+});
+
+test('OPS-OUT-2: on 2864 but not on the roster: the message only, no Rickroll; logged as not on the roster with server 2864', async () => {
+  const { ctx, page, usage } = await open(PHONE, () => { window.__fake.uid = '1000000000002'; window.__fake.name = 'New Guy'; }, { alongside: true });
+  await assertRestricted(page);
+  await waitReports(page, usage, 1);
+  await page.waitForTimeout(500);
+  assert.equal(await rrCount(page), 0);
+  assert.equal(await page.evaluate(() => window.__rrLoads || 0), 0);
+  assert.deepEqual(usageReports(usage), [{ siteKey: '2f9bc8619956f5da', name: 'New Guy', tool: 'not-on-roster', version: '1', open: true, server: 2864 }]);
+  await ctx.close();
+});
+
+test('OPS-OUT-3: opening the menu again while it plays loads nothing new; after Stop it starts again; the visit is logged once per launch', async () => {
+  const { ctx, page, usage } = await open(PHONE, () => { window.__fake.server = 619; }, { alongside: true });
+  await page.waitForSelector('#rr-root', { timeout: 3000 });
+  await page.evaluate(() => window.OpsCenter.toggle());                // close
+  await page.evaluate(() => window.OpsCenter.toggle());                // open again
+  await page.waitForSelector('.ops-note:has-text("' + RESTRICTED + '")');
+  await page.waitForTimeout(400);
+  assert.equal(await page.evaluate(() => window.__rrLoads), 1, 'still playing: not loaded again');
+  // the message sits above Rickroll (the Ops Center is the top layer); once it is closed, Rickroll's Stop answers
+  await page.evaluate(() => window.OpsCenter.toggle());                // close the message
+  await page.click('#rr-stop');
+  await page.evaluate(() => window.OpsCenter.toggle());                // open again: it starts again
+  await page.waitForSelector('#rr-root', { timeout: 3000 });
+  assert.equal(await page.evaluate(() => window.__rrLoads), 2);
+  await page.waitForTimeout(300);
+  assert.equal(usageReports(usage).length, 1, 'one log per launch');
+  await ctx.close();
+});
+
+test('OPS-OUT-4: a member gets neither Rickroll nor a visitor log', async () => {
+  const { ctx, page, usage } = await open(PHONE, null, { alongside: true });
+  await page.waitForSelector('.ops-tile');
+  await page.waitForTimeout(800);
+  assert.equal(await rrCount(page), 0);
+  assert.equal(usageReports(usage).length, 0);
+  await ctx.close();
+});
+
+test('OPS-OUT-5: no Rickroll in the tool list: the message and the log, nothing else', async () => {
+  const { ctx, page, usage } = await open(PHONE, () => { window.__fake.server = 619; });
+  await assertRestricted(page);
+  await waitReports(page, usage, 1);
+  await page.waitForTimeout(400);
+  assert.equal(await rrCount(page), 0);
+  assert.equal(usageReports(usage)[0].tool, 'outsider');
+  await ctx.close();
+});
+
+test('OPS-OUT-6: home server unknown and not on the roster: logged without a server', async () => {
+  const { ctx, page, usage } = await open(PHONE, () => { window.__fake.uid = '1000000000002'; window.__fake.server = 0; }, { alongside: true });
+  await assertRestricted(page);
+  await waitReports(page, usage, 1);
+  assert.deepEqual(usageReports(usage), [{ siteKey: '2f9bc8619956f5da', name: 'Tester', tool: 'not-on-roster', version: '1', open: true }]);
+  assert.equal(await rrCount(page), 0);
+  await ctx.close();
+});

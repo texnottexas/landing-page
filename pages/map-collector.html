@@ -151,6 +151,7 @@
   .usage-player { padding: 10px 0; border-top: 1px solid var(--line-soft); min-width: 0; }
   .usage-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
   .usage-name { font-weight: 600; overflow-wrap: anywhere; }
+  .usage-server { font: 500 12px/1 var(--mono); color: var(--faint); margin-left: 8px; white-space: nowrap; }
   .usage-when { font: 500 12px/1 var(--mono); color: var(--faint); white-space: nowrap; }
   .usage-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .usage-tool { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--line); color: var(--muted); }
@@ -341,6 +342,8 @@
   // Who used which Ops Center tool (Tex, 2026-10-08): only when the state answer says this password may see it.
   // The period switch picks the game days: 24 h is today since reset (12:00 PM ET), then 3, 7 or 14 days.
   var toolTitles = null, usageSeq = 0, COUNT_UNIT = { 'mask-boxes': ['box', 'boxes'], 'angels': ['attack', 'attacks'], 'refugee-camps': ['camp', 'camps'], 'ht-gifts': ['claim', 'claims'], 'enigma-veins': ['vein', 'veins'] };
+  // players the Ops Center turned away (Tex 2026-10-15): not tools, so not in ops-tools.json
+  var VISITOR_TITLES = { 'outsider': 'Not from 2864 (rickrolled)', 'not-on-roster': 'Not on the roster' };
   function loadToolTitles() {
     if (toolTitles) return Promise.resolve(toolTitles);
     return fetch('ops-tools.json', { cache: 'no-store' })
@@ -369,8 +372,10 @@
     var byPlayer = {}, byTool = {};
     j.rows.forEach(function (x) {
       if (!x || typeof x.siteKey !== 'string' || typeof x.tool !== 'string') return;
-      var p = byPlayer[x.siteKey] || (byPlayer[x.siteKey] = { name: '', lastAt: 0, tools: {} });
+      var p = byPlayer[x.siteKey] || (byPlayer[x.siteKey] = { name: '', lastAt: 0, tools: {}, server: null, serverAt: -1 });
       if (x.lastAt >= p.lastAt) { p.lastAt = x.lastAt; p.name = String(x.name || ''); }
+      var sv = Number(x.server);
+      if (x.server != null && sv >= 1 && sv <= 99999 && sv % 1 === 0 && x.lastAt >= p.serverAt) { p.server = sv; p.serverAt = x.lastAt; }   // home server, sent for players turned away
       var t = p.tools[x.tool] || (p.tools[x.tool] = { id: x.tool, opens: 0, count: null, lastAt: 0 });
       t.opens += Number(x.opens) || 0;
       if (x.count != null) t.count = (t.count || 0) + (Number(x.count) || 0);
@@ -379,7 +384,7 @@
       s.players[x.siteKey] = 1;
       if (x.count != null) s.count = (s.count || 0) + (Number(x.count) || 0);
     });
-    function title(id) { return titles[id] || id; }
+    function title(id) { return titles[id] || VISITOR_TITLES[id] || id; }
     function unit(id, n) { var u = COUNT_UNIT[id]; return u ? plural(n, u[0], u[1]) : String(n); }
     function when(ms) { var d = new Date(ms); return d.toDateString() === new Date(now()).toDateString() ? clock(ms) : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + clock(ms); }
     var players = Object.keys(byPlayer).map(function (k) { return byPlayer[k]; }).sort(function (a, b) { return b.lastAt - a.lastAt; });
@@ -397,7 +402,10 @@
     var list = $('dash-usage-list'); list.textContent = '';
     players.forEach(function (p) {
       var li = el('li', 'usage-player'), head = el('div', 'usage-head'), chips = el('div', 'usage-chips');
-      head.appendChild(el('span', 'usage-name', p.name));
+      var who = el('div');
+      who.appendChild(el('span', 'usage-name', p.name));
+      if (p.server) who.appendChild(el('span', 'usage-server', 'S' + p.server));
+      head.appendChild(who);
       head.appendChild(el('span', 'usage-when', when(p.lastAt)));
       Object.keys(p.tools).map(function (k) { return p.tools[k]; }).sort(function (a, b) { return b.lastAt - a.lastAt; }).forEach(function (t) {
         chips.appendChild(el('span', 'usage-tool', title(t.id) + (t.opens > 1 ? ' ×' + t.opens : '') + (t.count != null ? ' · ' + unit(t.id, t.count) : '')));
