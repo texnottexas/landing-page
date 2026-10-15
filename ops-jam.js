@@ -18,6 +18,25 @@
   var LOAD_MS = root.__JAM_LOAD_MS || 15000;               // a load that never answers gives up, so the note isn't stuck
   var MUTED = '#8b949e', ON = '#79c0ff', WARN = '#d29922';
   function playing() { return !!(root.__RR && document.getElementById('rr-root')); }
+  var WORKER = root.__JAM_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
+  // The game: this page, or the game Map Collector runs in a frame in Unattended mode.
+  function gameWindow() { try { var f = document.getElementById('mapc-frame'); if (f && f.contentWindow && f.contentWindow.__require) return f.contentWindow; } catch (e) {} return root; }
+  function sha256Hex(text) {
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)).then(function (b) {
+      return Array.prototype.map.call(new Uint8Array(b), function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    });
+  }
+  // A Jam start counts on the Tool usage panel like an Ops Center launch (Tex 2026-10-14): siteKey (a hash of the game's
+  // UID, never the UID), in-game name, tool, version, open. A failed report never touches the song.
+  function report(version) {
+    var u = null; try { u = gameWindow().__require('DataCenter').DATA.UserData; } catch (e) { return; }
+    var id = u ? String(u.StrUid || u._uid || '') : ''; if (!id) return;
+    var name = String(u.Name || '').slice(0, 40);
+    sha256Hex(id).then(function (h) {
+      return fetch(WORKER + '/ops/usage', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, cache: 'no-store', keepalive: true,
+        body: JSON.stringify({ siteKey: h.slice(0, 16), name: name, tool: 'rickroll', version: String(version), open: true }) });
+    }).catch(function () {});
+  }
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
       var s = document.createElement('script'); s.src = src;
@@ -29,18 +48,19 @@
   function start() {
     if (loading) return;
     loading = true; paintAll();
-    var base = root.__OPS_BASE || 'https://2864tw.com/';
+    var base = root.__OPS_BASE || 'https://2864tw.com/', ver = '';
     var load = fetch(base + 'ops-tools.json?_=' + Date.now(), { cache: 'no-store' })
       .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
       .then(function (reg) {
         var j = jamScripts(reg);
         if (!j) throw new Error('not listed');
+        ver = j.version;
         return j.scripts.reduce(function (p, f) {
           return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(j.version)); return /^ops-(drag|jam)\.js$/.test(f) ? q.catch(function () {}) : q; });   // the helpers are optional
         }, Promise.resolve());
       });
     Promise.race([load, new Promise(function (ok, no) { setTimeout(function () { no(new Error('timed out')); }, LOAD_MS); })])
-      .then(function () { loading = false; paintAll(); }, function () { loading = false; failedUntil = Date.now() + 4000; paintAll(); });
+      .then(function () { loading = false; if (playing()) report(ver); paintAll(); }, function () { loading = false; failedUntil = Date.now() + 4000; paintAll(); });
   }
   function toggle(e) {
     e.stopPropagation(); e.preventDefault();                // a folded card's title opens it on a click: not this one

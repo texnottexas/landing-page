@@ -320,3 +320,24 @@ test('VEIN-JAM-2 (review 2026-10-14): the tool list never answers: the note give
   await page.waitForFunction(() => { const b = document.querySelector('#vein-root .ops-jam'); return b.getAttribute('aria-busy') === 'false' && /Couldn't load Rickroll/.test(b.getAttribute('aria-label')); }, null, { timeout: 4000 });
   await ctx.close();
 });
+
+test('VEIN-JAM-3 (Tex 2026-10-14): a Jam start counts on the Tool usage panel like an Ops Center launch (siteKey, name, rickroll, its version, open; no UID); a stop counts nothing', async () => {
+  const { ctx, page } = await open(VEINS, [[{ x: 1, y: 1 }]]);
+  await page.evaluate((b) => { window.__OPS_BASE = b; window.__JAM_WORKER = b.replace(/\/$/, ''); }, base);
+  await page.addScriptTag({ url: base + 'ops-jam.js' });
+  await launch(page);
+  const ver = JSON.parse(fs.readFileSync(path.join(ROOT, 'ops-tools.json'), 'utf8')).tools.find((t) => t.id === 'rickroll').version;
+  await page.click('#vein-root .ops-jam');
+  await page.waitForSelector('#rr-root');
+  await page.waitForTimeout(500);
+  const rr = () => usageLog.filter((u) => u.body && u.body.tool === 'rickroll');
+  assert.equal(rr().length, 1, 'one start, one report');
+  assert.deepEqual(rr()[0].body, { siteKey: SK, name: 'Tex', tool: 'rickroll', version: ver, open: true });
+  assert.equal(rr()[0].type, 'text/plain');
+  assert.ok(!rr()[0].raw.includes(UID), 'no UID');
+  await page.click('#vein-root .ops-jam');                           // stop
+  await page.waitForSelector('#rr-root', { state: 'detached' });
+  await page.waitForTimeout(500);
+  assert.equal(rr().length, 1, 'a stop counts nothing');
+  await ctx.close();
+});
