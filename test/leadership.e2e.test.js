@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const W = 'https://push-worker.27tb8s6fct.workers.dev';
 const ROOT = path.join(__dirname, '..');
-const SHOTS = path.join(ROOT, '.superpowers', 'sdd', '2026-10-15-leadership-page');
+const SHOTS = process.env.LD_SHOTS || null;
 const FILES = {
   '/leadership.html': [path.join(ROOT, 'pages', 'leadership.html'), 'text/html'],
   '/index.html': [path.join(ROOT, 'pages', 'index.html'), 'text/html'],
@@ -189,6 +189,9 @@ test('LD-ADD: counters show, the idea lands under New, and the list order is sta
   const order = await page.locator('.ld-idea .ttl, .idea .ttl').allInnerTexts();
   assert.deepEqual(order, ['Publish reward scope and requirements before the main event starts', 'MM of the week recognition', 'Set aside a share of final rewards for MMs only', 'Score leaderboard for tracking (gamify)']);
   assert.match(await page.innerText('.chips'), /All 4/);
+  assert.equal(await page.locator('#ld-addbox').isVisible(), false, 'form starts collapsed');
+  await page.click('#ld-new');
+  assert.equal(await page.locator('#ld-addbox').isVisible(), true);
   await page.fill('#ld-title', 'Rally calendar');
   await page.fill('#ld-details', 'line one\nline two');
   assert.equal((await page.innerText('#ld-title-count')).trim(), '14 / 120');
@@ -197,6 +200,7 @@ test('LD-ADD: counters show, the idea lands under New, and the list order is sta
   await page.waitForSelector('text=Rally calendar');
   assert.equal(last('/lead/idea').body.idea.title, 'Rally calendar');
   assert.equal(await page.inputValue('#ld-title'), '');
+  assert.equal(await page.locator('#ld-addbox').isVisible(), false, 'collapses after add');
   const c = card(page, 'n10');
   assert.match(await c.innerText(), /new/i);
   assert.match(await c.innerText(), /by Tex/);
@@ -206,32 +210,49 @@ test('LD-ADD: counters show, the idea lands under New, and the list order is sta
   await ctx.close();
 });
 
-test('LD-VOTE: +1 toggles on and off', async () => {
+test('LD-VOTE: Support toggles on and off', async () => {
   const { ctx, page } = await open();
   const v = card(page, 'i2').locator('.ld-vote');
-  assert.match(await v.innerText(), /4/);
+  assert.equal((await v.innerText()).trim(), 'Support');
+  assert.equal(await card(page, 'i2').locator('.ld-votes').innerText(), '4 leaders support this');
   await v.click();
-  await page.waitForFunction(() => /5/.test(document.querySelector('.idea[data-id="i2"] .ld-vote').innerText));
+  await page.waitForFunction(() => /^Supported/.test(document.querySelector('.idea[data-id="i2"] .ld-vote').innerText.trim()));
   assert.equal(await card(page, 'i2').locator('.ld-vote').getAttribute('aria-pressed'), 'true');
+  assert.equal(await card(page, 'i2').locator('.ld-votes').innerText(), '5 leaders support this');
   assert.equal(last('/lead/idea/vote').body.vote, true);
   await card(page, 'i2').locator('.ld-vote').click();
-  await page.waitForFunction(() => /4/.test(document.querySelector('.idea[data-id="i2"] .ld-vote').innerText));
+  await page.waitForFunction(() => document.querySelector('.idea[data-id="i2"] .ld-vote').innerText.trim() === 'Support');
   assert.equal(await card(page, 'i2').locator('.ld-vote').getAttribute('aria-pressed'), 'false');
   assert.equal(last('/lead/idea/vote').body.vote, false);
+  await ctx.close();
+});
+
+test('LD-VOTE: zero support wording, one leader, and the Comment label with no comments', async () => {
+  st.ideas.push(idea('z0', 'Zero idea', 'new', 0, Date.now()));
+  const { ctx, page } = await open();
+  const c = card(page, 'z0');
+  assert.equal(await c.locator('.ld-votes').innerText(), 'No support yet');
+  assert.equal((await c.locator('.ld-ctoggle').innerText()).trim(), 'Comment');
+  await c.locator('.ld-vote').click();
+  await page.waitForFunction(() => document.querySelector('.idea[data-id="z0"] .ld-votes').innerText === '1 leader supports this');
+  await card(page, 'z0').locator('.ld-ctoggle').click();
+  assert.equal((await card(page, 'z0').locator('.ld-ctoggle').innerText()).trim(), 'Hide comments');
+  assert.match(await card(page, 'z0').innerText(), /No comments yet\./);
   await ctx.close();
 });
 
 test('LD-COMMENT: add a comment, then remove your own', async () => {
   const { ctx, page } = await open();
   const c = card(page, 'i4');
-  assert.match(await c.locator('.ld-ctoggle').innerText(), /Comments 1/);
+  assert.match(await c.locator('.ld-ctoggle').innerText(), /1 comment/);
   await c.locator('.ld-ctoggle').click();
+  assert.match(await c.locator('.ld-ctoggle').innerText(), /Hide comments/);
   assert.equal(await c.locator('.ld-cdel').count(), 0, 'a member cannot remove someone else\'s comment');
   await c.locator('.ld-ctext').fill('Count me in');
   await c.locator('.ld-cadd').click();
   await page.waitForSelector('text=Count me in');
   assert.deepEqual({ ...last('/lead/idea/comment').body }, { id: 'i4', text: 'Count me in' });
-  assert.match(await card(page, 'i4').locator('.ld-ctoggle').innerText(), /Comments 2/);
+  assert.match(await card(page, 'i4').locator('.ld-ctoggle').innerText(), /2 comments|Hide comments/);
   await card(page, 'i4').locator('.cm', { hasText: 'Count me in' }).locator('.ld-cdel').click();
   await page.waitForFunction(() => !/Count me in/.test(document.body.innerText));
   assert.equal(typeof last('/lead/comment/delete').body.id, 'number');
@@ -291,6 +312,7 @@ test('LD-CONFLICT: a 409 keeps the text and offers Load latest', async () => {
 test('LD-EXPIRED: a 401 brings the sign-in overlay and the text is kept', async () => {
   const { ctx, page } = await open();
   st.over['/lead/idea'] = () => [401, { error: 'signed_out' }];
+  await page.click('#ld-new');
   await page.fill('#ld-title', 'Keep me');
   await page.fill('#ld-details', 'Please keep this');
   await page.click('#ld-add');
@@ -335,7 +357,7 @@ test('LD-XSS: hostile title, details, comment and author names stay inert', asyn
 test('LD-MOBILE: 360 px has no horizontal scroll and the screenshots are saved', async () => {
   st = fresh('lead');
   st.ideas.push(idea('long', 'A'.repeat(110), 'new', 2, Date.now(), { details: 'B'.repeat(300), authorName: 'C'.repeat(40), comments: [{ id: 98, authorName: 'D', text: 'E'.repeat(200), createdAt: Date.now(), mine: true }] }));
-  fs.mkdirSync(SHOTS, { recursive: true });
+  if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
   for (const [name, width] of [['desktop', 1280], ['mobile', 360]]) {
     const { ctx, page } = await open({ width });
     await card(page, 'long').locator('.ld-ctoggle').click();
@@ -343,7 +365,7 @@ test('LD-MOBILE: 360 px has no horizontal scroll and the screenshots are saved',
     assert.ok(over <= 0, name + ' horizontal overflow ' + over);
     const small = await page.evaluate(() => Array.from(document.querySelectorAll('button, a.ld-link, select, input')).filter((e) => e.offsetParent && e.getBoundingClientRect().height < 43).map((e) => e.className || e.id));
     assert.deepEqual(small, [], name + ' tap targets under 44px');
-    await page.screenshot({ path: path.join(SHOTS, 'task-3-leadership-' + name + '.png'), fullPage: true });
+    if (SHOTS) await page.screenshot({ path: path.join(SHOTS, 'task-3-leadership-' + name + '.png'), fullPage: true });
     await ctx.close();
   }
 });
