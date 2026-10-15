@@ -522,3 +522,15 @@ test('M-FIX12: after a re-sign-in from the overlay, the admin load runs again', 
   assert.ok(calls.filter((c) => c.path === '/lounge/admin').length > n, 'admin reloaded');
   await ctx.close();
 });
+
+test('M-LOUNGE-LINK: the header links to the Learning Lounge, signed in or not (Tex)', async () => {
+  for (const signedIn of [false, true]) {
+    const { ctx, page } = await open({ signedIn, width: 360 });
+    const a = page.locator('header #lm-lounge');
+    assert.equal(await a.isVisible(), true, 'visible, signedIn=' + signedIn);
+    assert.equal(await a.getAttribute('href'), '/learn.html');
+    assert.equal((await a.innerText()).trim(), 'Learning Lounge');
+    assert.ok((await a.boundingBox()).height >= 44, 'tap target');
+    await ctx.close();
+  }
+});
