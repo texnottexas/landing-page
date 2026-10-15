@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://push-worker.27tb8s6fct.workers.dev; object-src 'none'; base-uri 'self'; form-action 'self'">
+<title>Learning Lounge Mentors - Server 2864</title>
+<style>
+:root { --bg:#0d1117; --surface:#161b22; --card:#1c2128; --border:#30363d; --text:#e6edf3; --muted:#8b949e; --accent:#79c0ff; --green:#3fb950; --blue:#388bfd; --yellow:#d29922; --red:#f85149;
+  --display:"Bahnschrift","DIN Condensed","DIN Alternate","Avenir Next Condensed","Arial Narrow",sans-serif; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { color-scheme: dark; }
+body { background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; min-height: 100vh; overflow-x: hidden; }
+[hidden] { display: none !important; }
+a { color: var(--accent); }
+button, input, select, textarea { font: inherit; color: var(--text); }
+button { cursor: pointer; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; min-height: 44px; }
+button:hover { border-color: var(--accent); }
+button.pri { background: var(--blue); border-color: var(--blue); color: #fff; }
+button.warn { border-color: var(--red); color: var(--red); }
+button.ghost { background: none; }
+input, select, textarea { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; min-height: 44px; width: 100%; max-width: 100%; }
+textarea { min-height: 96px; resize: vertical; }
+input:focus, select:focus, textarea:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+label { display: block; color: var(--muted); font-size: 13px; margin: 12px 0 4px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row > * { min-width: 0; }
+.grow { flex: 1 1 160px; }
+.hint { color: var(--muted); font-size: 13px; margin: 4px 0; }
+.msg { font-size: 14px; margin: 8px 0; color: var(--accent); }
+.err { color: var(--red); font-size: 14px; margin: 8px 0; }
+header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+header h1 { font: 700 22px var(--display); letter-spacing: .02em; flex: 1 1 200px; }
+header a.home { text-decoration: none; font-size: 20px; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.chip { background: var(--card); border: 1px solid var(--border); border-radius: 99px; padding: 6px 12px; font-size: 13px; overflow-wrap: anywhere; }
+.pill { display: inline-block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; border-radius: 99px; padding: 2px 8px; border: 1px solid var(--border); color: var(--muted); }
+.pill.published { color: var(--green); border-color: var(--green); }
+.pill.draft { color: var(--yellow); border-color: var(--yellow); }
+.pill.archived { color: var(--muted); }
+.pill.lead { color: var(--accent); border-color: var(--accent); }
+main { max-width: 960px; margin: 0 auto; padding: 16px; }
+#lm-signin .box { max-width: 480px; margin: 40px auto; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+#lm-signin.overlay { position: fixed; inset: 0; z-index: 100; background: rgba(13,17,23,.94); overflow-y: auto; padding: 0 12px; }
+#lm-signin h2 { font: 700 20px var(--display); margin-bottom: 8px; }
+.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; background: none; white-space: nowrap; }
+.tabs button[aria-selected="true"] { border-bottom-color: var(--accent); color: var(--accent); }
+.badge { display: inline-block; background: var(--red); color: #fff; border-radius: 99px; font-size: 11px; padding: 1px 7px; margin-left: 4px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin: 8px 0; overflow-wrap: anywhere; }
+.lm-row { display: block; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 6px 0; overflow-wrap: anywhere; }
+.lm-row .t { font-weight: 600; }
+.lm-row .m { color: var(--muted); font-size: 13px; margin-top: 2px; }
+h3.sec { font: 700 17px var(--display); margin: 18px 0 6px; letter-spacing: .02em; }
+#lm-editor { position: fixed; top: 0; right: 0; bottom: 0; width: min(620px, 100%); background: var(--surface); border-left: 1px solid var(--border); z-index: 50; overflow-y: auto; padding: 16px; box-shadow: -8px 0 24px rgba(0,0,0,.5); }
+#lm-preview { background: var(--bg); border: 1px dashed var(--border); border-radius: 6px; padding: 8px 12px; min-height: 44px; overflow-wrap: anywhere; }
+#lm-preview h3, #lm-preview h4 { margin: 8px 0 4px; } #lm-preview ul, #lm-preview ol { margin: 4px 0 4px 22px; } #lm-preview p { margin: 4px 0; }
+.sim { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; border: 1px solid var(--yellow); border-radius: 6px; padding: 6px 8px; margin: 6px 0; overflow-wrap: anywhere; }
+.sim .q { flex: 1 1 140px; }
+#lm-banner:not(:empty) { background: rgba(210,153,34,.15); border: 1px solid var(--yellow); border-radius: 6px; padding: 10px; margin: 10px 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.chipx { display: inline-flex; align-items: center; background: var(--bg); border: 1px solid var(--border); border-radius: 99px; padding: 0 0 0 10px; overflow-wrap: anywhere; }
+.chipx button { border: 0; background: none; min-width: 36px; min-height: 36px; padding: 0; }
+.why { color: var(--muted); font-size: 13px; }
+.diff { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.diff pre { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; max-height: 320px; overflow: auto; }
+details.yours { margin: 8px 0; } details.yours pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); padding: 8px; border-radius: 6px; }
+@media (max-width: 600px) { .diff { grid-template-columns: 1fr; } main { padding: 12px; } #lm-editor { padding: 12px; } }
+</style>
+</head>
+<body>
+<header>
+  <a class="home" href="/" aria-label="Home">&#8962;</a>
+  <h1>Learning Lounge · Mentors</h1>
+  <span class="chip" id="lm-chip" hidden></span>
+  <button id="lm-signout" class="ghost" hidden>Sign out</button>
+</header>
+
+<div id="lm-signin" hidden>
+  <div class="box">
+    <h2>Mentor sign in</h2>
+    <p class="hint">Mentors sign in with their in-game UID (the 12 or 13 digit number on your in-game profile). It is checked once and only a sign-in pass is kept in this browser.</p>
+    <label for="lm-uid">Your in-game ID</label>
+    <input id="lm-uid" inputmode="numeric" autocomplete="off">
+    <div id="lm-pass-wrap" hidden>
+      <label for="lm-pass">Mentor passphrase</label>
+      <input id="lm-pass" type="password" autocomplete="off" hidden>
+    </div>
+    <div class="err" id="lm-signin-err" role="alert"></div>
+    <div class="row"><button class="pri" id="lm-signin-go">Sign in</button><button class="ghost" id="lm-signin-cancel" hidden>Not now</button></div>
+  </div>
+</div>
+
+<main id="lm-app" hidden>
+  <div class="err" id="lm-lost" role="alert"></div>
+  <div class="tabs" role="tablist">
+    <button role="tab" id="lm-tab-questions" data-tab="questions">Questions</button>
+    <button role="tab" id="lm-tab-inbox" data-tab="inbox">Inbox<span class="badge" id="lm-badge" hidden>0</span></button>
+    <button role="tab" id="lm-tab-chapters" data-tab="chapters">Chapters</button>
+    <button role="tab" id="lm-tab-words" data-tab="words">Same words</button>
+    <button role="tab" id="lm-tab-mentors" data-tab="mentors">Mentors</button>
+    <button role="tab" id="lm-tab-history" data-tab="history">History</button>
+  </div>
+
+  <section id="lm-p-questions" role="tabpanel">
+    <div class="row">
+      <input class="grow" id="lm-filter" placeholder="Filter questions" aria-label="Filter questions">
+      <select class="grow" id="lm-fcat" aria-label="Chapter"></select>
+      <select id="lm-fstatus" aria-label="Status" style="width:auto"><option value="">All</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select>
+      <button class="pri" id="lm-new">New question</button>
+    </div>
+    <div id="lm-list"></div>
+    <h3 class="sec">Try a search</h3>
+    <p class="hint">See what a player would find, and why.</p>
+    <input id="lm-try" placeholder="Type what a player might type" aria-label="Try a search">
+    <div id="lm-try-out"></div>
+  </section>
+
+  <section id="lm-p-inbox" role="tabpanel" hidden>
+    <h3 class="sec">Questions from players</h3>
+    <div id="lm-asks"></div>
+    <h3 class="sec">Searches that found nothing</h3>
+    <div id="lm-misses"></div>
+  </section>
+
+  <section id="lm-p-chapters" role="tabpanel" hidden>
+    <div id="lm-chapters"></div>
+    <h3 class="sec">Add chapter</h3>
+    <div class="card">
+      <label for="lm-nc-name">Name</label><input id="lm-nc-name" maxlength="80">
+      <label for="lm-nc-blurb">Short blurb</label><input id="lm-nc-blurb" maxlength="200">
+      <label for="lm-nc-sort">Sort</label><input id="lm-nc-sort" type="number" value="99">
+      <div class="row" style="margin-top:10px"><button class="pri" id="lm-nc-add">Add chapter</button></div>
+    </div>
+    <div class="msg" id="lm-ch-msg"></div>
+  </section>
+
+  <section id="lm-p-words" role="tabpanel" hidden>
+    <p class="hint">Use this for words that mean the same thing everywhere. For a different way to ask one question, add it to that question's other wordings instead. Changes apply to everyone's search.</p>
+    <div id="lm-groups"></div>
+    <div class="row" style="margin-top:10px"><button id="lm-syn-addgroup">Add group</button><button class="pri" id="lm-syn-save">Save changes</button></div>
+    <div class="msg" id="lm-syn-msg"></div>
+  </section>
+
+  <section id="lm-p-mentors" role="tabpanel" hidden>
+    <div id="lm-mentors"></div>
+    <div id="lm-lead" hidden>
+      <h3 class="sec">Appoint a mentor</h3>
+      <div class="card" id="lm-appoint">
+        <input id="lm-appoint-search" placeholder="Search the roster" aria-label="Search the roster">
+        <select id="lm-appoint-pick" aria-label="Roster member" style="margin-top:8px"></select>
+        <div class="row" style="margin-top:8px"><button class="pri" id="lm-appoint-go">Appoint</button></div>
+      </div>
+      <h3 class="sec">Sign everyone out</h3>
+      <p class="hint">Every mentor, including you, will need to sign in again.</p>
+      <button class="warn" id="lm-signout-all">Sign everyone out</button>
+    </div>
+    <div class="msg" id="lm-mentor-msg"></div>
+  </section>
+
+  <section id="lm-p-history" role="tabpanel" hidden>
+    <div id="lm-history"></div>
+    <div class="row" style="margin-top:10px"><button id="lm-older">Older</button></div>
+    <div id="lm-diffwrap"></div>
+  </section>
+</main>
+
+<aside id="lm-editor" hidden aria-label="Question editor">
+  <div class="row"><h3 class="sec grow" style="margin:0" id="lm-editor-title">Question</h3><button id="lm-close" class="ghost">Close</button></div>
+  <div id="lm-banner" role="alert"></div>
+  <details class="yours" id="lm-yours" hidden><summary>Your version</summary><pre id="lm-yours-text"></pre></details>
+  <label for="lm-q">Question</label>
+  <input id="lm-q" maxlength="200">
+  <div id="lm-similar"></div>
+  <label for="lm-a">Answer</label>
+  <textarea id="lm-a" maxlength="5000" rows="6"></textarea>
+  <p class="hint">Formatting: **bold**, - list, [link](/page.html), ## heading</p>
+  <label>Preview</label>
+  <div id="lm-preview"></div>
+  <label for="lm-cat">Chapter</label>
+  <select id="lm-cat"></select>
+  <label for="lm-alts">Other ways people ask this (one per line)</label>
+  <textarea id="lm-alts" rows="3"></textarea>
+  <label for="lm-kws">Keywords (comma separated)</label>
+  <input id="lm-kws">
+  <label for="lm-status">Status</label>
+  <select id="lm-status"><option value="draft">Draft</option><option value="published">Published</option></select>
+  <div class="err" id="lm-err" role="alert"></div>
+  <div class="row" style="margin-top:12px">
+    <button class="pri" id="lm-save">Save</button>
+    <button id="lm-publish">Publish</button>
+    <button id="lm-archive" class="warn">Archive</button>
+    <a id="lm-view" href="#" target="_blank" rel="noopener" hidden>View on the Lounge</a>
+  </div>
+</aside>
+
+<script src="lounge-core.js"></script>
+<script>
+(function () {
+  'use strict';
+  var WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
+  var KEY = 'll_mentor_v1';
+  var TABS = ['questions', 'inbox', 'chapters', 'words', 'mentors', 'history'];
+  var LC = window.LoungeCore;
+  var S = { token: null, me: null, entries: [], categories: [], groups: [], synVersion: 0, asks: [], misses: [], mentors: [], changelog: [], limits: { question: 200, answer: 5000, alternates: 25, keywords: 25 }, index: null, roster: null, tab: 'questions', histDone: false, change: null };
+  var D = { entry: null, askId: null, dirty: false, conflict: null };
+  var $ = function (id) { return document.getElementById(id); };
+
+  // ── helpers (all dynamic text goes through textContent) ──
+  function h(tag, props, kids) {
+    var el = document.createElement(tag);
+    Object.keys(props || {}).forEach(function (k) {
+      if (k === 'text') el.textContent = props[k]; else if (k === 'class') el.className = props[k];
+      else if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2), props[k]); else el.setAttribute(k, props[k]);
+    });
+    (kids || []).forEach(function (c) { if (c != null) el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return el;
+  }
+  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); return el; }
+  function btn(text, cls, fn) { return h('button', { text: text, class: cls || '', type: 'button', onclick: fn }); }
+  function pill(status) { return h('span', { class: 'pill ' + status, text: status === 'published' ? 'Published' : status === 'archived' ? 'Archived' : 'Draft' }); }
+  function ago(t) {
+    if (t == null) return '';
+    var ms = typeof t === 'number' ? (t < 1e12 ? t * 1000 : t) : Date.parse(t);
+    if (!ms) return '';
+    var s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    if (s < 60) return 'just now'; if (s < 3600) return Math.round(s / 60) + ' min ago';
+    if (s < 86400) return Math.round(s / 3600) + 'h ago'; return Math.round(s / 86400) + 'd ago';
+  }
+  var RANKS = { 6: 'Vice Leader', 7: 'Matriarch', 8: 'War Cmdr', 9: 'Ambassador' };
+  function rankLabel(n) {
+    if (n == null || n === '') return '';
+    var v = Number(n);
+    if (isNaN(v)) return String(n);
+    return v >= 1 && v <= 5 ? 'R' + v : (RANKS[v] || 'R' + n);
+  }
+  function catName(id) { var c = S.categories.filter(function (x) { return x.id === id; })[0]; return c ? c.name : ''; }
+  function rebuild() { S.index = LC.buildIndex(S.entries, { synonyms: S.groups, categories: S.categories }); }
+  function flash(el, text, bad) { el.textContent = text; el.className = bad ? 'err' : 'msg'; }
+
+  // ── network ──
+  function call(method, path, body, noAuth) {
+    var headers = {};
+    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    if (S.token && !noAuth) headers.Authorization = 'Bearer ' + S.token;
+    return fetch(WORKER + path, { method: method, headers: headers, body: body === undefined ? undefined : JSON.stringify(body) })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { status: r.status, data: d }; }); })
+      .catch(function () { return { status: 0, data: { error: 'network' } }; });
+  }
+  function accessLost() {
+    try { localStorage.removeItem(KEY); } catch (e) { /* none */ }
+    var msg = "Your mentor access changed, so this wasn't saved. Copy your text if you need it, then ask an R5.";
+    $('lm-lost').textContent = msg;
+    if (!$('lm-editor').hidden) $('lm-banner').textContent = msg;
+  }
+  var signinWait = null;
+  function authed(method, path, body) {
+    return call(method, path, body).then(function (r) {
+      if (r.status === 403 && ['not_mentor', 'blocked', 'not_on_roster'].indexOf(r.data && r.data.error) >= 0) { accessLost(); return r; }
+      if (r.status !== 401) return r;
+      return askSignin().then(function (ok) { return ok ? call(method, path, body) : r; });
+    });
+  }
+  function askSignin() {
+    if (signinWait) return signinWait.promise;
+    var w = {}; w.promise = new Promise(function (res) { w.res = res; }); signinWait = w;
+    showSignin(true);
+    return w.promise;
+  }
+
+  // ── sign in ──
+  function storedToken() {
+    try {
+      var v = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (!v || !v.token) return null;
+      var e = typeof v.expires === 'number' ? (v.expires < 1e12 ? v.expires * 1000 : v.expires) : Date.parse(v.expires);
+      if (e && e < Date.now()) return null;
+      return v;
+    } catch (e) { return null; }
+  }
+  function showSignin(overlay) {
+    var el = $('lm-signin');
+    el.hidden = false; el.classList.toggle('overlay', !!overlay);
+    $('lm-signin-cancel').hidden = !overlay;
+    $('lm-signin-err').textContent = '';
+    try {
+      var id = JSON.parse(localStorage.getItem('playerIdentity') || 'null');
+      var u = id && id.siteKey && localStorage.getItem('armory_uid_' + id.siteKey);
+      if (u && !$('lm-uid').value) $('lm-uid').value = String(u).replace(/\D/g, '');
+    } catch (e) { /* none */ }
+    if (!overlay) $('lm-app').hidden = true;
+    setTimeout(function () { $('lm-uid').focus(); }, 0);
+  }
+  var SIGNIN_ERR = {
+    not_mentor: "This page is for R4s, R5s, appointed officers and mentors an R5 has added. Ask an R5 if you'd like to help.",
+    not_on_roster: "That ID isn't on the Server 2864 roster yet.",
+    blocked: 'Your mentor access is paused. Ask an R5.',
+    locked: 'Too many tries, wait a few minutes.', rate_limited: 'Too many tries, wait a few minutes.',
+    uid_required: 'Enter the numbers only.',
+    passphrase: 'Enter the mentor passphrase.'
+  };
+  function submitSignin() {
+    var uid = $('lm-uid').value.replace(/\D/g, '');
+    var err = $('lm-signin-err'); err.textContent = '';
+    var body = { uid: uid };
+    if (!$('lm-pass').hidden && $('lm-pass').value) body.passphrase = $('lm-pass').value;
+    $('lm-signin-go').disabled = true;
+    call('POST', '/lounge/handshake', body, true).then(function (r) {
+      $('lm-signin-go').disabled = false;
+      var code = r.data && r.data.error;
+      if (r.status === 200 && r.data.token) {
+        S.token = r.data.token; S.me = r.data.me || S.me;
+        try { localStorage.setItem(KEY, JSON.stringify({ token: r.data.token, expires: r.data.expires })); } catch (e) { /* none */ }
+        $('lm-uid').value = ''; $('lm-pass').value = '';
+        $('lm-signin').hidden = true; $('lm-signin').classList.remove('overlay');
+        if (signinWait) { var w = signinWait; signinWait = null; setChip(); w.res(true); } else loadAdmin();
+        return;
+      }
+      if (code === 'passphrase') { $('lm-pass-wrap').hidden = false; $('lm-pass').hidden = false; $('lm-pass').focus(); }
+      err.textContent = SIGNIN_ERR[code] || "Couldn't sign in right now. Try again in a moment.";
+    });
+  }
+  function signOut() {
+    try { localStorage.removeItem(KEY); } catch (e) { /* none */ }
+    S.token = null; S.me = null; closeDrawer(true);
+    $('lm-chip').hidden = true; $('lm-signout').hidden = true;
+    showSignin(false);
+  }
+
+  // ── load ──
+  function setChip() {
+    var m = S.me; if (!m) return;
+    var chip = $('lm-chip'); clear(chip);
+    chip.appendChild(document.createTextNode([m.name, rankLabel(m.rank), m.alliance].filter(Boolean).join(' · ')));
+    if (m.role === 'lead') chip.appendChild(h('span', { class: 'pill lead', text: 'Lead', style: 'margin-left:6px' }));
+    chip.hidden = false; $('lm-signout').hidden = false;
+  }
+  function loadAdmin() {
+    return call('GET', '/lounge/admin').then(function (r) {
+      if (r.status === 401 || !S.token) { signOutQuiet(); return; }
+      if (r.status !== 200) { showSignin(false); $('lm-signin-err').textContent = SIGNIN_ERR[r.data && r.data.error] || "Couldn't load right now. Try again in a moment."; return; }
+      var d = r.data;
+      S.me = d.me || S.me; S.entries = d.entries || []; S.categories = (d.categories || []).slice().sort(function (a, b) { return (a.sort || 0) - (b.sort || 0); });
+      S.groups = ((d.synonyms && d.synonyms.groups) || []).map(function (g) { return g.slice(); }); S.synVersion = d.synonyms ? d.synonyms.version : 0;
+      S.asks = d.asks || []; S.misses = d.misses || []; S.mentors = d.mentors || []; S.changelog = d.changelog || []; S.histDone = false;
+      if (d.limits) S.limits = d.limits;
+      rebuild(); setChip();
+      $('lm-signin').hidden = true; $('lm-app').hidden = false;
+      renderAll(); showTab(tabFromHash(), true);
+    });
+  }
+  function signOutQuiet() { try { localStorage.removeItem(KEY); } catch (e) { /* none */ } S.token = null; showSignin(false); }
+  function renderAll() { renderFilters(); renderList(); renderBadge(); renderInbox(); renderChapters(); renderGroups(); renderMentors(); renderHistory(); }
+
+  // ── tabs ──
+  function tabFromHash() { var t = (location.hash || '').slice(1); return TABS.indexOf(t) >= 0 ? t : 'questions'; }
+  function showTab(t, noHash) {
+    S.tab = t;
+    TABS.forEach(function (x) { $('lm-p-' + x).hidden = x !== t; $('lm-tab-' + x).setAttribute('aria-selected', x === t ? 'true' : 'false'); });
+    if (!noHash && location.hash !== '#' + t) history.replaceState(null, '', '#' + t);
+    if (t === 'mentors') loadRoster();
+  }
+  function renderBadge() {
+    var n = S.asks.filter(function (a) { return !a.status || a.status === 'open'; }).length + S.misses.length;
+    $('lm-badge').textContent = String(n); $('lm-badge').hidden = n === 0;
+  }
+
+  // ── questions ──
+  function renderFilters() {
+    var sel = $('lm-fcat'), cur = sel.value; clear(sel);
+    sel.appendChild(h('option', { value: '', text: 'All chapters' }));
+    S.categories.forEach(function (c) { sel.appendChild(h('option', { value: c.id, text: c.name })); });
+    sel.value = cur;
+    var cs = $('lm-cat'), cc = cs.value; clear(cs);
+    cs.appendChild(h('option', { value: '', text: 'Pick a chapter' }));
+    S.categories.forEach(function (c) { cs.appendChild(h('option', { value: c.id, text: c.name })); });
+    cs.value = cc;
+  }
+  function renderList() {
+    var f = LC.normalize($('lm-filter').value), c = $('lm-fcat').value, st = $('lm-fstatus').value, box = clear($('lm-list'));
+    var rows = S.entries.filter(function (e) {
+      if (c && e.category_id !== c) return false; if (st && e.status !== st) return false;
+      if (!f) return true;
+      return [e.question].concat(e.alternates || []).some(function (t) { return LC.normalize(t).indexOf(f) >= 0; });
+    });
+    if (!rows.length) box.appendChild(h('p', { class: 'hint', text: 'No questions here yet.' }));
+    rows.forEach(function (e) {
+      var r = h('button', { class: 'lm-row', type: 'button', 'data-id': e.id }, [
+        h('div', { class: 't', text: e.question }),
+        h('div', { class: 'm' }, [pill(e.status), ' ' + catName(e.category_id) + ' · 👍 ' + (e.helpfulYes || 0) + ' / 👎 ' + (e.helpfulNo || 0) + ' · ' + (e.updatedByName || '') + ' ' + ago(e.updatedAt)])
+      ]);
+      r.addEventListener('click', function () { openDrawer(e); });
+      box.appendChild(r);
+    });
+  }
+  var WHY = { syn: ' (same word)', fuzzy: ' (typo)', prefix: ' (start of word)' };
+  function whyText(w) {
+    if (w.kind === 'fuzzy') return w.query + ' ≈ ' + w.match + WHY.fuzzy;
+    if (w.kind === 'prefix') return w.query + '… → ' + w.match + WHY.prefix;
+    return w.query + ' → ' + w.match + (WHY[w.kind] || '');
+  }
+  function renderTry() {
+    var q = $('lm-try').value.trim(), out = clear($('lm-try-out'));
+    if (!q) return;
+    var r = LC.search(S.index, q, { typing: false });
+    if (r.suggestion) out.appendChild(h('p', { class: 'hint', text: 'Did you mean: ' + r.suggestion }));
+    if (!r.results.length) out.appendChild(h('p', { class: 'hint', text: 'A player would find nothing for this.' }));
+    r.results.forEach(function (x) {
+      var card = h('div', { class: 'card' }, [h('div', { class: 't', text: x.entry.question }), pill(x.entry.status)]);
+      x.why.forEach(function (w) { card.appendChild(h('div', { class: 'why', text: whyText(w) })); });
+      out.appendChild(card);
+    });
+  }
+
+  // ── drawer ──
+  function openDrawer(entry, opts) {
+    opts = opts || {};
+    D.entry = entry && entry.id ? entry : null; D.askId = opts.askId || null; D.dirty = false; D.conflict = null;
+    var e = entry || {};
+    $('lm-q').value = e.question || ''; $('lm-a').value = e.answer || '';
+    $('lm-cat').value = e.category_id || ''; $('lm-alts').value = (e.alternates || []).join('\n'); $('lm-kws').value = (e.keywords || []).join(', ');
+    $('lm-status').value = e.status === 'published' ? 'published' : 'draft';
+    $('lm-banner').textContent = ''; $('lm-yours').hidden = true; $('lm-err').textContent = '';
+    $('lm-editor-title').textContent = D.entry ? 'Edit question' : 'New question';
+    $('lm-q').maxLength = S.limits.question || 200; $('lm-a').maxLength = S.limits.answer || 5000;
+    $('lm-editor').hidden = false;
+    syncDrawerUi(); renderPreview(); renderSimilar();
+  }
+  function syncDrawerUi() {
+    var st = D.entry ? D.entry.status : null, id = D.entry && D.entry.id;
+    $('lm-status').hidden = st === 'archived'; $('lm-status').previousElementSibling.hidden = st === 'archived';
+    $('lm-publish').hidden = st === 'archived';
+    $('lm-publish').textContent = st === 'published' ? 'Unpublish' : 'Publish';
+    $('lm-archive').hidden = !id; $('lm-archive').textContent = st === 'archived' ? 'Restore' : 'Archive';
+    $('lm-archive').className = st === 'archived' ? '' : 'warn';
+    var v = $('lm-view'); v.hidden = !id; if (id) v.href = '/learning-lounge.html?fresh=1#q-' + id;
+  }
+  function closeDrawer(force) {
+    if (!force && D.dirty && !confirm('Close without saving your changes?')) return;
+    $('lm-editor').hidden = true; D.entry = null; D.askId = null; D.dirty = false;
+  }
+  function renderPreview() { $('lm-preview').innerHTML = LC.renderAnswer($('lm-a').value); }
+  var simTimer = null;
+  function renderSimilar() {
+    var box = clear($('lm-similar')), q = $('lm-q').value.trim();
+    if (!q || !S.index) return;
+    LC.similar(S.index, q, { excludeId: D.entry && D.entry.id }).forEach(function (x) {
+      var row = h('div', { class: 'sim' }, [h('span', { class: 'q', text: x.entry.question }), x.entry.status !== 'published' ? pill(x.entry.status) : null]);
+      row.appendChild(btn('Open', 'lm-open', function () { if (D.dirty && D.entry && !confirm('Leave this question? Your unsaved changes will be lost.')) return; openDrawer(x.entry); }));
+      row.appendChild(btn('Add my wording to this one', 'lm-add-wording', function () { addWording(x.entry, q); }));
+      box.appendChild(row);
+    });
+  }
+  function addWording(target, typed) {
+    if (D.entry && D.dirty && D.entry.id !== target.id && !confirm('Leave this question? Your unsaved changes will be lost.')) return;
+    var ask = D.askId; openDrawer(target, { askId: ask });
+    var alts = $('lm-alts').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    if (alts.map(LC.normalize).indexOf(LC.normalize(typed)) < 0) alts.push(typed);
+    $('lm-alts').value = alts.join('\n'); D.dirty = true;
+  }
+  function draft(statusOverride) {
+    var lines = $('lm-alts').value.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    var alts = []; lines.forEach(function (l) { if (alts.indexOf(l) < 0) alts.push(l); });
+    var kws = []; $('lm-kws').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean).forEach(function (k) { if (kws.indexOf(k) < 0) kws.push(k); });
+    var st = statusOverride || (D.entry && D.entry.status === 'archived' ? 'archived' : $('lm-status').value);
+    var e = { question: $('lm-q').value.trim(), answer: $('lm-a').value.trim(), category_id: $('lm-cat').value, alternates: alts, keywords: kws, status: st };
+    if (D.entry) e.id = D.entry.id;
+    return e;
+  }
+  var SAVE_ERR = { question: 'Add a question.', answer: 'Add an answer.', category: 'Pick a chapter.', status: 'Pick a status.', full: 'The Lounge is full. Archive some questions first.', not_found: 'That question is gone. Copy your text before closing.', network: "Couldn't reach the Lounge. Your text is still here. Try again." };
+  function applyEntry(entry) {
+    var i = S.entries.map(function (x) { return x.id; }).indexOf(entry.id);
+    if (i >= 0) S.entries[i] = entry; else S.entries.push(entry);
+    rebuild(); renderList(); renderTry(); renderChapters();
+  }
+  function save(statusOverride) {
+    var e = draft(statusOverride), err = $('lm-err'); err.textContent = '';
+    if (!e.question) { err.textContent = SAVE_ERR.question; return; }
+    if (!e.answer) { err.textContent = SAVE_ERR.answer; return; }
+    if (!e.category_id) { err.textContent = SAVE_ERR.category; return; }
+    if (e.alternates.length > (S.limits.alternates || 25)) { err.textContent = 'At most ' + (S.limits.alternates || 25) + ' other wordings.'; return; }
+    if (e.keywords.length > (S.limits.keywords || 25)) { err.textContent = 'At most ' + (S.limits.keywords || 25) + ' keywords.'; return; }
+    var body = { entry: e }; if (D.entry) body.version = D.entry.version;
+    return authed('POST', '/lounge/entry', body).then(function (r) {
+      if (r.status === 409 && r.data.error === 'conflict' && r.data.entry) { showConflict(r.data.entry); return; }
+      if (r.status !== 200) { err.textContent = r.status === 401 ? "You're signed out. Your text is still here." : (SAVE_ERR[r.data.error] || SAVE_ERR[r.status === 0 ? 'network' : 'x'] || "Couldn't save. Try again."); return; }
+      D.entry = r.data.entry; D.dirty = false; D.conflict = null; $('lm-banner').textContent = '';
+      applyEntry(D.entry);
+      $('lm-status').value = D.entry.status === 'published' ? 'published' : 'draft';
+      $('lm-editor-title').textContent = 'Edit question'; syncDrawerUi(); renderSimilar();
+      flash($('lm-err'), 'Saved.', false);
+      if (D.askId) {
+        var id = D.askId; D.askId = null;
+        authed('POST', '/lounge/ask/resolve', { id: id, action: 'answered', entryId: D.entry.id }).then(function () {
+          S.asks = S.asks.filter(function (a) { return a.id !== id; }); renderBadge(); renderInbox();
+        });
+      }
+    });
+  }
+  function showConflict(server) {
+    D.conflict = server;
+    var b = clear($('lm-banner'));
+    b.appendChild(h('div', { text: 'Someone else changed this while you were editing.' }));
+    b.appendChild(h('button', { id: 'lm-load-latest', type: 'button', class: 'pri', text: 'Load latest', onclick: loadLatest, style: 'margin-top:8px' }));
+  }
+  function loadLatest() {
+    var mine = draft(), srv = D.conflict; if (!srv) return;
+    $('lm-yours-text').textContent = ['Question: ' + mine.question, 'Answer:\n' + mine.answer, 'Other wordings:\n' + mine.alternates.join('\n'), 'Keywords: ' + mine.keywords.join(', ')].join('\n\n');
+    var ask = D.askId; openDrawer(srv, { askId: ask }); applyEntry(srv);
+    $('lm-yours').hidden = false; $('lm-yours').open = true;
+  }
+  function changeStatus(status) {
+    if (!D.entry) return;
+    authed('POST', '/lounge/entry/status', { id: D.entry.id, status: status, version: D.entry.version }).then(function (r) {
+      if (r.status === 409 && r.data.entry) { showConflict(r.data.entry); return; }
+      if (r.status !== 200) { flash($('lm-err'), "Couldn't change that. Try again.", true); return; }
+      D.entry = r.data.entry; applyEntry(D.entry);
+      if (!D.dirty) openDrawer(D.entry, { askId: D.askId }); else syncDrawerUi();
+    });
+  }
+
+  // ── inbox ──
+  function renderInbox() {
+    var a = clear($('lm-asks')), m = clear($('lm-misses'));
+    var asks = S.asks.filter(function (x) { return !x.status || x.status === 'open'; });
+    if (!asks.length) a.appendChild(h('p', { class: 'hint', text: 'No new questions from players.' }));
+    asks.forEach(function (k) {
+      var card = h('div', { class: 'card' }, [h('div', { class: 't', text: k.question }),
+        h('div', { class: 'why', text: (k.name ? k.name + ' (not verified)' : 'Anonymous') + ' · ' + ago(k.createdAt) })]);
+      var row = h('div', { class: 'row', style: 'margin-top:8px' });
+      row.appendChild(btn('Answer', 'pri lm-answer', function () { openDrawer({ question: k.question }, { askId: k.id }); }));
+      row.appendChild(btn('Dismiss', 'lm-dismiss', function () {
+        authed('POST', '/lounge/ask/resolve', { id: k.id, action: 'dismissed' }).then(function (r) { if (r.status === 200) { S.asks = S.asks.filter(function (x) { return x.id !== k.id; }); renderBadge(); renderInbox(); } });
+      }));
+      card.appendChild(row); a.appendChild(card);
+    });
+    if (!S.misses.length) m.appendChild(h('p', { class: 'hint', text: 'No missed searches.' }));
+    S.misses.forEach(function (x) {
+      var card = h('div', { class: 'card' }, [h('div', { class: 't', text: x.sample || x.q }), h('div', { class: 'why', text: '×' + x.count + ' · last seen ' + ago(x.lastAt) })]);
+      var slot = h('div', {});
+      var row = h('div', { class: 'row', style: 'margin-top:8px' });
+      row.appendChild(btn('Add as a wording', 'lm-attach', function () { clear(slot).appendChild(attachPicker(x)); }));
+      row.appendChild(btn('New question', 'lm-newfrom', function () { openDrawer({ question: x.sample || x.q }); }));
+      row.appendChild(btn('Dismiss', 'lm-dismiss', function () {
+        authed('POST', '/lounge/miss/resolve', { q: x.q, action: 'dismiss' }).then(function (r) { if (r.status === 200) { S.misses = S.misses.filter(function (y) { return y.q !== x.q; }); renderBadge(); renderInbox(); } });
+      }));
+      card.appendChild(row); card.appendChild(slot); m.appendChild(card);
+    });
+  }
+  function attachPicker(miss) {
+    var wrap = h('div', { style: 'margin-top:8px' });
+    var near = [], seen = {};
+    function add(e) { if (e && !seen[e.id]) { seen[e.id] = 1; near.push(e); } }
+    LC.search(S.index, miss.sample || miss.q, { typing: false, limit: 5 }).results.forEach(function (r) { add(r.entry); });
+    LC.similar(S.index, miss.sample || miss.q, { min: 0.3 }).forEach(function (r) { add(r.entry); });
+    var cat = h('select', { 'aria-label': 'Chapter' }, [h('option', { value: '', text: 'All chapters' })]);
+    S.categories.forEach(function (c) { cat.appendChild(h('option', { value: c.id, text: c.name })); });
+    var pick = h('select', { class: 'lm-pick-entry', 'aria-label': 'Question' });
+    function fill() {
+      clear(pick);
+      var g1 = h('optgroup', { label: 'Closest matches' }); near.forEach(function (e) { g1.appendChild(h('option', { value: e.id, text: e.question })); });
+      if (near.length) pick.appendChild(g1);
+      var g2 = h('optgroup', { label: 'All questions' });
+      S.entries.filter(function (e) { return !cat.value || e.category_id === cat.value; }).forEach(function (e) { g2.appendChild(h('option', { value: e.id, text: e.question })); });
+      pick.appendChild(g2);
+    }
+    cat.addEventListener('change', fill); fill();
+    var err = h('div', { class: 'err' });
+    var go = btn('Attach', 'pri lm-attach-go', function () {
+      if (!pick.value) return;
+      authed('POST', '/lounge/miss/resolve', { q: miss.q, action: 'attach', entryId: pick.value }).then(function (r) {
+        if (r.status === 200) {
+          if (r.data.entry) applyEntry(r.data.entry);
+          else authed('GET', '/lounge/admin').then(function (a) { if (a.status === 200) { S.entries = a.data.entries; rebuild(); renderList(); } });
+          S.misses = S.misses.filter(function (y) { return y.q !== miss.q; }); renderBadge(); renderInbox();
+        } else err.textContent = r.data.error === 'cannot_attach' ? "That question can't take another wording. Pick another." : "Couldn't attach. Try again.";
+      });
+    });
+    [cat, pick, go, err].forEach(function (x) { x.style.marginTop = '6px'; wrap.appendChild(x); });
+    return wrap;
+  }
+
+  // ── chapters ──
+  function renderChapters() {
+    var box = clear($('lm-chapters'));
+    S.categories.forEach(function (c) {
+      var n = S.entries.filter(function (e) { return e.category_id === c.id; }).length;
+      var name = h('input', { value: c.name, maxlength: '80', 'aria-label': 'Chapter name' });
+      var blurb = h('input', { value: c.blurb || '', maxlength: '200', 'aria-label': 'Chapter blurb' });
+      var sort = h('input', { type: 'number', value: String(c.sort || 0), 'aria-label': 'Sort' });
+      var msg = h('div', { class: 'msg' }), slot = h('div', {});
+      var card = h('div', { class: 'card' }, [h('div', { class: 'why', text: n + (n === 1 ? ' question' : ' questions') }), name, h('div', { style: 'height:6px' }), blurb, h('div', { style: 'height:6px' }), sort, msg, slot]);
+      var row = h('div', { class: 'row', style: 'margin-top:8px' });
+      row.appendChild(btn('Save', 'pri', function () {
+        authed('POST', '/lounge/category', { category: { id: c.id, name: name.value.trim(), blurb: blurb.value.trim(), sort: Number(sort.value) || 0 } }).then(function (r) {
+          if (r.status === 200) { c.name = name.value.trim(); c.blurb = blurb.value.trim(); c.sort = Number(sort.value) || 0; rebuild(); renderFilters(); flash(msg, 'Saved.'); } else flash(msg, "Couldn't save. Try again.", true);
+        });
+      }));
+      row.appendChild(btn('Delete', 'warn', function () { clear(slot).appendChild(deleteForm(c, n)); }));
+      card.appendChild(row); box.appendChild(card);
+    });
+  }
+  function deleteForm(c, n) {
+    var sel = h('select', { 'aria-label': 'Move questions to' });
+    S.categories.filter(function (x) { return x.id !== c.id; }).forEach(function (x) { sel.appendChild(h('option', { value: x.id, text: x.name })); });
+    var err = h('div', { class: 'err' });
+    var go = btn('Delete chapter', 'warn lm-del-go', function () {
+      if (!sel.value) { err.textContent = 'Pick a chapter to move them to.'; return; }
+      authed('POST', '/lounge/category/delete', { id: c.id, moveTo: sel.value }).then(function (r) {
+        if (r.status === 200) loadAdmin(); else err.textContent = r.data && r.data.error === 'move_to' ? 'Pick a chapter that still exists.' : "Couldn't delete that chapter. Try again.";
+      });
+    });
+    return h('div', { style: 'margin-top:8px' }, [h('label', { text: 'Move its ' + n + ' questions to:' }), sel, err, h('div', { class: 'row', style: 'margin-top:6px' }, [go])]);
+  }
+  function addChapter() {
+    var name = $('lm-nc-name').value.trim(); if (!name) { flash($('lm-ch-msg'), 'Give the chapter a name.', true); return; }
+    authed('POST', '/lounge/category', { category: { name: name, blurb: $('lm-nc-blurb').value.trim(), sort: Number($('lm-nc-sort').value) || 0 } }).then(function (r) {
+      if (r.status === 200) { $('lm-nc-name').value = ''; $('lm-nc-blurb').value = ''; loadAdmin(); flash($('lm-ch-msg'), 'Added.'); }
+      else flash($('lm-ch-msg'), r.data.error === 'full' ? 'There are too many chapters already.' : "Couldn't add it. Try again.", true);
+    });
+  }
+
+  // ── same words ──
+  function renderGroups() {
+    var box = clear($('lm-groups'));
+    S.groups.forEach(function (g, gi) {
+      var chips = h('div', { class: 'chips' });
+      g.forEach(function (t, ti) {
+        chips.appendChild(h('span', { class: 'chipx' }, [t, h('button', { type: 'button', 'aria-label': 'Remove ' + t, text: '×', onclick: function () { g.splice(ti, 1); renderGroups(); } })]));
+      });
+      var inp = h('input', { placeholder: 'Add a word', 'aria-label': 'Add a word' });
+      function addTerm() { var v = inp.value.trim(); if (v && g.indexOf(v) < 0) { g.push(v); renderGroups(); var again = $('lm-groups').querySelectorAll('.lm-syn-add input')[gi]; if (again) again.focus(); } }
+      inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addTerm(); } });
+      var row = h('div', { class: 'row lm-syn-add', style: 'margin-top:8px' }, [inp, btn('Add', '', addTerm), btn('Delete group', 'warn', function () { S.groups.splice(gi, 1); renderGroups(); })]);
+      inp.style.flex = '1 1 140px'; inp.style.width = 'auto';
+      box.appendChild(h('div', { class: 'card' }, [chips, row]));
+    });
+  }
+  function saveSynonyms() {
+    var groups = S.groups.map(function (g) { return g.filter(Boolean); }).filter(function (g) { return g.length > 1; });
+    authed('POST', '/lounge/synonyms', { groups: groups, version: S.synVersion }).then(function (r) {
+      var msg = $('lm-syn-msg');
+      if (r.status === 200) { S.groups = r.data.synonyms.groups.map(function (g) { return g.slice(); }); S.synVersion = r.data.synonyms.version; rebuild(); renderGroups(); flash(msg, 'Saved. Everyone\'s search uses these now.'); }
+      else if (r.status === 409 && r.data.synonyms) { S.groups = r.data.synonyms.groups.map(function (g) { return g.slice(); }); S.synVersion = r.data.synonyms.version; rebuild(); renderGroups(); flash(msg, 'Someone else changed these first. The latest list is shown. Add your change again.', true); }
+      else flash(msg, "Couldn't save. Try again.", true);
+    });
+  }
+
+  // ── mentors ──
+  function renderMentors() {
+    var box = clear($('lm-mentors')), lead = S.me && S.me.role === 'lead';
+    $('lm-lead').hidden = !lead;
+    S.mentors.filter(function (m) { return m.role || m.blocked; }).forEach(function (m) {
+      var mine = S.me && m.siteKey === S.me.siteKey;
+      var tog = h('input', { type: 'checkbox', style: 'width:22px;min-height:22px' });
+      tog.checked = !!m.notify; tog.disabled = !(mine || lead);
+      tog.addEventListener('change', function () {
+        authed('POST', '/lounge/mentor', { siteKey: m.siteKey, notify: tog.checked ? 1 : 0 }).then(function (r) {
+          if (r.status === 200) Object.assign(m, r.data.mentor); else tog.checked = !tog.checked;
+        });
+      });
+      var info = h('div', { class: 'grow' }, [h('div', { class: 't', text: m.name }), h('div', { class: 'why', text: [rankLabel(m.rank), m.alliance, !m.role ? 'Paused' : (m.role === 'lead' ? 'Lead' : (m.appointed ? 'Appointed' : 'Mentor')), m.blocked && m.role ? 'Paused' : ''].filter(Boolean).join(' · ') })]);
+      var row = h('div', { class: 'card row lm-mrow' }, [info, h('label', { style: 'display:flex;gap:8px;align-items:center;margin:0' }, [tog, 'Alerts on new questions'])]);
+      if (lead) {
+        if (m.appointed) row.appendChild(btn('Remove', 'warn lm-remove', function () { mentorChange({ siteKey: m.siteKey, appointed: false }); }));
+        if (m.role !== 'lead') row.appendChild(btn(m.blocked ? 'Unpause' : 'Pause', 'lm-pause', function () { mentorChange({ siteKey: m.siteKey, blocked: !m.blocked }); }));
+      }
+      box.appendChild(row);
+    });
+  }
+  function mentorChange(body) {
+    authed('POST', '/lounge/mentor', body).then(function (r) {
+      var msg = $('lm-mentor-msg');
+      if (r.status !== 200) { flash(msg, r.data.error === 'cannot_block_lead' ? "You can't pause a lead." : "Couldn't do that. Try again.", true); return; }
+      var m = r.data.mentor, i = S.mentors.map(function (x) { return x.siteKey; }).indexOf(m.siteKey);
+      if (body.appointed === false && i >= 0) S.mentors.splice(i, 1); else if (i >= 0) S.mentors[i] = m; else S.mentors.push(m);
+      flash(msg, 'Done.'); renderMentors();
+    });
+  }
+  function loadRoster() {
+    if (S.roster || !S.me || S.me.role !== 'lead') return;
+    fetch('/player-data.json').then(function (r) { return r.json(); }).then(function (d) {
+      S.roster = (Array.isArray(d) ? d : (d.players || [])).filter(function (p) { return p && p.siteKey && p.name; })
+        .sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+      fillRoster();
+    }).catch(function () { S.roster = null; flash($('lm-mentor-msg'), "Couldn't load the roster. Try again in a moment.", true); });
+  }
+  function fillRoster() {
+    var sel = clear($('lm-appoint-pick')), f = LC.normalize($('lm-appoint-search').value), have = {};
+    S.mentors.forEach(function (m) { if (m.role || m.blocked) have[m.siteKey] = 1; });
+    (S.roster || []).filter(function (p) { return !have[p.siteKey] && (!f || LC.normalize(p.name).indexOf(f) >= 0); }).forEach(function (p) {
+      sel.appendChild(h('option', { value: p.siteKey, text: p.name + (p.alliance ? ' (' + p.alliance + ')' : '') }));
+    });
+  }
+
+  // ── history ──
+  function renderHistory() {
+    var box = clear($('lm-history'));
+    S.changelog.forEach(function (c) {
+      var r = h('button', { class: 'lm-row lm-crow', type: 'button', 'data-id': String(c.id) }, [
+        h('div', { class: 't', text: c.summary || c.action }),
+        h('div', { class: 'm', text: (c.actorName || '') + ' · ' + (c.action || '') + ' · ' + ago(c.at) })]);
+      r.addEventListener('click', function () { showChange(c); });
+      box.appendChild(r);
+    });
+    $('lm-older').hidden = S.histDone || !S.changelog.length;
+  }
+  function older() {
+    var lastc = S.changelog[S.changelog.length - 1]; if (!lastc) return;
+    authed('GET', '/lounge/changelog?before=' + encodeURIComponent(lastc.id)).then(function (r) {
+      if (r.status !== 200) return;
+      var more = r.data.changelog || []; if (!more.length) S.histDone = true;
+      S.changelog = S.changelog.concat(more); renderHistory();
+    });
+  }
+  function pretty(v) { return v == null ? '(nothing)' : (typeof v === 'string' ? v : JSON.stringify(v, null, 2)); }
+  function showChange(c) {
+    authed('GET', '/lounge/change?id=' + encodeURIComponent(c.id)).then(function (r) {
+      var box = clear($('lm-diffwrap'));
+      if (r.status !== 200) { box.appendChild(h('p', { class: 'err', text: "Couldn't load that change." })); return; }
+      var ch = r.data.change;
+      box.appendChild(h('div', { id: 'lm-diff', class: 'card' }, [
+        h('div', { class: 't', text: ch.summary || ch.action }),
+        h('div', { class: 'diff', style: 'margin-top:8px' }, [
+          h('div', {}, [h('div', { class: 'why', text: 'Before' }), h('pre', { text: pretty(ch.before) })]),
+          h('div', {}, [h('div', { class: 'why', text: 'After' }), h('pre', { text: pretty(ch.after) })])]),
+        h('div', { class: 'row', style: 'margin-top:8px' }, [h('button', { id: 'lm-restore', type: 'button', class: 'pri', text: 'Restore this version', onclick: function () {
+          if (!confirm('Restore this version? The current text is replaced.')) return;
+          authed('POST', '/lounge/restore', { changeId: ch.id }).then(function (rr) {
+            if (rr.status === 200) { clear($('lm-diffwrap')).appendChild(h('p', { class: 'msg', text: 'Restored.' })); loadAdmin(); }
+            else $('lm-diffwrap').appendChild(h('p', { class: 'err', text: "Couldn't restore that. Try again." }));
+          });
+        } })])
+      ]));
+    });
+  }
+
+  // ── wiring ──
+  $('lm-signin-go').addEventListener('click', submitSignin);
+  ['lm-uid', 'lm-pass'].forEach(function (id) { $(id).addEventListener('keydown', function (e) { if (e.key === 'Enter') submitSignin(); }); });
+  $('lm-signin-cancel').addEventListener('click', function () { $('lm-signin').hidden = true; if (signinWait) { var w = signinWait; signinWait = null; w.res(false); } });
+  $('lm-signout').addEventListener('click', signOut);
+  TABS.forEach(function (t) { $('lm-tab-' + t).addEventListener('click', function () { showTab(t); }); });
+  window.addEventListener('hashchange', function () { if (S.me && !$('lm-app').hidden) showTab(tabFromHash(), true); });
+  ['lm-filter', 'lm-fcat', 'lm-fstatus'].forEach(function (id) { $(id).addEventListener('input', renderList); });
+  $('lm-try').addEventListener('input', renderTry);
+  $('lm-new').addEventListener('click', function () { if (!$('lm-editor').hidden && D.dirty && !confirm('Start a new question? Your unsaved changes will be lost.')) return; openDrawer(null); });
+  $('lm-close').addEventListener('click', function () { closeDrawer(false); });
+  ['lm-q', 'lm-a', 'lm-cat', 'lm-alts', 'lm-kws', 'lm-status'].forEach(function (id) { $(id).addEventListener('input', function () { D.dirty = true; }); });
+  $('lm-a').addEventListener('input', renderPreview);
+  $('lm-q').addEventListener('input', function () { clearTimeout(simTimer); simTimer = setTimeout(renderSimilar, 200); });
+  $('lm-save').addEventListener('click', function () { save(); });
+  $('lm-publish').addEventListener('click', function () { save(D.entry && D.entry.status === 'published' ? 'draft' : 'published'); });
+  $('lm-archive').addEventListener('click', function () { changeStatus(D.entry && D.entry.status === 'archived' ? 'draft' : 'archived'); });
+  $('lm-nc-add').addEventListener('click', addChapter);
+  $('lm-syn-addgroup').addEventListener('click', function () { S.groups.push([]); renderGroups(); var i = $('lm-groups').querySelectorAll('.lm-syn-add input'); if (i.length) i[i.length - 1].focus(); });
+  $('lm-syn-save').addEventListener('click', saveSynonyms);
+  $('lm-appoint-search').addEventListener('input', fillRoster);
+  $('lm-appoint-go').addEventListener('click', function () { var v = $('lm-appoint-pick').value; if (v) mentorChange({ siteKey: v, appointed: true }); });
+  $('lm-signout-all').addEventListener('click', function () {
+    if (!confirm('Sign every mentor out, including you?')) return;
+    authed('POST', '/lounge/signout-all', {}).then(function (r) { if (r.status === 200) signOut(); else flash($('lm-mentor-msg'), "Couldn't do that. Try again.", true); });
+  });
+  $('lm-older').addEventListener('click', older);
+
+  var t = storedToken();
+  if (t) { S.token = t.token; loadAdmin(); } else showSignin(false);
+})();
+</script>
+</body>
+</html>
