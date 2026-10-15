@@ -244,3 +244,15 @@ test('did-you-mean is only offered when the corrected words would find something
   assert.equal(L.search(IDX, 'squod').suggestion, 'squad');
   assert.equal(L.search(IDX, 'blorpz').suggestion, null);
 });
+
+test('an exact word is highlighted and needs no why-line, even when a synonym elsewhere in the entry scores more', () => {
+  const idx = L.buildIndex([
+    E('a', 'armory', 'How do I get my own armory?', 'Run the Snapshot.', ['armoury setup', 'my armoury', 'armoury help'], ['armoury']),
+    E('b', 'words', 'What is HT?', 'y'),
+  ], { synonyms: SYN, categories: CATS });
+  const r = L.search(idx, 'how do i get my own armory').results[0];
+  assert.equal(r.entry.id, 'a');
+  assert.ok(r.matched.includes('armory'), JSON.stringify(r.matched));
+  assert.deepEqual(r.why, []);
+  assert.match(L.highlight(r.entry.question, r.matched), /<mark>armory<\/mark>/);
+});

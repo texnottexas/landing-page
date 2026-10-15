@@ -32,7 +32,7 @@
   function normalize(s) {
     if (s == null) return '';
     s = String(s).normalize('NFKC').toLowerCase();
-    s = s.replace(/[‘’ʼ`´]/g, "'").replace(/[“”]/g, '"');
+    s = s.replace(/[\u2018\u2019ʼ`´]/g, "'").replace(/[\u201c\u201d]/g, '"');
     s = s.replace(/'s\b/g, '').replace(/'/g, '');
     s = s.replace(/[^\p{L}\p{N}+]+/gu, ' ');
     // a + only counts inside a word or before a number (cat+, +2); a lone + goes
@@ -312,7 +312,7 @@
     index.docs.forEach(function (d) {
       var total = 0, matched = 0, strong = 0, inAnswer = 0, why = [], terms = [];
       for (var qi = 0; qi < toks.length; qi++) {
-        var tokScore = 0, best = null, bestPart = 0, solid = false;
+        var tokScore = 0, best = null, bestPart = 0, solid = false, exact = false, hits = [];
         // per field, the best of this word's meanings; summed over fields (a question that also has the word
         // in a wording ranks above one that has it once), but never two meanings in one field
         for (var fi = 0; fi < FIELDS.length; fi++) {
@@ -327,14 +327,17 @@
             var part = FIELD_W[f] * fBest;
             tokScore += part;
             if (f !== 'ans' && fC.w >= STRONG_W) solid = true;
+            if (fC.kind === 'exact' && f !== 'ans') exact = true;
+            if (hits.indexOf(fC.term) === -1) hits.push(fC.term);
             if (part > bestPart) { best = fC; bestPart = part; }
           }
         }
         if (tokScore > 0) {
           total += tokScore; matched++;
           if (solid) strong++; else inAnswer++;
-          terms.push(best.term);
-          if (best.kind !== 'exact') why.push({ query: toks[qi].raw, match: index.surface[best.term] || best.term.replace(/_/g, ' '), kind: best.kind });
+          // every word that matched gets highlighted; a why-line only when the word itself matched nowhere but the answer body
+          hits.forEach(function (h) { if (terms.indexOf(h) === -1) terms.push(h); });
+          if (!exact) why.push({ query: toks[qi].raw, match: index.surface[best.term] || best.term.replace(/_/g, ' '), kind: best.kind });
         }
       }
       if (!matched || (!strong && inAnswer < 2)) return;
