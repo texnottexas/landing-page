@@ -1,8 +1,8 @@
 'use strict';
-// Homepage redesign preview (pages/home-next.html, Tex 2026-10-15): layout "C · the arc" plus the next-up card.
+// Homepage (pages/index.html; redesign Tex 2026-10-15): layout "C · the arc" plus the next-up card.
 // A static server for the landing-page files and a routed fake worker; nothing reaches 2864tw.com.
-// Run:  NODE_PATH="$(npm root -g)/@playwright/cli/node_modules" node --test test/home-next.e2e.test.js
-// HN_SHOTS=<dir> saves screenshots at 360/768/1280/1440. HN_PAGE=index.html runs it against the page after the swap.
+// Run:  NODE_PATH="$(npm root -g)/@playwright/cli/node_modules" node --test test/home.e2e.test.js
+// HN_SHOTS=<dir> saves screenshots at 360/768/1280/1440.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -11,7 +11,7 @@ const path = require('node:path');
 const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
-const PAGE = process.env.HN_PAGE || 'home-next.html';
+const PAGE = 'index.html';
 const SHOTS = process.env.HN_SHOTS || null;
 const W = 'https://push-worker.27tb8s6fct.workers.dev';
 const RC = 'https://rickroll-counter.27tb8s6fct.workers.dev';
@@ -61,7 +61,7 @@ function fresh() {
 }
 
 function staticFile(p) {
-  if (p === '/' + PAGE || p === '/home-next') return [fs.readFileSync(path.join(ROOT, 'pages', PAGE)), 'text/html'];
+  if (p === '/' + PAGE || p === '/') return [fs.readFileSync(path.join(ROOT, 'pages', PAGE)), 'text/html'];
   if (p === '/next-up-core.js') return [fs.readFileSync(path.join(ROOT, 'next-up-core.js')), 'text/javascript'];
   if (p === '/player-data.json') return [JSON.stringify(ROSTER), 'application/json'];
   if (p === '/seal-stone-calendar.json') return [fs.readFileSync(path.join(ROOT, 'seal-stone-calendar.json')), 'application/json'];
@@ -143,7 +143,7 @@ const closeAll = (page) => page.evaluate(() => document.querySelectorAll('.activ
 async function shot(page, name, opts) {
   if (!SHOTS) return;
   fs.mkdirSync(SHOTS, { recursive: true });
-  await page.screenshot(Object.assign({ path: path.join(SHOTS, 'home-next-' + name + '.png') }, opts || {}));
+  await page.screenshot(Object.assign({ path: path.join(SHOTS, 'home-' + name + '.png') }, opts || {}));
 }
 const visible = (page, sel) => page.evaluate((s) => { const el = document.querySelector(s); if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; }, sel);
 const txt = (page, sel) => page.$eval(sel, (e) => e.textContent.replace(/\s+/g, ' ').trim());
