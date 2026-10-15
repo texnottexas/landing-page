@@ -402,7 +402,7 @@ test('HOME-CHIP: the Leadership chip shows for a DOG R4, and nothing else does',
   assert.equal(await chipCount(dog.page), 1);
   const a = dog.page.locator('#leadership-cta');
   assert.equal((await a.innerText()).trim(), 'Leadership');
-  assert.equal(await a.getAttribute('href'), 'leadership.html');
+  assert.equal(await a.getAttribute('href'), 'leadership');
   assert.equal(await dog.page.locator('#rotations-cta').count(), 0);
   const html = await dog.page.content();
   assert.ok(!/rotation\.html/.test(html), 'no rotation.html link left on the homepage');

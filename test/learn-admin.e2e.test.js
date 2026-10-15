@@ -528,9 +528,18 @@ test('M-LOUNGE-LINK: the header links to the Learning Lounge, signed in or not (
     const { ctx, page } = await open({ signedIn, width: 360 });
     const a = page.locator('header #lm-lounge');
     assert.equal(await a.isVisible(), true, 'visible, signedIn=' + signedIn);
-    assert.equal(await a.getAttribute('href'), '/learn.html');
+    assert.equal(await a.getAttribute('href'), '/learn');
     assert.equal((await a.innerText()).trim(), 'Learning Lounge');
     assert.ok((await a.boundingBox()).height >= 44, 'tap target');
     await ctx.close();
   }
+});
+
+test('M-VIEW-LINK: View on the Lounge uses the clean address (Tex)', async () => {
+  const { ctx, page } = await open();
+  await page.click('.lm-row[data-id="q-armory-what"]');
+  const v = page.locator('#lm-view');
+  await v.waitFor({ state: 'visible' });
+  assert.equal(await v.getAttribute('href'), '/learn?fresh=1#q-q-armory-what');
+  await ctx.close();
 });
