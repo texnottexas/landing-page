@@ -156,7 +156,7 @@ const MATHOM = 'https://mathomhouse.github.io/index.html';
 // ── layout ──
 test('HN-LAYOUT: one layout from 320 to 1920, no sideways scroll, 6 spokes + hub, every tap target 44 px', async () => {
   st.tc = () => TC_PLACED; st.cal = CAL;
-  for (const width of [320, 360, 390, 414, 600, 601, 768, 1024, 1280, 1440, 1920]) {
+  for (const width of [320, 360, 390, 414, 600, 601, 699, 700, 768, 1024, 1280, 1440, 1920]) {
     const { ctx, page, errs } = await open({ width });
     await page.waitForSelector('#nextUp:not([hidden]) .nu-card:not([hidden])');
     await page.waitForFunction(() => document.querySelectorAll('#todayList .ev').length === 3);
@@ -191,9 +191,15 @@ test('HN-LAYOUT: one layout from 320 to 1920, no sideways scroll, 6 spokes + hub
     });
     assert.equal(arc.n, 6, width + ': 6 spokes');
     assert.equal(arc.hubs, 1, width + ': one hub');
-    // the hub: about 1.35 x a spoke, at least 10 px from every spoke (all six sit at R from its centre),
+    // the hub: about 1.35 x a spoke, at least 10 px from every spoke,
     // so also clear of the dashed ring's ends; text in its old ratio to the circle; its look unchanged
     assert.ok(Math.abs(arc.hub.w - arc.spokes[0].d * 1.35) <= 1.5, width + ': hub ' + arc.hub.w + ' vs spoke ' + arc.spokes[0].d.toFixed(1));
+    // the spokes' centre point sits level with the two outer spokes, under the hub. From 700 px up the hub
+    // is raised so its bottom edge is on that line (Tex 2026-10-15: "awkwardly low"); on phones it stays centred.
+    const C = { x: arc.hub.x, y: arc.spokes[0].y };
+    assert.ok(Math.abs(arc.spokes[5].y - C.y) < 1, width + ': outer spokes level');
+    const hubLine = width >= 700 ? arc.hub.y + arc.hub.w / 2 : arc.hub.y;
+    assert.ok(Math.abs(hubLine - C.y) < 1, width + ': hub ' + (width >= 700 ? 'bottom' : 'centre') + ' ' + hubLine.toFixed(1) + ' vs outer spoke centres ' + C.y.toFixed(1));
     for (let i = 0; i < 6; i++) {
       const a = arc.spokes[i];
       const clear = Math.hypot(a.x - arc.hub.x, a.y - arc.hub.y) - a.d / 2 - arc.hub.w / 2;
@@ -207,14 +213,14 @@ test('HN-LAYOUT: one layout from 320 to 1920, no sideways scroll, 6 spokes + hub
     assert.ok(Math.abs(hubLook.font - (width <= 500 ? 0.192 : 0.208)) < 0.004, width + ': "2864" size ratio ' + hubLook.font.toFixed(3));
     assert.ok(Math.abs(hubLook.sub - 0.072) < 0.004, width + ': "fk boats" size ratio ' + hubLook.sub.toFixed(3));
     assert.deepEqual([hubLook.border, hubLook.radius, hubLook.anim], ['2px', '50%', 'center-shimmer, center-text-shimmer'], width + ': hub look');
-    const R = Math.hypot(arc.spokes[0].x - arc.hub.x, arc.spokes[0].y - arc.hub.y);
+    const R = Math.hypot(arc.spokes[0].x - C.x, arc.spokes[0].y - C.y);
     for (let i = 0; i < 6; i++) {
       const a = arc.spokes[i];
       // evenly spread: 180°, 144°, 108°, 72°, 36°, 0° around the hub, all on one radius
-      let ang = Math.atan2(arc.hub.y - a.y, a.x - arc.hub.x) * 180 / Math.PI;
+      let ang = Math.atan2(C.y - a.y, a.x - C.x) * 180 / Math.PI;
       if (ang < -90) ang += 360;   // level with the hub can read as -180°
       assert.ok(Math.abs(ang - (180 - 36 * i)) < 0.6, width + ': spoke ' + i + ' at ' + ang.toFixed(1) + '°');
-      assert.ok(Math.abs(Math.hypot(a.x - arc.hub.x, a.y - arc.hub.y) - R) < 1, width + ': spoke ' + i + ' on the radius');
+      assert.ok(Math.abs(Math.hypot(a.x - C.x, a.y - C.y) - R) < 1, width + ': spoke ' + i + ' on the radius');
       if (i > 0) {
         const b = arc.spokes[i - 1];
         assert.ok(a.x > b.x, width + ': spokes run left to right');
@@ -223,7 +229,7 @@ test('HN-LAYOUT: one layout from 320 to 1920, no sideways scroll, 6 spokes + hub
       }
     }
     // the dashed half ring runs through the spoke centres
-    assert.ok(Math.abs(arc.ring.w / 2 - R) < 1 && Math.abs(arc.ring.left + arc.ring.w / 2 - arc.hub.x) < 1 && Math.abs(arc.ring.top + arc.ring.h - arc.hub.y) < 1, width + ': ring through the spoke centres');
+    assert.ok(Math.abs(arc.ring.w / 2 - R) < 1 && Math.abs(arc.ring.left + arc.ring.w / 2 - C.x) < 1 && Math.abs(arc.ring.top + arc.ring.h - C.y) < 1, width + ': ring through the spoke centres');
     // bigger spokes now that there are six: ~69 px at 360, 124 px from tablet up
     const want = width >= 768 ? 124 : width >= 390 ? 75 : width >= 360 ? 68 : 58;
     assert.ok(arc.spokes[0].d >= want - 0.5, width + ': spoke size ' + arc.spokes[0].d.toFixed(1) + ' < ' + want);
