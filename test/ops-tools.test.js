@@ -33,7 +33,12 @@ test('every tool in ops-tools.json passes validation', () => {
   assert.equal(mbx.icon, 'gift');
   const mc = list.tools.find((t) => t.id === 'map-collector');
   assert.equal(raw.tools.find((t) => t.id === 'map-collector').owners, undefined, 'Map Collector is gated by its own password, not an owners list');
-  assert.equal(mc.ownerOnly, false, 'every member sees the Map Collector tile');
+  assert.equal(mc.ownerOnly, false, 'no public owners list');
+  // Tex 2026-10-14: only players in the Map Collector registry see the tile; the worker answers, the list stays secret
+  assert.equal(mc.registered, 'mapcollector');
+  assert.deepEqual(OC.visibleTools([mc], 'd847a198622a518d').map((t) => t.id), [], 'hidden until the worker says yes');
+  assert.deepEqual(OC.visibleTools([mc], 'd847a198622a518d', { mapcollector: true }).map((t) => t.id), ['map-collector']);
+  assert.equal(list.tools.filter((t) => t.registered != null).map((t) => t.id).join(), 'map-collector', 'no other tool is limited to a registry');
   assert.equal(mc.overlay, '#mapc-root');
 });
 

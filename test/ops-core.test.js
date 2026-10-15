@@ -275,3 +275,37 @@ test('alongside (Tex 2026-10-14): kept only as true; its screen is never the run
   assert.deepEqual(OC.tileStatus(tool(), { member: true, unlocked: true, checks: { game: true }, alongsideOn: true }), { state: 'playing', launch: 'Launch' });
   assert.deepEqual(OC.tileStatus(tool(), { member: false, unlocked: true, checks: { game: true }, alongsideOn: true }), { state: 'blocked', launch: null });
 });
+
+// Tex 2026-10-14: the Map Collector tile shows only to players its registry holds. The list names which registry
+// ("registered": "mapcollector"); the Ops Center asks the worker and passes the answers to visibleTools.
+test('registered: kept only for a known registry; anything else hides the tool from everyone (fail closed)', () => {
+  const r = OC.validateTools({ tools: [
+    tool({ id: 'pub' }),
+    tool({ id: 'mapc', registered: 'mapcollector' }),
+    tool({ id: 'other', registered: 'elsewhere' }),
+    tool({ id: 'path', registered: '../admin' }),
+    tool({ id: 'yes', registered: true })
+  ] }).tools;
+  const by = Object.fromEntries(r.map((t) => [t.id, t]));
+  assert.equal(by.pub.registered, null);
+  assert.equal(by.mapc.registered, 'mapcollector');
+  assert.equal(by.other.registered, '');
+  assert.equal(by.path.registered, '');
+  assert.equal(by.yes.registered, '');
+  assert.deepEqual(OC.REGISTRIES, ['mapcollector']);
+  const sk = 'd847a198622a518d';
+  assert.deepEqual(OC.visibleTools(r, sk).map((t) => t.id), ['pub'], 'no answers yet: hidden');
+  assert.deepEqual(OC.visibleTools(r, sk, {}).map((t) => t.id), ['pub']);
+  assert.deepEqual(OC.visibleTools(r, sk, { mapcollector: false }).map((t) => t.id), ['pub']);
+  assert.deepEqual(OC.visibleTools(r, sk, { mapcollector: 'yes' }).map((t) => t.id), ['pub'], 'only a real true counts');
+  assert.deepEqual(OC.visibleTools(r, sk, { mapcollector: true }).map((t) => t.id), ['pub', 'mapc']);
+  assert.deepEqual(OC.visibleTools(r, null, { mapcollector: true }).map((t) => t.id), ['pub'], 'no siteKey: hidden');
+  assert.deepEqual(OC.visibleTools(r, sk, { mapcollector: true, '': true, elsewhere: true }).map((t) => t.id), ['pub', 'mapc'], 'a bad registry never shows');
+});
+
+test('registered and owners together: both must allow the tool', () => {
+  const r = OC.validateTools({ tools: [tool({ id: 'both', registered: 'mapcollector', owners: ['d847a198622a518d'] })] }).tools;
+  assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d', { mapcollector: true }).map((t) => t.id), ['both']);
+  assert.deepEqual(OC.visibleTools(r, '03c2cd3196b2f243', { mapcollector: true }), []);
+  assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d', {}), []);
+});

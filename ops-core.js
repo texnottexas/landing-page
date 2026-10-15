@@ -7,6 +7,8 @@
   var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid', 'map', 'gift', 'smile', 'disco', 'target', 'tent', 'chest', 'gem'];
   var READY_IDS = ['game', 'base', 'defender', 'r4'];
   var GATES = ['member', 'code'];
+  // registries a tool can be limited to: the worker answers whether a siteKey is in it (Tex 2026-10-14: Map Collector)
+  var REGISTRIES = ['mapcollector'];
   var READY_TEXT = {
     game: ['Game loaded', 'Wait for the game to finish loading'],
     base: ['Your base is open', 'Open your base'],
@@ -53,6 +55,8 @@
         event: (Array.isArray(t.event) ? t.event : []).filter(function (n) { return typeof n === 'number' && n > 0 && n % 1 === 0; }),
         tucked: t.tucked === true,                     // always under "Not running now" (Tex 2026-10-14: TC Squad Sync, Class Talent Reset (EL))
         alongside: t.alongside === true,               // runs alongside the others, never holding the Ops Center (Tex 2026-10-14: Rickroll)
+        // shown only to players the named registry holds; a key that isn't a known registry hides the tool from everyone
+        registered: t.registered === undefined ? null : (REGISTRIES.indexOf(t.registered) >= 0 ? t.registered : ''),
         ownerOnly: t.owners !== undefined          // fail closed: an owners key that isn't a good list hides the tool
       });
     });
@@ -61,8 +65,13 @@
   }
 
   // Tools listing owners are shown only to those players (a list that held only bad keys hides the tool from everyone).
-  function visibleTools(tools, siteKey) {
-    return tools.filter(function (t) { return !t.ownerOnly || (!!siteKey && t.owners.indexOf(siteKey) >= 0); });
+  // Tools limited to a registry are shown only when the worker said yes for this player (`registered` = {registry: true}).
+  function visibleTools(tools, siteKey, registered) {
+    return tools.filter(function (t) {
+      if (t.ownerOnly && !(!!siteKey && t.owners.indexOf(siteKey) >= 0)) return false;
+      if (t.registered != null && !(!!siteKey && !!t.registered && !!registered && registered[t.registered] === true)) return false;
+      return true;
+    });
   }
 
   function filterTools(tools, query) {
@@ -168,7 +177,7 @@
     ICONS: ICONS, READY_IDS: READY_IDS, READY_TEXT: READY_TEXT,
     validateTools: validateTools, visibleTools: visibleTools, filterTools: filterTools, orderTools: orderTools, pushRecent: pushRecent,
     initSeen: initSeen, badgeFor: badgeFor, tileStatus: tileStatus, isToolNode: isToolNode, isAutoFor: isAutoFor, AUTO_TEXT: AUTO_TEXT,
-    eventLive: eventLive, EVENT_TEXT: EVENT_TEXT,
+    eventLive: eventLive, EVENT_TEXT: EVENT_TEXT, REGISTRIES: REGISTRIES,
     trackerInit: trackerInit, trackerReduce: trackerReduce, trackerWatching: trackerWatching
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = OpsCore;

@@ -8,14 +8,15 @@
 
   var BASE = window.__OPS_BASE || 'https://2864tw.com/';
   var WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
-  var LS = { recent: 'ops_recent_v1', seen: 'ops_seen_v1', unlock: 'ops_unlock_v1', member: 'ops_member_v1' };
+  var LS = { recent: 'ops_recent_v1', seen: 'ops_seen_v1', unlock: 'ops_unlock_v1', member: 'ops_member_v1', reg: 'ops_reg_v1' };
   var HOME_SERVER = 2864;
   var MEMBER_TTL = 7 * 24 * 3600 * 1000;
   var S = {
     list: null, listErr: false, member: null, memberErr: 'wait', siteKey: null, unlocked: false, recent: [], seen: {},
     view: null, toolId: null, query: '', root: null, modal: null, sub: null, grid: null, tiles: {},
     timer: null, waitTimer: null, tracker: null, tool: null, observer: null, tick: null, fab: null, fabHidden: false, keyHandler: null,
-    tuck: null, tuckOpen: false, offKey: ''         // the folded "Not running now" row
+    tuck: null, tuckOpen: false, offKey: '',        // the folded "Not running now" row
+    reg: {}, regAsked: null                          // registries the worker says this player is in ({mapcollector: true}); who was asked
   };
 
   // ---------------------------------------------------------------- small helpers
@@ -124,6 +125,41 @@
         body: JSON.stringify({ siteKey: S.siteKey, name: name, tool: t.id, version: String(t.version), open: true }) }).catch(function () {});
     } catch (e) {}
   }
+  // Tools limited to a registry (Tex 2026-10-14: Map Collector) show only when the worker says this player is in it.
+  // The worker is asked once per launch, with the siteKey only (never the UID). A yes is remembered on this device for
+  // that siteKey for a week, so the tile shows at once next time; a no forgets it; no answer leaves only a remembered yes.
+  function registries() {
+    var names = {};
+    (S.list ? S.list.tools : []).forEach(function (t) { if (t.registered) names[t.registered] = true; });
+    return Object.keys(names);
+  }
+  function savedReg(sk) {
+    var v = lsGet(LS.reg, null);
+    return v && v.sk === sk && Date.now() - v.at < MEMBER_TTL && v.yes && typeof v.yes === 'object' ? v.yes : {};
+  }
+  function regFromStore() {
+    var yes = savedReg(S.siteKey);
+    S.reg = {};
+    registries().forEach(function (n) { if (yes[n] === true) S.reg[n] = true; });
+  }
+  function askRegistered() {
+    var sk = S.siteKey, names = registries();
+    if (!sk || !S.member || !names.length || S.regAsked === sk) return;
+    S.regAsked = sk;
+    names.forEach(function (n) {
+      fetch(WORKER + '/' + n + '/visible', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, cache: 'no-store', body: JSON.stringify({ siteKey: sk }) })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (!j || j.ok !== true || typeof j.show !== 'boolean' || S.siteKey !== sk) return;
+          var yes = savedReg(sk);
+          if (j.show) yes[n] = true; else delete yes[n];
+          lsSet(LS.reg, { sk: sk, at: Date.now(), yes: yes });
+          var was = S.reg[n] === true;
+          if (j.show) S.reg[n] = true; else delete S.reg[n];
+          if (was !== j.show && S.view === 'menu' && S.grid) renderGrid();
+        }, function () {});
+    });
+  }
   function toolById(id) { return S.list ? S.list.tools.filter(function (t) { return t.id === id; })[0] : null; }
   function statusOf(tool, ck) { return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events), alongsideOn: !!tool.alongside && alongsideOn(tool) }); }
 
@@ -200,7 +236,7 @@
     svg.setAttribute('viewBox', '0 0 24 24'); svg.setAttribute('aria-hidden', 'true'); svg.setAttribute('class', 'ops-chev');
     p.setAttribute('d', 'M6 9l6 6 6-6'); svg.appendChild(p); return svg;
   }
-  function menuTools() { return C().orderTools(C().filterTools(C().visibleTools(S.list.tools, S.siteKey), S.query), S.recent); }
+  function menuTools() { return C().orderTools(C().filterTools(C().visibleTools(S.list.tools, S.siteKey, S.reg), S.query), S.recent); }
   function offIds(tools, ev) { return tools.filter(function (t) { return eventOff(t, ev); }).map(function (t) { return t.id; }).join(','); }
   // Tools whose event isn't running sit in a folded "Not running now" row under the grid (Tex: tucked, not hidden).
   function renderGrid() {
@@ -404,7 +440,7 @@
   // Tools that run alongside the others (Rickroll, Tex 2026-10-14): never the running tool, never holding the menu.
   function alongsideTool() {
     if (!S.list) return null;
-    return C().visibleTools(S.list.tools, S.siteKey).filter(function (t) { return t.alongside && (t.gate !== 'code' || S.unlocked); })[0] || null;
+    return C().visibleTools(S.list.tools, S.siteKey, S.reg).filter(function (t) { return t.alongside && (t.gate !== 'code' || S.unlocked); })[0] || null;
   }
   function alongsideOn(t) { try { return !!(t && t.overlay && document.querySelector(t.overlay)); } catch (e) { return false; } }
   function isAlongsideNode(n) {
@@ -427,19 +463,24 @@
     if (S.waitTimer) return;
     S.waitTimer = setTimeout(function () {
       S.waitTimer = null;
-      checkMember().then(function () { if (S.view === 'menu') openMenu(); });
+      checkMember().then(afterMember);
     }, 2000);
   }
   function refreshMember() {
     try { localStorage.removeItem(LS.member); } catch (e) {}
     S.memberErr = 'wait'; openMenu();
-    checkMember().then(function () { if (S.view === 'menu') openMenu(); });
+    checkMember().then(afterMember);
   }
   function start() {
     S.started = true;
     S.listErr = false; S.list = null;
     openMenu();
-    loadList().then(checkMember).then(function () { if (S.view === 'menu') openMenu(); });
+    loadList().then(checkMember).then(afterMember);
+  }
+  function afterMember() {
+    regFromStore();
+    if (S.view === 'menu') openMenu();
+    askRegistered();
   }
   function toggle() {
     if (!S.started) return;                             // still loading: the first tap opens the menu

@@ -48,16 +48,21 @@ async function open(viewport, before, o) {
     const r = rt.request();
     usage.push({ url: r.url(), method: r.method(), type: r.headers()['content-type'], body: r.postData() });
     if (o && o.workerDown) return rt.abort();
+    if (r.url() === WORKER + '/mapcollector/visible' && o && o.visible) {             // the registry check: 'yes', 'no' or 'down'
+      if (o.visible === 'down') return rt.abort();
+      return rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, show: o.visible === 'yes' }) });
+    }
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
-  if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside)) await ctx.route('**/ops-tools.json*', async (rt) => {
+  if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside || o.registered)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
     j.tools.forEach((t) => {
       if (o.dragFirst && t.id === 'alpha') t.scripts.unshift('ops-drag.js');   // a tool that lists the drag helper first
       if (o.jamFirst && t.id === 'alpha') t.scripts.unshift('ops-jam.js');     // and the Jam helper (not served here: 404)
       if (o.events && o.events[t.id]) t.event = o.events[t.id];                 // a tool tied to an event
       if (o.tucked && o.tucked.includes(t.id)) t.tucked = true;                 // a tool that always sits under "Not running now"
+      if (o.registered && o.registered.includes(t.id)) t.registered = 'mapcollector';   // shown only to players in the Map Collector registry
     });
     if (o.alongside && !j.tools.some((x) => x.id === 'rickroll')) j.tools.push({ id: 'rickroll', title: 'Rickroll', icon: 'disco', gate: 'member', ready: ['game'], scripts: ['fake-rickroll.js'], version: '1', overlay: '#rr-root', alongside: true, desc: 'A song.', keywords: 'song music' });
     rt.fulfill({ response: r, body: JSON.stringify(j) });
@@ -593,5 +598,87 @@ test('OPS-JAM-4 (Tex 2026-10-14): opening the Rickroll tile again while it plays
   await page.waitForTimeout(300);
   const opens = usage.filter((u) => /\/ops\/usage$/.test(u.url) && JSON.parse(u.body).tool === 'rickroll');
   assert.equal(opens.length, 1, 'the first start only');
+  await ctx.close();
+});
+
+// Tex 2026-10-14: the Map Collector tile shows only to players in its registry. The Ops Center asks the worker once per
+// launch (siteKey only, plain text), shows the tile on a yes, and the device remembers a yes for that siteKey.
+const SK = '03c2cd3196b2f243';
+const visibleAsks = (usage) => usage.filter((u) => u.url === WORKER + '/mapcollector/visible');
+async function relaunch(page) {                                       // a fresh game page in the same browser, then the bookmarklet
+  await page.reload();
+  await page.addScriptTag({ url: base + 'ops-center.js' });
+  await page.waitForSelector('.ops-tile');
+}
+
+test('OPS-REG-1: the worker says no: the tile is hidden, search cannot find it, and the check sent only the siteKey', async () => {
+  const { ctx, page, usage } = await open(PHONE, null, { registered: ['delta'], visible: 'no' });
+  await page.waitForSelector('.ops-tile');
+  for (let i = 0; i < 20 && !visibleAsks(usage).length; i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(300);
+  assert.deepEqual(await tileNames(page), ['Alpha Tool', 'Beta Tool', 'Gamma Tool', 'Epsilon Tool', 'Zeta Tool', 'Owner Tool']);
+  await page.fill('.ops-input', 'delta');
+  assert.match(await page.textContent('.ops-empty'), /No tools match "delta"/);
+  const asks = visibleAsks(usage);
+  assert.equal(asks.length, 1);
+  assert.equal(asks[0].method, 'POST');
+  assert.match(asks[0].type, /^text\/plain/);
+  assert.deepEqual(JSON.parse(asks[0].body), { siteKey: SK });
+  assert.ok(!asks[0].body.includes('1000000000001'), 'no UID');
+  await ctx.close();
+});
+
+test('OPS-REG-2: the worker says yes: the tile appears without reopening; the device remembers it, so it shows at once with the worker down', async () => {
+  const o = { registered: ['delta'], visible: 'yes' };
+  const { ctx, page, usage } = await open(PHONE, null, o);
+  await page.waitForSelector('.ops-tile:has(.ops-tname:text-is("Delta Tool"))', { timeout: 3000 });
+  assert.deepEqual(await tileNames(page), ['Alpha Tool', 'Beta Tool', 'Gamma Tool', 'Delta Tool', 'Epsilon Tool', 'Zeta Tool', 'Owner Tool']);
+  await page.click('.ops-card .ops-head [aria-label="Close"]');      // close and open again: no second check this launch
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-tile');
+  assert.equal(visibleAsks(usage).length, 1, 'one check per launch');
+  o.visible = 'down';
+  await relaunch(page);
+  assert.ok((await tileNames(page)).includes('Delta Tool'), 'remembered yes');
+  await ctx.close();
+});
+
+test('OPS-REG-3: the worker is down and nothing is remembered (or only another player\'s yes): hidden', async () => {
+  const other = () => localStorage.setItem('ops_reg_v1', JSON.stringify({ sk: 'ffffffffffffffff', at: Date.now(), yes: { mapcollector: true } }));
+  const { ctx, page, usage } = await open(PHONE, other, { registered: ['delta'], visible: 'down' });
+  await page.waitForSelector('.ops-tile');
+  for (let i = 0; i < 20 && !visibleAsks(usage).length; i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(300);
+  assert.equal(visibleAsks(usage).length, 1);
+  assert.ok(!(await tileNames(page)).includes('Delta Tool'));
+  await ctx.close();
+});
+
+test('OPS-REG-4: a remembered yes shows the tile at once, and a later no takes it away and forgets it', async () => {
+  const mine = () => localStorage.setItem('ops_reg_v1', JSON.stringify({ sk: '03c2cd3196b2f243', at: Date.now(), yes: { mapcollector: true } }));
+  const { ctx, page, usage } = await open(PHONE, mine, { registered: ['delta'], visible: 'no' });
+  await page.waitForSelector('.ops-tile');
+  for (let i = 0; i < 20 && !visibleAsks(usage).length; i++) await page.waitForTimeout(100);
+  await page.waitForSelector('.ops-tile:has(.ops-tname:text-is("Delta Tool"))', { state: 'detached', timeout: 3000 });
+  const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('ops_reg_v1')));
+  assert.ok(!kept || !kept.yes || kept.yes.mapcollector !== true, 'the yes is forgotten');
+  await ctx.close();
+});
+
+test('OPS-REG-5: a remembered yes older than a week no longer counts', async () => {
+  const stale = () => localStorage.setItem('ops_reg_v1', JSON.stringify({ sk: '03c2cd3196b2f243', at: Date.now() - 8 * 24 * 3600 * 1000, yes: { mapcollector: true } }));
+  const { ctx, page, usage } = await open(PHONE, stale, { registered: ['delta'], visible: 'down' });
+  await page.waitForSelector('.ops-tile');
+  for (let i = 0; i < 20 && !visibleAsks(usage).length; i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(300);
+  assert.ok(!(await tileNames(page)).includes('Delta Tool'));
+  await ctx.close();
+});
+
+test('OPS-REG-6: with no registry tool in the list, the Ops Center never asks', async () => {
+  const { ctx, page, usage } = await open(PHONE);
+  await page.waitForSelector('.ops-tile');
+  await page.waitForTimeout(800);
+  assert.equal(visibleAsks(usage).length, 0);
   await ctx.close();
 });
