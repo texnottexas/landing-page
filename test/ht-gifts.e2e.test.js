@@ -87,6 +87,19 @@ test('HTG-1: the password gate: wrong is refused, "bananas" opens it, and the br
   await ctx.close();
 });
 
+test('HTG-PW-NOTE (Tex 2026-10-15): the password prompt says who to ask, and still says it after a wrong password', async () => {
+  const { ctx, page } = await open([[10, 10]], null, { noPassword: true });
+  await launch(page);
+  await page.waitForSelector('#htg-pw');
+  const note = () => page.$$eval('#htg-root .htg-hint', (els) => els.map((e) => e.textContent));
+  assert.deepEqual(await note(), ['Contact [DOG] MONKEY\u{1F412} for the password.']);
+  await page.fill('#htg-pw', 'apples'); await page.click('#htg-unlock');
+  await waitText(page, '#htg-root .htg-msg', /That's not the password\./);
+  assert.deepEqual(await note(), ['Contact [DOG] MONKEY\u{1F412} for the password.']);
+  assert.ok(!/\u2014/.test(await page.textContent('#htg-root')), 'no em dash');
+  await ctx.close();
+});
+
 test('HTG-2: asks for the next gift, looks around it, claims each claimable gift box with the game\'s own claim', async () => {
   const { ctx, page } = await open([[10, 10], [11, 11], [12, 12]]);
   await launch(page);

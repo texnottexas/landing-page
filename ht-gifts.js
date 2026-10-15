@@ -9,7 +9,7 @@
   var C = window.HtGiftsCore;
   if (!C) { try { alert('HT Gift Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14';
+  var VERSION = '2026-10-15';
   var WORKER = window.__HTG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__HTG_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__HTG_TIMEOUT_MS || 10000, POLL_MS = window.__HTG_POLL_MS || 1000;
   var BUSY_MS = window.__HTG_BUSY_MS || 10000, IDLE_MS = window.__HTG_IDLE_MS || 30000;
@@ -209,7 +209,7 @@
     '#htg-root .htg-card.min{width:auto;padding:0 4px 0 12px}#htg-root .min .htg-body{display:none}#htg-root .min .htg-head{cursor:pointer}',
     '#htg-root .htg-stat{font-variant-numeric:tabular-nums;font-weight:600}#htg-root .htg-sub{color:#8b949e;font-size:12px;font-variant-numeric:tabular-nums}',
     '#htg-root .htg-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#htg-root .htg-last{color:#79c0ff;font-size:12px;margin-top:2px}#htg-root .htg-last:empty{display:none}',
-    '#htg-root .htg-msg{margin:4px 0 2px}#htg-root .htg-btns{display:flex;gap:6px;margin-top:8px}',
+    '#htg-root .htg-hint{color:#8b949e;font-size:12px;margin-top:6px}#htg-root .htg-msg{margin:4px 0 2px}#htg-root .htg-btns{display:flex;gap:6px;margin-top:8px}',
     '#htg-root .htg-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#htg-root .htg-btns button:hover{border-color:#79c0ff}',
     '#htg-root input#htg-pw{width:100%;height:44px;box-sizing:border-box;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;padding:0 10px;font-family:inherit;font-size:16px}'
   ].join('\n');
@@ -253,6 +253,7 @@
     var lab = el('label', 'htg-sub', 'Password'); lab.htmlFor = 'htg-pw'; body.appendChild(lab);
     var inp = el('input'); inp.id = 'htg-pw'; inp.type = 'password'; inp.autocomplete = 'off'; inp.setAttribute('autocapitalize', 'off'); inp.spellcheck = false;
     body.appendChild(inp);
+    body.appendChild(el('div', 'htg-hint', 'Contact [DOG] MONKEY\uD83D\uDC12 for the password.'));   // who hands it out (Tex 2026-10-15)
     if (bad) body.appendChild(el('div', 'htg-msg', "That's not the password."));
     var go = function () {
       sha256Hex(String(inp.value || '').trim().toLowerCase()).then(function (h) {
