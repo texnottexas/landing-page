@@ -1809,19 +1809,21 @@
       .nu-cta { width: 100%; }
     }
 
-    /* ── The arc: seven spokes on a half circle around the unchanged hub ──
+    /* ── The arc: six spokes, every 36°, on a half circle around the unchanged hub ──
        --arc-w is the nav's own width (the sizing script right after the nav keeps it exact;
        this default is close enough for the first paint). Spoke size --S, radius --R and the
        hub's centre line --cy follow from it. Each spoke carries cos/sin of its angle
-       (180°, 150° ... 0°) as --c/--s. One layout from 360 to 1440. */
+       (180°, 144°, 108°, 72°, 36°, 0°) as --c/--s. One layout from 320 to 1920.
+       Size: neighbours sit 2R·sin 18° = 0.618 R apart, and at phone widths R = (W - S) / 2,
+       so S = 0.236 W - 8 px keeps a 10 px gap between circles (69 px at 360, 76 at 390,
+       124 px from ~560 px wide). R grows with S up to 352 px (296 x 124/104). */
     .arc {
       --arc-w: min(1000px, calc(100vw - 32px));
-      /* 66 px on phones, 104 px from ~750 px wide; never over 20% of the width, so neighbours never touch below 360 px */
-      --S: clamp(48px, min(max(66px, calc(var(--arc-w) * .14)), calc(var(--arc-w) * .2)), 104px);
-      --R: min(296px, calc((var(--arc-w) - var(--S)) / 2));
+      --S: clamp(48px, calc(var(--arc-w) * .236 - 8px), 124px);
+      --R: min(352px, calc((var(--arc-w) - var(--S)) / 2));
       --cy: calc(14px + var(--S) / 2 + var(--R));
       position: relative; width: 100%; max-width: 1000px;
-      height: calc(var(--cy) + 64px);
+      height: calc(var(--cy) + max(64px, var(--S) / 2 + 14px));
       margin-top: 4px;
     }
     .arc-ring { position: absolute; left: calc(50% - var(--R)); top: calc(var(--cy) - var(--R));
@@ -1833,15 +1835,17 @@
       top: calc(var(--cy) - var(--R) * var(--s));
       width: var(--S); height: var(--S);
       border-width: 1px;
-      font-size: 12px; line-height: 1.15; gap: 7px; padding: 0 8px; text-align: center;
+      /* label and icon grow with the spoke: 14 px text and 36 px icons at 124 px */
+      font-size: clamp(12px, calc(var(--S) * .115), 14px); line-height: 1.15;
+      gap: clamp(3px, calc(var(--S) * .065), 8px); padding: 0 8px; text-align: center;
     }
-    .arc .wheel-item .w-icon svg { width: clamp(22px, calc(var(--S) * .29), 30px); height: clamp(22px, calc(var(--S) * .29), 30px); }
+    .arc .wheel-item .w-icon svg { width: clamp(22px, calc(var(--S) * .29), 36px); height: clamp(22px, calc(var(--S) * .29), 36px); }
     .arc .wheel-item .w-label { max-width: none; }
     .arc .wheel-item .w-short { display: none; text-align: center; line-height: 1.15; }
     .arc .wheel-center { top: var(--cy); }
     @media (max-width: 600px) {
       /* phones: the short label (real text, so Google Translate rewrites it); the full name stays in aria-label */
-      .arc .wheel-item { font-size: 10px; gap: 3px; padding: 0 3px; }
+      .arc .wheel-item { font-size: clamp(10px, calc(var(--S) * .15), 12px); padding: 0 4px; }
       .arc .wheel-item .w-label { display: none; }
       .arc .wheel-item .w-short { display: inline; }
     }
@@ -1868,6 +1872,9 @@
     .bar-ic.ic-purple { background: rgba(163,113,247,.15); color: #a371f7; }
     .bar-ic.ic-green { background: rgba(63,185,80,.15); color: var(--army); }
     .bar-ic.ic-yellow { background: rgba(210,153,34,.15); color: var(--air); }
+    /* teal for Mathomhouse: #56d4dd is 7.4:1 on its tile in dark; the light theme needs a darker teal (4.4:1) */
+    .bar-ic.ic-teal { background: rgba(57,197,207,.15); color: #56d4dd; }
+    :root[data-theme="light"] .bar-ic.ic-teal { color: #1b7c83; }
     .bar-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
     .bar-tt { font-weight: 600; font-size: 15px; }
     .bar-st { font-size: 13px; color: var(--muted); }
@@ -2039,37 +2046,34 @@
       <a class="nu-strip" id="nuStrip" href="#calendar" data-modal="cal-modal" hidden><span class="nu-strip-k">Next up</span><span class="nu-sep" aria-hidden="true"> &middot; </span><span class="nu-strip-t" id="nuStripTitle"></span><span class="nu-sep" aria-hidden="true"> &middot; </span><span class="nu-strip-in" id="nuStripIn"></span></a>
     </section>
 
-    <!-- The arc (home-next, replaces the .wheel-wrap ring): the seven spokes, left to right, with
-         their original attributes and SVGs, on a half circle around the unchanged hub. -->
+    <!-- The arc (home-next, replaces the .wheel-wrap ring): six spokes, left to right, with their
+         original attributes and SVGs, every 36° on a half circle around the unchanged hub.
+         Mathomhouse moved to the Community bars (Tex 2026-10-15). -->
     <nav class="arc" id="homeArc" aria-label="Main">
       <div class="arc-ring" aria-hidden="true"></div>
       <a href="#" class="wheel-item" style="--c:-1;--s:0" aria-label="March Setups" data-modal="defense-modal">
         <span class="w-icon" aria-hidden="true"><svg viewBox="-5 -5 110 110" fill="currentColor"><path d="m43.027 76.848 5.4414-9.4258c0.1875-0.32812 0.53906-0.50781 0.89453-0.5 3.0664 0.10547 6.1133-0.62891 8.7852-2.1133 2.5859-1.4336 4.8281-3.5664 6.4102-6.3086 1.7734-3.0781 2.4727-6.4883 2.207-9.7812-0.23438-2.9023-1.2227-5.7227-2.8789-8.1523l-6.8164 11.805c-0.13281 0.23047-0.34375 0.38672-0.57812 0.45703l-8.3203 2.4922c-0.52734 0.15625-1.0859-0.14453-1.2422-0.67187l-2.6172-8.8086c-0.082031-0.27344-0.039062-0.55469 0.09375-0.78125l6.8164-11.805c-2.9297-0.21875-5.8672 0.33594-8.5039 1.5859-2.9844 1.4141-5.5859 3.7227-7.3594 6.7969-1.5859 2.75-2.3125 5.7578-2.2617 8.7109 0.054688 3.0547 0.94141 6.0586 2.5625 8.6641 0.20703 0.33594 0.19531 0.74609-0.003906 1.0586l-5.4688 9.4727c-0.27344 0.47656-0.88672 0.64062-1.3633 0.36328-0.089844-0.054688-0.17188-0.11719-0.23828-0.19141-4.1328-4.5352-6.6484-10.258-7.293-16.23-0.62891-5.8203 0.52344-11.887 3.6719-17.348 3.9492-6.8438 10.305-11.441 17.375-13.336 7.0703-1.8945 14.867-1.0898 21.711 2.8594 6.8398 3.9492 11.438 10.305 13.328 17.375 1.8945 7.0703 1.0898 14.871-2.875 21.738-3.168 5.4609-7.8359 9.4727-13.176 11.828-5.4922 2.4297-11.703 3.1094-17.699 1.7969-0.53906-0.11719-0.88281-0.64844-0.76562-1.1875 0.027344-0.13281 0.082031-0.25781 0.16016-0.36328zm6.8711-7.9258-4.4922 7.7812c5.1562 0.84766 10.418 0.14453 15.117-1.9297 4.9688-2.1953 9.3164-5.9297 12.258-11.004 3.6875-6.3867 4.4336-13.641 2.668-20.223-1.7617-6.5781-6.0352-12.488-12.398-16.164-6.3633-3.6719-13.617-4.418-20.195-2.6562-6.5781 1.7617-12.488 6.0352-16.164 12.402-2.9297 5.0781-4 10.723-3.4141 16.141 0.55078 5.1094 2.5742 10.016 5.8867 14.055l4.4922-7.7812c-1.6133-2.7852-2.4961-5.9492-2.5508-9.1719-0.058594-3.3047 0.75391-6.668 2.5234-9.7344 1.9883-3.4414 4.9023-6.0234 8.2383-7.6055 3.4219-1.6211 7.3008-2.1953 11.098-1.582 0.12891 0.015625 0.25781 0.058593 0.375 0.125 0.47656 0.27344 0.64062 0.88672 0.36328 1.3633l-7.3594 12.746 2.2109 7.4336 6.9883-2.0898 7.332-12.699c0.0625-0.13281 0.15234-0.25 0.27344-0.34766 0.42578-0.34766 1.0586-0.28516 1.4062 0.14062 2.4453 2.9883 3.8945 6.6484 4.1992 10.441 0.29688 3.6797-0.48047 7.4922-2.4688 10.934-1.7734 3.0703-4.2812 5.4531-7.168 7.0547-2.8164 1.5625-5.9961 2.3828-9.2188 2.3711zm15.23-55.5c-1.125-0.46484-2.2734-0.88281-3.4375-1.2422-0.3125-0.097657-0.57422-0.34766-0.66797-0.69141l-1.0547-3.8516c-0.33984-1.2461-0.875-2.4062-1.6562-3.1836-0.58594-0.58594-1.3281-0.94922-2.2578-0.94922h-12.117c-0.92969 0-1.6758 0.36719-2.2578 0.94922-0.77734 0.77734-1.3125 1.9375-1.6523 3.1836l-1.043 3.8086c-0.074219 0.33984-0.32422 0.62891-0.67969 0.73828-1.1719 0.36328-2.3242 0.78125-3.4531 1.2461-1.1367 0.47266-2.2461 0.99609-3.3242 1.5625-0.28906 0.15234-0.65234 0.16016-0.96094-0.015626l-3.4766-1.9805c-1.125-0.64062-2.3242-1.0859-3.4219-1.0859-0.80859 0-1.5781 0.25391-2.2188 0.87109l-8.6172 8.6211c-0.65625 0.65625-0.92578 1.4414-0.92578 2.2695 0 1.0977 0.44531 2.2969 1.0859 3.4219l1.9805 3.4766c0.16016 0.28516 0.17969 0.64453 0.015625 0.95703-0.57031 1.0781-1.0938 2.1875-1.5664 3.3281-0.46484 1.125-0.88281 2.2773-1.2461 3.4453-0.097656 0.3125-0.34766 0.57422-0.69141 0.66797l-3.8555 1.0547c-1.2461 0.33984-2.4062 0.875-3.1836 1.6562-0.58594 0.58594-0.94922 1.3281-0.94922 2.2578v12.117c0 0.93359 0.36719 1.6758 0.94922 2.2617 0.77344 0.77734 1.9336 1.3125 3.1836 1.6562l3.8047 1.043c0.33984 0.074219 0.62891 0.32422 0.73828 0.67969 0.36328 1.1719 0.78125 2.3281 1.25 3.457 0.47266 1.1367 0.99219 2.2461 1.5625 3.3203 0.15234 0.28906 0.16016 0.65234-0.015625 0.96094l-1.9766 3.4727c-0.64063 1.125-1.0859 2.3242-1.0859 3.4219 0 0.80859 0.25391 1.5781 0.87109 2.2188l8.6211 8.6172c0.65625 0.65625 1.4414 0.92578 2.2695 0.92578 1.0977 0 2.2969-0.44531 3.4219-1.0859l3.4766-1.9805c0.28516-0.16016 0.64453-0.17969 0.95703-0.015626 1.082 0.57031 2.1953 1.0938 3.3359 1.5703 1.125 0.46484 2.2734 0.88281 3.4375 1.2422 0.3125 0.097657 0.57422 0.34766 0.66797 0.69141l1.0547 3.8516c0.33984 1.2461 0.875 2.4062 1.6562 3.1836 0.58594 0.58594 1.3281 0.94922 2.2578 0.94922h12.117c0.93359 0 1.6758-0.36719 2.2617-0.94922 0.77734-0.77344 1.3125-1.9336 1.6562-3.1836l1.043-3.8047c0.074219-0.33984 0.32422-0.62891 0.67969-0.73828 1.1719-0.36328 2.3281-0.78125 3.457-1.25 1.1367-0.47266 2.2461-0.99219 3.3203-1.5625 0.28906-0.15234 0.65234-0.16016 0.96094 0.015626l3.4727 1.9766c1.125 0.64062 2.3242 1.0859 3.4219 1.0859 0.80859 0 1.5781-0.25391 2.2188-0.87109l8.6172-8.6211c0.65625-0.65625 0.92578-1.4414 0.92578-2.2695 0-1.0977-0.44531-2.2969-1.0859-3.4219l-1.9805-3.4766c-0.16016-0.28516-0.17969-0.64453-0.015625-0.95703 0.57031-1.082 1.0938-2.1953 1.5703-3.3359 0.46484-1.125 0.88281-2.2734 1.2422-3.4375 0.097656-0.3125 0.34766-0.57422 0.69141-0.66797l3.8516-1.0547c1.2461-0.33984 2.4062-0.875 3.1836-1.6562 0.58594-0.58594 0.94922-1.3281 0.94922-2.2578v-12.117c0-0.93359-0.36719-1.6758-0.94922-2.2617-0.77344-0.77734-1.9336-1.3125-3.1836-1.6562l-3.8047-1.043c-0.33984-0.074219-0.62891-0.32422-0.73828-0.67969-0.36328-1.1719-0.78125-2.3281-1.25-3.457-0.47266-1.1367-0.99219-2.2461-1.5625-3.3203-0.15234-0.28906-0.16016-0.65234 0.015625-0.96094l1.9766-3.4727c0.64062-1.125 1.0859-2.3242 1.0859-3.4219 0-0.80859-0.25391-1.5781-0.87109-2.2188l-8.6211-8.6172c-0.65625-0.65625-1.4414-0.92578-2.2695-0.92578-1.0977 0-2.2969 0.44531-3.4219 1.0859l-3.4766 1.9805c-0.28516 0.16016-0.64453 0.17969-0.95703 0.015625-1.082-0.57031-2.1953-1.0938-3.3359-1.5703z"/></svg></span>
         <span class="w-label notranslate">March Setups</span><span class="w-short notranslate" aria-hidden="true">Marches</span>
       </a>
-      <a href="#" class="wheel-item" style="--c:-0.8660;--s:0.5" aria-label="Beta Features" data-modal="beta-modal">
+      <a href="#" class="wheel-item" style="--c:-0.8090;--s:0.5878" aria-label="Beta Features" data-modal="beta-modal">
         <span class="w-icon" aria-hidden="true"><svg viewBox="2 2 24 24" fill="currentColor"><polygon points="11.777 22.723 7.506 18.451 2.149 22.709 2.149 25.969 7.518 25.969 7.575 25.903 7.568 25.969 11.777 22.723"/><path d="M24.857,10.525H23.633A9.863,9.863,0,0,0,15.366,3.2a1.292,1.292,0,0,0-2.573.008,9.819,9.819,0,0,0-8.263,7.32H3.292a.994.994,0,0,0,0,1.988H7.749a.856.856,0,0,0,.117.162q.162.285.292.568l.011.026c.082.18.156.359.22.535a7.47,7.47,0,0,1,.247,4.239l3.127,3.127,8.3-8.657h4.8a.994.994,0,0,0,0-1.988ZM13.124,15.416c-1.513.685-2.035-.476-2.869-1.781-.093-.145-.19-.278-.289-.405-.029-.037-.057-.072-.086-.107q-.117-.143-.236-.268c-.025-.027-.05-.056-.075-.081-.091-.091-.182-.174-.273-.25l-.014-.011H17.52C15.75,13.314,14.12,14.965,13.124,15.416Zm4.791-4.932c0-.017,0-.033,0-.05a9.021,9.021,0,0,0-1.489-4.967,7.912,7.912,0,0,1,5.122,5.017Z"/></svg></span>
         <span class="w-label">Beta Features</span><span class="w-short" aria-hidden="true">Beta</span>
       </a>
-      <a href="titan" class="wheel-item" style="--c:-0.5;--s:0.8660" aria-label="Titan Canyon" id="wheelEventSpoke">
+      <a href="titan" class="wheel-item" style="--c:-0.3090;--s:0.9511" aria-label="Titan Canyon" id="wheelEventSpoke">
         <span class="w-icon" aria-hidden="true"><svg viewBox="55 50 400 400" fill="currentColor"><path d="M438,411.3l-37.6-37.6c0.1-0.2,0.1-0.2,0.1-0.4c9.7-20.8,6.2-46.3-11-63.5L363,336.3l-80.5-80.5l96.6-96.6c24-24,37.5-56.6,37.5-90.5L256,229.3L95.4,68.7c0,34,13.5,66.5,37.5,90.5l96.6,96.6L149,336.3l-26.5-26.5c-17.2,17.2-20.7,42.7-11,63.5c0.1,0.2,0.1,0.2,0.1,0.4L74,411.3c-7.3,7.3-7.3,19.2,0,26.5c7.3,7.3,19.2,7.3,26.5,0l37.6-37.6c0.2,0.1,0.2,0.1,0.4,0.1c20.8,9.7,46.3,6.2,63.5-11l-26.5-26.5l80.5-80.5l80.5,80.5L310,389.4c17.2,17.2,42.7,20.7,63.5,11c0.1-0.1,0.2-0.1,0.4-0.1l37.6,37.6c7.3,7.3,19.2,7.3,26.5,0C445.3,430.5,445.3,418.6,438,411.3z"/></svg></span>
         <span class="w-label">Titan Canyon</span><span class="w-short" aria-hidden="true">Titan</span>
       </a>
-      <a href="#" class="wheel-item" style="--c:0;--s:1" aria-label="Calendar" data-modal="cal-modal">
+      <a href="#" class="wheel-item" style="--c:0.3090;--s:0.9511" aria-label="Calendar" data-modal="cal-modal">
         <span class="w-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/></svg></span>
         <span class="w-label">Calendar</span><span class="w-short" aria-hidden="true">Calendar</span>
       </a>
-      <a href="#" class="wheel-item" style="--c:0.5;--s:0.8660" aria-label="Join 2864" data-modal="join-modal">
+      <a href="#" class="wheel-item" style="--c:0.8090;--s:0.5878" aria-label="Join 2864" data-modal="join-modal">
         <span class="w-icon" aria-hidden="true"><svg viewBox="5 15 90 65" fill="currentColor"><path d="m79.602 23.699-23.801 10.301-23.801-8.6992c-0.60156-0.19922-1.1992-0.19922-1.6992 0l-4.6016 1.5c-1.1992 0.39844-1.3984 2-0.39844 2.6992l16.301 10.602-20.398 8.8008-10.801-7.3008c-0.60156-0.40234-1.4023-0.60156-2.1016-0.40234l-1.1016 0.19922c-1.3008 0.30078-2 1.6016-1.5 2.8008l5.5 13.102c2.1016 5 8.8008 5.3984 13.801 3.1992l26.699-10.199-5 27.602c-0.19922 1.3008 1.1992 2.3008 2.3008 1.6016l3.8984-2.3984c0.5-0.30078 0.80078-0.69922 1-1.1992l15.199-32.699 27.102-14c1.1016-0.60156 1.3984-2.1016 0.5-3-4.0977-4.207-11.398-5.0078-17.098-2.5078z"/></svg></span>
         <span class="w-label">Join 2864</span><span class="w-short" aria-hidden="true">Join</span>
       </a>
-      <a href="heroes-awakening" class="wheel-item" style="--c:0.8660;--s:0.5" aria-label="Heroes Awakening">
+      <a href="heroes-awakening" class="wheel-item" style="--c:1;--s:0" aria-label="Heroes Awakening">
         <span class="w-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/></svg></span>
         <span class="w-label">Heroes Awakening</span><span class="w-short" aria-hidden="true">Awaken</span>
-      </a>
-      <a href="https://mathomhouse.github.io/index.html" target="_blank" rel="noopener noreferrer" class="wheel-item" style="--c:1;--s:0" aria-label="Mathomhouse">
-        <span class="w-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg></span>
-        <span class="w-label notranslate">Mathomhouse</span><span class="w-short notranslate" aria-hidden="true">Mathom</span>
       </a>
       <a href="passwords.html" target="_blank" rel="noopener noreferrer" class="wheel-center notranslate" onclick="fetch('https://rickroll-counter.27tb8s6fct.workers.dev',{method:'POST',mode:'cors'}).catch(function(){})">2864<span class="wheel-sub">fk boats</span></a>
     </nav>
@@ -2117,6 +2121,7 @@
         <a href="#" id="heartRosterBtn" class="bar"><span class="bar-ic ic-blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span><span class="bar-tx"><span class="bar-tt">Player roster</span><span class="bar-st">Find anyone on the server</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
         <a href="#" id="wheelFeedbackBtn" class="bar"><span class="bar-ic ic-blue" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg></span><span class="bar-tx"><span class="bar-tt">Feedback</span><span class="bar-st">Report a bug or ask for a feature</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
         <a href="/roadmap" class="bar"><span class="bar-ic ic-purple" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg></span><span class="bar-tx"><span class="bar-tt">Roadmap</span><span class="bar-st">What&#39;s being built next</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+        <a href="https://mathomhouse.github.io/index.html" target="_blank" rel="noopener noreferrer" class="bar"><span class="bar-ic ic-teal" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/><path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/></svg></span><span class="bar-tx"><span class="bar-tt notranslate" translate="no">Mathomhouse</span><span class="bar-st">Top War guides and tools (opens a new site)</span></span><svg class="bar-ch" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
       </section>
       <section class="home-col" aria-labelledby="hgRewards">
         <h2 class="home-h" id="hgRewards">Rewards and help</h2>
