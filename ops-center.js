@@ -396,7 +396,8 @@
   function showNote() {
     ensureRoot();
     var al = alongsideTool(), extra = null;            // the song can start alongside whatever is open (Tex 2026-10-14)
-    if (al) extra = alongsideOn(al) ? { text: al.title + ' is on', disabled: true } : { text: al.title + ' \u266a', onClick: function () { launchAlongside(al); } };
+    // the button is Jam Mode, as on the tool cards (Tex): Rickroll is what it plays
+    if (al) extra = alongsideOn(al) ? { text: 'Jam Mode is on', disabled: true } : { text: 'Jam Mode \u266a', onClick: function () { launchAlongside(al); } };
     if (S.fab) K().bubble(S.root, runningNote(), 6000, 'Hide this button', function () { S.fabHidden = true; hideFab(); }, extra);
     else K().bubble(S.root, runningNote(), undefined, null, null, extra);
   }
@@ -410,9 +411,10 @@
     return !!S.list && S.list.tools.some(function (t) { try { return t.alongside && t.overlay && n.matches && n.matches(t.overlay); } catch (e) { return false; } });
   }
   function launchAlongside(t) {
+    var fresh = !alongsideOn(t);                        // already on: the script only brings its card forward, not a new start
     S.recent = C().pushRecent(S.recent, t.id); lsSet(LS.recent, S.recent);
     S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
-    reportUse(t);
+    if (fresh) reportUse(t);
     if (S.view) { closeCard(); if (!trackerBusy()) { stopObserver(); hideFab(); removeRoot(); } }
     var chain = Promise.resolve();
     t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag and Jam helpers are optional

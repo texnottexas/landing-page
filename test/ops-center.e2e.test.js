@@ -553,18 +553,18 @@ test('OPS-JAM-1 (Tex 2026-10-14): Rickroll launched from the menu holds nothing:
   await ctx.close();
 });
 
-test('OPS-JAM-2 (Tex 2026-10-14): with Alpha open, the note offers Rickroll; it starts alongside, and closing Alpha brings the menu back while the song plays', async () => {
+test('OPS-JAM-2 (Tex 2026-10-14): with Alpha open, the note offers Jam Mode (Rickroll); it starts alongside, and closing Alpha brings the menu back while the song plays', async () => {
   const { ctx, page } = await open(PHONE, null, { alongside: true });
   await clickTile(page, 'Alpha Tool');
   await page.click('.ops-btn.primary');
   await page.waitForSelector('.ops-fab:has-text("Alpha Tool running")');
   await page.evaluate(() => window.OpsCenter.toggle());
   await page.waitForSelector('.ops-bubble:has-text("Alpha Tool is open")');
-  await page.click('.ops-bubble .ops-btn:text-is("Rickroll ♪")');
+  await page.click('.ops-bubble .ops-btn:text-is("Jam Mode ♪")');
   await page.waitForSelector('#rr-root');
   await page.evaluate(() => window.OpsCenter.toggle());
-  await page.waitForSelector('.ops-bubble .ops-btn:text-is("Rickroll is on")');
-  assert.equal(await page.$eval('.ops-bubble .ops-btn:text-is("Rickroll is on")', (b) => b.disabled), true);
+  await page.waitForSelector('.ops-bubble .ops-btn:text-is("Jam Mode is on")');
+  assert.equal(await page.$eval('.ops-bubble .ops-btn:text-is("Jam Mode is on")', (b) => b.disabled), true);
   await page.click('#fake-alpha-close');
   await page.waitForSelector('.ops-card .ops-tile', { timeout: 5000 });   // back to the menu: Rickroll's card is not Alpha's
   assert.ok(await page.$('#rr-root'), 'the song plays on');
@@ -577,5 +577,21 @@ test('OPS-JAM-3 (review): with the Jam helper missing (404), a tool that lists i
   await clickTile(page, 'Alpha Tool');
   await page.click('.ops-btn.primary');
   await page.waitForSelector('#fake-alpha');
+  await ctx.close();
+});
+
+test('OPS-JAM-4 (Tex 2026-10-14): opening the Rickroll tile again while it plays only brings its card forward; it is not counted as a second start', async () => {
+  const { ctx, page, usage } = await open(PHONE, null, { alongside: true });
+  await clickTile(page, 'Rickroll');
+  await page.click('.ops-btn.primary');
+  await page.waitForSelector('#rr-root');
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-card .ops-tile');
+  await clickTile(page, 'Rickroll');
+  await page.click('.ops-btn.primary');
+  await page.waitForFunction(() => window.__rrFlashes === 1);
+  await page.waitForTimeout(300);
+  const opens = usage.filter((u) => /\/ops\/usage$/.test(u.url) && JSON.parse(u.body).tool === 'rickroll');
+  assert.equal(opens.length, 1, 'the first start only');
   await ctx.close();
 });
