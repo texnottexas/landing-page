@@ -55,7 +55,7 @@ async function open(viewport, before, o, arg) {
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
-  if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside || o.registered)) await ctx.route('**/ops-tools.json*', async (rt) => {
+  if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside || o.registered || o.group)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
     j.tools.forEach((t) => {
       if (o.dragFirst && t.id === 'alpha') t.scripts.unshift('ops-drag.js');   // a tool that lists the drag helper first
@@ -64,6 +64,9 @@ async function open(viewport, before, o, arg) {
       if (o.tucked && o.tucked.includes(t.id)) t.tucked = true;                 // a tool that always sits under "Not running now"
       if (o.registered && o.registered.includes(t.id)) t.registered = 'mapcollector';   // shown only to players in the Map Collector registry
     });
+    if (o.group) j.tools.push(
+      { id: 'grpa', title: 'Group A', icon: 'gift', gate: 'member', ready: ['game'], scripts: ['fake-group-a.js'], version: '1', overlay: '#fake-ga', together: true, desc: 'Runs with B.', keywords: '' },
+      { id: 'grpb', title: 'Group B', icon: 'gem', gate: 'member', ready: ['game'], scripts: ['fake-group-b.js'], version: '1', overlay: '#fake-gb', together: true, desc: 'Runs with A.', keywords: '' });
     if (o.alongside && !j.tools.some((x) => x.id === 'rickroll')) j.tools.push({ id: 'rickroll', title: 'Rickroll', icon: 'disco', gate: 'member', ready: ['game'], scripts: ['fake-rickroll.js'], version: '1', overlay: '#rr-root', alongside: true, desc: 'A song.', keywords: 'song music' });
     rt.fulfill({ response: r, body: JSON.stringify(j) });
   });
@@ -788,5 +791,83 @@ test('OPS-SRV-3: a roster member keeps the roster\'s rank (the game\'s rank does
   await page.waitForSelector('.ops-tile');
   await clickTile(page, 'Gamma Tool');
   await page.waitForFunction(() => document.querySelector('.ops-box').textContent.includes('You are R4 or leader'), null, { timeout: 4000 });
+  await ctx.close();
+});
+
+// Tex 2026-10-16: tools marked together run at the same time, started from the Ops Center.
+async function launchTile(page, name) { await clickTile(page, name); await page.click('.ops-btn.primary'); }
+const count = (page, sel) => page.$$eval(sel, (e) => e.length);
+
+test('OPS-GRP-1: with a group tool open, a tap opens the menu; the other group tool launches beside it', async () => {
+  const { ctx, page, usage } = await open(PHONE, null, { group: true });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group A');
+  await page.waitForSelector('#fake-ga');
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-tile');                            // the menu, not the note
+  assert.equal(await count(page, '.ops-bubble'), 0);
+  assert.deepEqual(await tileStatus(page, 'Group A'), ['Running']);
+  assert.deepEqual(await tileStatus(page, 'Group B'), ['Ready']);
+  await launchTile(page, 'Group B');
+  await page.waitForSelector('#fake-gb');
+  assert.equal(await count(page, '#fake-ga'), 1, 'A still up');
+  assert.equal(await count(page, '.ops-card'), 0, 'the menu closed');
+  await page.waitForTimeout(300);
+  assert.deepEqual(usageReports(usage).map((r) => r.tool), ['grpa', 'grpb']);
+  await ctx.close();
+});
+
+test('OPS-GRP-2: a tool outside the group says Wait; its page names the running tools and Launch is off', async () => {
+  const { ctx, page } = await open(PHONE, null, { group: true });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group A');
+  await page.waitForSelector('#fake-ga');
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Wait']);
+  await clickTile(page, 'Alpha Tool');
+  await page.waitForSelector('.ops-note:has-text("Close the tools that are running first: Group A.")');
+  assert.ok(await page.isDisabled('.ops-btn.primary'));
+  assert.equal(await page.textContent('.ops-btn.primary'), 'Launch');
+  await ctx.close();
+});
+
+test('OPS-GRP-3: closing the first group card keeps the session; the pill names what still runs; closing the last brings the menu back', async () => {
+  const { ctx, page } = await open(PHONE, null, { group: true });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group A'); await page.waitForSelector('#fake-ga');
+  await page.evaluate(() => window.OpsCenter.toggle()); await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group B'); await page.waitForSelector('#fake-gb');
+  await page.waitForFunction(() => /2 tools running/.test((document.querySelector('.ops-fab') || {}).textContent || ''));
+  await page.click('#fake-ga-close');
+  await page.waitForFunction(() => /Group B running/.test((document.querySelector('.ops-fab') || {}).textContent || ''));
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Group B'), ['Running']);
+  await page.evaluate(() => window.OpsCenter.toggle());              // close the menu
+  await page.click('#fake-gb-close');
+  await page.waitForSelector('.ops-tile', { timeout: 4000 });         // the session ended: the menu comes back
+  assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Ready']);
+  await ctx.close();
+});
+
+test('OPS-GRP-4: a tool outside the group still runs alone: the note, as before', async () => {
+  const { ctx, page } = await open(PHONE, null, { group: true });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Alpha Tool'); await page.waitForSelector('#fake-alpha');
+  await page.evaluate(() => window.OpsCenter.toggle());
+  await page.waitForSelector('.ops-bubble:has-text("Alpha Tool is open")');
+  assert.equal(await count(page, '.ops-tile'), 0);
+  await ctx.close();
+});
+
+test('OPS-GRP-5: tapping a Running tile closes the menu and loads nothing again', async () => {
+  const { ctx, page } = await open(PHONE, null, { group: true });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group A'); await page.waitForSelector('#fake-ga');
+  await page.evaluate(() => window.OpsCenter.toggle()); await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Group A');
+  await page.waitForFunction(() => !document.querySelector('.ops-card'));
+  assert.equal(await page.evaluate(() => window.__gaRuns), 1);
   await ctx.close();
 });

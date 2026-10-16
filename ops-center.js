@@ -198,7 +198,7 @@
     loadToolScripts(t).then(done, done);
   }
   function toolById(id) { return S.list ? S.list.tools.filter(function (t) { return t.id === id; })[0] : null; }
-  function statusOf(tool, ck) { return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events), alongsideOn: !!tool.alongside && alongsideOn(tool) }); }
+  function statusOf(tool, ck) { var g = groupSession(); return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events), alongsideOn: !!tool.alongside && alongsideOn(tool), group: g, groupOn: g && groupOn(tool) }); }
 
   // ---------------------------------------------------------------- shell
   function ensureRoot() { if (!S.root || !S.root.isConnected) S.root = K().root(); return S.root; }
@@ -264,7 +264,7 @@
   }
   function addTile(grid) {
     return function (t) {
-      var tl = K().tile({ icon: t.icon, title: t.title, onClick: function () { openTool(t.id); } });
+      var tl = K().tile({ icon: t.icon, title: t.title, onClick: function () { if (groupSession() && groupOn(t)) { closeCard(); return; } openTool(t.id); } });   // a running group tool: its card is up
       S.tiles[t.id] = tl; grid.appendChild(tl.btn);
     };
   }
@@ -301,7 +301,7 @@
     }
     updateTiles();
   }
-  var PILL = { ready: ['Ready', 'ok'], notready: ['Not ready', 'warn'], locked: ['Locked', 'mute'], blocked: ['Members only', 'mute'], off: ['Not running', 'mute'], playing: ['Playing', 'info'] };
+  var PILL = { ready: ['Ready', 'ok'], notready: ['Not ready', 'warn'], locked: ['Locked', 'mute'], blocked: ['Members only', 'mute'], off: ['Not running', 'mute'], playing: ['Playing', 'info'], running: ['Running', 'info'], wait: ['Wait', 'mute'] };
   function updateTiles() {
     if (S.view !== 'menu' || !S.list) return;
     var ck = checks();
@@ -311,7 +311,7 @@
       tl.pills.textContent = '';
       tl.pills.appendChild(K().pill(PILL[st.state][0], PILL[st.state][1]));
       if (badge) tl.pills.appendChild(K().pill(badge === 'new' ? 'New' : 'Updated', 'info'));
-      tl.btn.classList.toggle('dim', st.state === 'locked' || st.state === 'blocked' || st.state === 'off');
+      tl.btn.classList.toggle('dim', st.state === 'locked' || st.state === 'blocked' || st.state === 'off' || st.state === 'wait');
       tl.btn.setAttribute('aria-label', t.title + ', ' + PILL[st.state][0] + (badge ? ', ' + (badge === 'new' ? 'New' : 'Updated') : ''));
     });
     if (S.sub) S.sub.textContent = subText();
@@ -353,6 +353,7 @@
     }
     var badge = C().badgeFor(t, S.seen);
     if (badge) b.appendChild(K().el('div', 'ops-meta', (badge === 'new' ? 'New' : 'Updated') + ' ' + t.version));
+    var waitNote = K().el('div', 'ops-note'); b.appendChild(waitNote);   // tools that run together are open (Tex 2026-10-16)
     var go = K().button('Launch', 'primary', function () { launch(t); });
     b.appendChild(go);
     function paint() {
@@ -367,7 +368,10 @@
         evRow.dot.className = 'ops-dot ' + (off ? 'warn' : 'ok'); evRow.dot.textContent = off ? '!' : '✓';
         evRow.txt.textContent = C().EVENT_TEXT[off ? 1 : 0];
       }
-      go.textContent = st.launch || (st.state === 'locked' ? 'Launch' : 'Members only');
+      var waiting = st.state === 'wait';
+      waitNote.textContent = waiting ? 'Close the tools that are running first: ' + (runningGroup().map(function (x) { return x.title; }).join(', ') || S.tool.title) + '.' : '';
+      waitNote.style.display = waiting ? '' : 'none';
+      go.textContent = st.launch || (st.state === 'locked' || waiting ? 'Launch' : 'Members only');
       go.disabled = !st.launch;
     }
     paint();
@@ -379,6 +383,7 @@
   function trackerBusy() { return !!(S.tracker && C().trackerWatching(S.tracker, Date.now())); }
   function launch(t) {
     if (t.alongside) { launchAlongside(t); return; }
+    if (groupSession()) { if (t.together) launchTogether(t); return; }   // a tool outside the group waits
     S.recent = C().pushRecent(S.recent, t.id); lsSet(LS.recent, S.recent);
     S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
     reportUse(t);
@@ -388,7 +393,7 @@
     showFab('Ops · starting ' + t.title);
     startObserver();
     var chain = Promise.resolve();
-    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag and Jam helpers are optional
+    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam|stack)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag, Jam and stack helpers are optional
     chain.then(function () { dispatch({ type: 'loaded', at: Date.now() }); }, function () { dispatch({ type: 'loadError', at: Date.now() }); });
   }
   function dispatch(ev) {
@@ -396,7 +401,8 @@
     var prev = S.tracker.phase;
     S.tracker = C().trackerReduce(S.tracker, ev);
     var phase = S.tracker.phase;
-    if (phase === 'running' && prev !== 'running') { closeCard(); showFab('Ops · ' + S.tool.title + ' running'); }
+    if (phase === 'running' && prev !== 'running') { closeCard(); showFab(fabText()); }
+    if (phase === 'running' && (ev.type === 'nodeAdded' || ev.type === 'nodeRemoved') && S.fab) S.fab.setText(fabText());
     if (phase === 'idle' && prev !== 'idle') {
       hideFab(); S.fabHidden = false;
       var failed = S.tracker.error, t = S.tool;
@@ -463,7 +469,7 @@
     if (S.fabHidden) return;                            // the player hid it: stays hidden until the tool closes
     ensureRoot();
     if (S.fab) { S.fab.setText(text); return; }
-    S.fab = K().fab(S.root, text, showNote);
+    S.fab = K().fab(S.root, text, onFab);
   }
   // the note above the pill, with a way to hide the pill in case it covers one of the tool's own buttons
   function showNote() {
@@ -474,6 +480,24 @@
     if (S.fab) K().bubble(S.root, runningNote(), 6000, 'Hide this button', function () { S.fabHidden = true; hideFab(); }, extra);
     else K().bubble(S.root, runningNote(), undefined, null, null, extra);
   }
+  // Tools that run together (Tex 2026-10-16): while one is open, the menu opens, the others start beside it, and
+  // every other tool waits.
+  function groupSession() { return !!(S.tool && S.tool.together && S.tracker && S.tracker.phase !== 'idle'); }
+  function groupOn(t) { try { return !!(t && t.together && t.overlay && document.querySelector(t.overlay)); } catch (e) { return false; } }
+  function runningGroup() { return S.list ? S.list.tools.filter(groupOn) : []; }
+  function fabText() {
+    var on = groupSession() ? runningGroup() : [];
+    if (on.length > 1) return 'Ops · ' + on.length + ' tools running';
+    return 'Ops · ' + (on.length ? on[0].title : S.tool.title) + ' running';
+  }
+  function launchTogether(t) {
+    S.recent = C().pushRecent(S.recent, t.id); lsSet(LS.recent, S.recent);
+    S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
+    reportUse(t);
+    closeCard();
+    loadToolScripts(t).catch(function () { ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.'); });
+  }
+  function onFab() { if (groupSession()) openMenu(); else showNote(); }
   // Tools that run alongside the others (Rickroll, Tex 2026-10-14): never the running tool, never holding the menu.
   function alongsideTool() {
     if (!S.list) return null;
@@ -493,7 +517,7 @@
   }
   function loadToolScripts(t) {
     var chain = Promise.resolve();
-    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag and Jam helpers are optional
+    t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam|stack)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag, Jam and stack helpers are optional
     return chain;
   }
   function hideFab() { if (S.fab) { S.fab.remove(); S.fab = null; } }
@@ -526,6 +550,7 @@
   function toggle() {
     if (!S.started) return;                             // still loading: the first tap opens the menu
     if (S.tracker && S.tracker.phase !== 'idle') {
+      if (groupSession()) { if (S.view) closeCard(); else openMenu(); return; }   // tools that run together: the menu
       showNote();
       return;
     }
