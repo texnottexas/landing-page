@@ -146,7 +146,7 @@ test('Angel Attacks tile: for members, game ready, its own overlay and crosshair
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#ang-root');
   assert.equal(t.icon, 'target');
-  assert.deepEqual(t.scripts, ['ops-drag.js', 'angel-attacks-core.js', 'angel-attacks.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-stack.js', 'angel-attacks-core.js', 'angel-attacks.js']);
   assert.match(t.desc, /Doesn't use your normal marches/);
   const ver = (read('angel-attacks.js').match(/var VERSION = '([^']+)'/) || [])[1];
   assert.equal(t.version, ver, 'registry version = script version');

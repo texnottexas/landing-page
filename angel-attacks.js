@@ -10,7 +10,7 @@
   var C = window.AngelAttacksCore;
   if (!C) { try { alert('Angel Attacks did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14';
+  var VERSION = '2026-10-16';
   var WORKER = window.__ANG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__ANG_FAST, CHECK_MS = window.__ANG_CHECK_MS || 180000, IDLE_MS = window.__ANG_IDLE_MS || 600000, TIMEOUT_MS = window.__ANG_TIMEOUT_MS || 10000;
   var LIST = 8802, MARCH = 902, BOSS_MARCH = 189;          // what the game used on 2026-10-13; read live when it names them
@@ -253,7 +253,7 @@
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show Angel Attacks' : 'Minimize Angel Attacks'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
   function toggleMin() {
-    if (!S.min && layout().fold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    if (!S.min && where().fold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
     S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
   }
   function showRun() {
@@ -288,6 +288,9 @@
     if (m.right + 16 + 190 <= vw - 8) return { top: Math.round(m.top) + 'px', left: Math.round(m.right + 8) + 'px', right: '', fold: false };
     return { top: Math.round(m.top) + 'px', left: 'auto', right: 'calc(8px + env(safe-area-inset-right))', fold: true };
   }
+  // Tools that run together keep their cards apart (Tex 2026-10-16): the shared ops-stack.js rule, or the old one
+  // above when the helper didn't load.
+  function where() { return window.OpsStack ? window.OpsStack.layout(root, 'angels', !!(card && /\bmin\b/.test(card.className)), paint) : layout(); }
   function place(L) {
     if (!root || L.placed) return;
     if (root.style.top !== L.top) root.style.top = L.top;
@@ -301,7 +304,7 @@
     put('ang-foot', S.foot);
     put('ang-last', S.last);
     put('ang-mini', String(S.attackedRound));
-    var L = layout(), folded = S.min || (L.fold && !forceOpen);
+    var L = where(), folded = S.min || (L.fold && !forceOpen);
     var tt = card.querySelector('.ang-title'), tx = folded ? 'Angels' : 'Angel Attacks';
     if (tt && tt.textContent !== tx) tt.textContent = tx;
     card.className = 'ang-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');

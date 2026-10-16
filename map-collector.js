@@ -10,7 +10,7 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14.3';
+  var VERSION = '2026-10-16';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
@@ -594,7 +594,7 @@
       .then(function (reg) {
         var t = (reg && Array.isArray(reg.tools) ? reg.tools : []).filter(function (x) { return x && x.id === 'mask-boxes'; })[0];
         if (!t || !Array.isArray(t.scripts)) throw new Error('not listed');
-        return t.scripts.reduce(function (p, f) { return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? q.catch(function () {}) : q; }); }, Promise.resolve());   // the drag and Jam helpers are optional
+        return t.scripts.reduce(function (p, f) { return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam|stack)\.js$/.test(f) ? q.catch(function () {}) : q; }); }, Promise.resolve());   // the drag and Jam helpers are optional
       })
       .then(function () { mbxLoading = false; paint(); }, function () { mbxLoading = false; note('Mask Boxes did not load. Try again.', 10000); });
   }
