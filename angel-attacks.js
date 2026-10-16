@@ -10,7 +10,7 @@
   var C = window.AngelAttacksCore;
   if (!C) { try { alert('Angel Attacks did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16';
+  var VERSION = '2026-10-16.2';
   var WORKER = window.__ANG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__ANG_FAST, CHECK_MS = window.__ANG_CHECK_MS || 180000, IDLE_MS = window.__ANG_IDLE_MS || 600000, TIMEOUT_MS = window.__ANG_TIMEOUT_MS || 10000;
   var LIST = 8802, MARCH = 902, BOSS_MARCH = 189;          // what the game used on 2026-10-13; read live when it names them

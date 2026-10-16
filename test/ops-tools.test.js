@@ -15,7 +15,7 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Rickroll'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Odinium Gatherer', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
@@ -254,15 +254,30 @@ test('Mask Boxes knows the Angel event types the registry names (Tex 2026-10-16)
   assert.deepEqual(MB.ANGEL_EVENT, raw.tools.find((t) => t.id === 'angels').event);
 });
 
-test('together (Tex 2026-10-16): exactly the four collectors run together, list ops-stack.js among their helpers before their own scripts, and the helper deploys and gates', () => {
-  assert.deepEqual(list.tools.filter((t) => t.together).map((t) => t.id).sort(), ['angels', 'enigma-veins', 'ht-gifts', 'mask-boxes']);
+test('together (Tex 2026-10-16): exactly the five collectors run together, list ops-stack.js among their helpers before their own scripts, and the helper deploys and gates', () => {
+  assert.deepEqual(list.tools.filter((t) => t.together).map((t) => t.id).sort(), ['angels', 'enigma-veins', 'ht-gifts', 'mask-boxes', 'odin-gather']);
   list.tools.filter((t) => t.together).forEach((t) => {
     const i = t.scripts.indexOf('ops-stack.js');
     assert.ok(i > 0, t.id);
     assert.ok(t.scripts.slice(0, i).every((f) => /^ops-(drag|jam)\.js$/.test(f)), t.id + ': helpers first');
-    assert.equal(t.version, '2026-10-16', t.id);
+    assert.match(t.version, /^2026-10-16/, t.id);
   });
   const yml = read('.github/workflows/pages.yml');
   assert.ok(/cp [^\n]*\bops-stack\.js\b/.test(yml), 'deployed');
   assert.ok(/node --test [^\n]*test\/ops-stack\.test\.js/.test(yml), 'gated');
+});
+
+test('Odinium Gatherer tile (Tex 2026-10-16): for members, game ready, its own overlay and ore icon, runs together; scripts deployed, rules in the deploy gate', () => {
+  const t = list.tools.find((x) => x.id === 'odin-gather');
+  assert.ok(t, 'listed');
+  assert.equal(t.title, 'Odinium Gatherer');
+  assert.equal(t.gate, 'member'); assert.deepEqual(t.ready, ['game']); assert.equal(t.overlay, '#odin-root'); assert.equal(t.icon, 'ore');
+  assert.equal(t.together, true);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-stack.js', 'odin-gather-core.js', 'odin-gather.js']);
+  const ver = (read('odin-gather.js').match(/var VERSION = '([^']+)'/) || [])[1];
+  assert.equal(t.version, ver);
+  assert.ok(!/\u2014/.test(t.desc + t.title), 'no em dash');
+  const yml = read('.github/workflows/pages.yml');
+  assert.ok(/cp [^\n]*\bodin-gather-core\.js\b/.test(yml) && /cp [^\n]*\bodin-gather\.js\b/.test(yml), 'deployed');
+  assert.ok(/node --test [^\n]*test\/odin-gather-core\.test\.js/.test(yml), 'gated');
 });

@@ -328,3 +328,7 @@ test('a group session: group tools say Running when their card is up, else their
   assert.deepEqual(OC.tileStatus(other, Object.assign({}, base, { group: false })), { state: 'ready', launch: 'Launch' }, 'no session: as before');
   assert.deepEqual(OC.tileStatus(other, Object.assign({}, base, { member: false, group: true })), { state: 'blocked', launch: null }, 'members only still first');
 });
+
+test('ore is a known icon (Odinium Gatherer)', () => {
+  assert.equal(OC.validateTools({ tools: [tool({ id: 'o', icon: 'ore' })] }).tools[0].icon, 'ore');
+});

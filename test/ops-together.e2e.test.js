@@ -13,7 +13,7 @@ const { chromium } = require('playwright');
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
 const OWN = ['mask-boxes.js', 'mask-boxes-core.js', 'enigma-veins.js', 'enigma-veins-core.js', 'ht-gifts.js', 'ht-gifts-core.js',
-  'ops-stack.js', 'ops-drag.js', 'ops-tools.json'];
+  'ops-stack.js', 'ops-drag.js', 'ops-tools.json', 'odin-gather.js', 'odin-gather-core.js'];
 const PW = crypto.createHash('sha256').update('bananas').digest('hex');
 const T = 260617001;                                     // a Mask box's item is T + its type
 
@@ -122,4 +122,22 @@ test('TOG-4 (review): a card the player dragged earlier is taken, whatever opene
   assert.deepEqual(list.find((c) => c.id === '#htg-root').t, 200, 'the dragged card stays where the player put it');
   assertApart(list, view);
   await ctx.close();
+});
+
+// Tex 2026-10-16: the Odinium Gatherer joins the group: its card keeps apart from the others too.
+test('TOG-5: Mask Boxes and the Odinium Gatherer together, either opened first: their cards do not overlap, on desktop or on a phone', async () => {
+  for (const [view, odinFirst] of [[{ width: 1280, height: 800 }, false], [{ width: 375, height: 740 }, false], [{ width: 1280, height: 800 }, true], [{ width: 375, height: 740 }, true]]) {
+    const ctx = await browser.newContext({ viewport: view });
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => { throw e; });
+    await page.goto(base);
+    await page.evaluate((b) => { const w = b.replace(/\/$/, ''); window.__MBX_WORKER = w; window.__ODIN_WORKER = w; window.__MBX_FAST = true; window.__ODIN_FAST = true; window.__ODIN_WAIT_MS = 300; }, base);
+    const tools = odinFirst ? ['odin-gather.js', 'mask-boxes.js'] : ['mask-boxes.js', 'odin-gather.js'];   // whichever opened first keeps its spot
+    for (const f of ['ops-drag.js', 'ops-stack.js', 'mask-boxes-core.js', 'odin-gather-core.js'].concat(tools)) await page.addScriptTag({ url: base + f });
+    await page.waitForSelector('#mbx-root .mbx-card'); await page.waitForSelector('#odin-root .odin-card');
+    await page.waitForTimeout(2500);
+    const list = await page.evaluate(() => ['#mbx-root', '#odin-root'].map((q) => { const c = document.querySelector(q).firstElementChild, r = c.getBoundingClientRect(); return { id: q, l: Math.round(r.left), t: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom) }; }));
+    assertApart(list, view);
+    await ctx.close();
+  }
 });

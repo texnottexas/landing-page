@@ -9,7 +9,7 @@
   var C = window.HtGiftsCore;
   if (!C) { try { alert('HT Gift Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16';
+  var VERSION = '2026-10-16.2';
   var WORKER = window.__HTG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__HTG_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__HTG_TIMEOUT_MS || 10000, POLL_MS = window.__HTG_POLL_MS || 1000;
   var BUSY_MS = window.__HTG_BUSY_MS || 10000, IDLE_MS = window.__HTG_IDLE_MS || 30000;
