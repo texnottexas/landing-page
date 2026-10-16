@@ -18,6 +18,14 @@
   };
 
   function num(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
+  var ET_FMT = null;
+  function etParts(ms) {
+    if (!ET_FMT) ET_FMT = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit' });
+    var o = {}; ET_FMT.formatToParts(new Date(ms)).forEach(function (p) { o[p.type] = p.value; });
+    return { y: +o.year, mo: +o.month, d: +o.day, h: (+o.hour) % 24 };
+  }
+  // The game day runs from reset (12:00 ET) to reset, named by the date it starts on.
+  function gameDay(ms) { var p = etParts(ms); return new Date(Date.UTC(p.y, p.mo - 1, p.d - (p.h < 12 ? 1 : 0))).toISOString().slice(0, 10); }
   function esc(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
   // The log's message template ("Well done! The Lv. {4} {5} ({2},{3}) built by {0} - {1} is completed.") as a regex.
@@ -158,7 +166,7 @@
   var OdinGatherCore = {
     BID: BID, DURATION: DURATION, LOG_TYPE: LOG_TYPE, SLOT_POS: SLOT_POS, MAX_OVER: MAX_OVER, CAPS: CAPS,
     logFacilities: logFacilities, towersInView: towersInView, timeLeft: timeLeft, speedOf: speedOf, predict: predict,
-    planTroops: planTroops, pickHeroes: pickHeroes, rank: rank, gate: gate, classify: classify, bestSkin: bestSkin
+    planTroops: planTroops, pickHeroes: pickHeroes, rank: rank, gate: gate, classify: classify, bestSkin: bestSkin, gameDay: gameDay
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = OdinGatherCore;
   else root.OdinGatherCore = OdinGatherCore;

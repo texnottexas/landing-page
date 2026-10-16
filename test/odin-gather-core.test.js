@@ -153,3 +153,8 @@ test('constants: Lv. 3 Refine Center, 10 h, slot positions', () => {
   assert.equal(O.DURATION, 36000);
   assert.deepEqual(O.SLOT_POS, [1, 2, 3, 11, 12, 13, 21, 22, 23]);
 });
+
+test('gameDay: the game day runs from reset (12:00 ET), named by the date it starts on', () => {
+  assert.equal(O.gameDay(Date.UTC(2026, 9, 16, 15, 59)), '2026-10-15');   // 11:59 ET
+  assert.equal(O.gameDay(Date.UTC(2026, 9, 16, 16, 0)), '2026-10-16');    // 12:00 ET
+});

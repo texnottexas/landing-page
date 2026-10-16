@@ -25,7 +25,7 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   angelEvent: null, angels: [], carrier: {}, angelMode: 'ok', landMs: 300, marchType189: 189, jumps: [],
   // Refugee Camps: letters and capsules in the bag, VIT, marches, camps by the base, heroes and units at home
   rfc: { letters: 20, small: 5, large: 2, vit: 100, vitMax: 327, buys: 0, used: 0, max: 7, camps: [], seq: 0, noCamp: false, rallyMode: 'ok', rallyMs: 3000,
-    positions: 9, armyAdd: 30, heroMax: 3, heroAddBuff: 1, gemDrift: 0, func: { mecha: true, monster_battle_replace: true, refugee_v2: false },
+    positions: 9, armyAdd: 30, heroMax: 3, heroAddBuff: 1, gemDrift: 0, func: { mecha: true, monster_battle_replace: true, refugee_v2: false, one_key_to_mining: true },
     heroes: [{ Id: 338, Power: 9852, HeroType: 2 }, { Id: 115, Power: 4794, HeroType: 0 }, { Id: 117, Power: 4875, HeroType: 0 }, { Id: 169, Power: 12820, HeroType: 0 },
       { Id: 174, Power: 10142, HeroType: 0 }, { Id: 170, Power: 10142, HeroType: 0 }, { Id: 172, Power: 11414, HeroType: 0 }, { Id: 333, Power: 11214, HeroType: 2 }, { Id: 334, Power: 10840, HeroType: 2 }],
     units: [{ armyID: 901103, type: 101, level: 103, power: 300, n: 60 }, { armyID: 905103, type: 301, level: 103, power: 300, n: 60 },
@@ -35,6 +35,11 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   htg: { gifts: [], received: 0, cap: '10', bagCap: 20, travelMs: 800, claimMode: 'ok', queryMode: 'ok', inview: true, inflight: 0, claimed: {}, marches: {}, maxOut: 0 },
   // Enigma Veins: the event, the veins on the map (status as the game reports it to this player) and vein marches
   vein: { event: null, veins: [], mode: 'ok', travelMs: 300, mineMs: 300, maxOut: 0, live: 0, listLagMs: 0, answerMs: 20 }, marchType180: 180,
+  // Odinium Gatherer: the Alliance Log's Refine Center entries, facilities on the map (pointType 24), their infos (1034),
+  // gathering marches (902 marchType 26), the buffs and hero scores the deploy screen reads, and base skins (855)
+  odin: { aid: 500273604, records: [], towers: [], infos: {}, viewMode: 'ok', infoMode: 'ok', mode: 'ok', travelMs: 300, sent: [], marches: {},
+    buffs: { pct143: 2.375, add143: 0, pct159: 1.455, add159: 0 }, heroScore: {}, heroPct: {}, heroLoad: {},
+    faces: {}, using: 1719000, skins: {}, skinLog: [], skinRefuse: [] },
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -74,6 +79,29 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         setTimeout(function () { HG.inflight--; HG.received++; gift.m.receiveBagUidList.push(F.uid); }, HG.travelMs);
         setTimeout(function () { delete HG.marches[mk]; delete F.carrier[mk]; }, HG.travelMs * 2);
         setTimeout(function () { cb({ s: 0, d: JSON.stringify({ marchInfo: { marchId: mk, marchType: 257, marchStartTime: start, marchArrive: arriveSec } }) }); }, 20);
+        return true;
+      }
+      if (rid === 902 && p.marchType === 26) {             // garrison gathering in a Refine Center
+        var OD = F.odin, otile = p.x + ',' + p.y;
+        OD.sent.push(JSON.parse(JSON.stringify(p)));
+        if (OD.mode === 'silent') { if (F.pending.indexOf(902) < 0) F.pending.push(902); return true; }
+        if (OD.mode === 'refuse') { setTimeout(function () { cb({ s: 3, d: 'tower_full' }); }, 20); return true; }
+        var oinfo = null; Object.keys(OD.infos).forEach(function (k) { var i = OD.infos[k]; if (i.pt && i.pt.x === p.x && i.pt.y === p.y) oinfo = i; });
+        var oneed = {}, ounits = 0; (p.armyList || []).forEach(function (a) { oneed[a.armyId] = (oneed[a.armyId] || 0) + a.armyNum; ounits += a.armyNum; });
+        var oshort = Object.keys(oneed).some(function (id) { var g = F.rfc.units.filter(function (u) { return String(u.armyID) === id; })[0]; return !g || g.n - (F.rfc.unitOut[id] || 0) < oneed[id]; });
+        var okeys = Object.keys(p).sort().join(',');
+        var obad = !oinfo ? 'tower_not_exist' : okeys !== 'armyList,armyListNew,break,extraArmy,formation,formationV2,heroList,marchType,trapList,x,y' ? 'bad_march'
+          : JSON.stringify(p.armyList) !== JSON.stringify(p.armyListNew) ? 'bad_march' : OD.marches[otile] ? 'tower_one_march'
+          : ounits > 2500 - oinfo.army_size ? 'tower_full' : F.rfc.used >= F.rfc.max ? 'no_march' : oshort ? 'no_units'
+          : (p.heroList || []).some(function (h) { return F.rfc.heroOut[h]; }) ? 'hero_busy' : '';
+        if (obad) { setTimeout(function () { cb({ s: 3, d: obad }); }, 20); return true; }
+        var omk = 'g' + F.sent.length, oarr = Math.floor(Date.now() / 1000) + Math.ceil(OD.travelMs / 1000);
+        F.rfc.used++; oinfo.army_size += ounits; OD.marches[otile] = omk;
+        p.heroList.forEach(function (h) { F.rfc.heroOut[h] = 1; });
+        Object.keys(oneed).forEach(function (id) { F.rfc.unitOut[id] = (F.rfc.unitOut[id] || 0) + oneed[id]; });
+        F.carrier[omk] = { marchType: 26, realUid: F.uid, target_tx: p.x, target_ty: p.y, marchArrive: oarr, gatherStartTime: 0 };
+        setTimeout(function () { if (F.carrier[omk]) F.carrier[omk].gatherStartTime = Math.floor(Date.now() / 1000); }, OD.travelMs);
+        setTimeout(function () { cb({ s: 0, d: JSON.stringify({ marchInfo: { marchId: omk, marchType: 26, marchArrive: oarr } }) }); }, 20);
         return true;
       }
       if (rid === 902 && p.marchType === F.marchType180) {   // mine a vein: a march with no troops that arrives, mines, comes home
@@ -132,8 +160,21 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         });
         if (F.htg.pendAfterView) setTimeout(function () { if (F.pending.indexOf(902) < 0) F.pending.push(902); }, 30);   // another tool's march request turns up
         if (F.htg.inview !== false) F.htg.gifts.forEach(function (g, gi) { if (g.k === p.k) pts.push({ v: 1, x: g.x, y: g.y, k: g.k, id: 9000 + gi, pointType: 259, m: JSON.parse(JSON.stringify(g.m)) }); });
+        if (F.odin.viewMode === 'silent') return true;
+        F.odin.towers.forEach(function (t, ti) {
+          if (Math.abs(t.x - p.x) <= 12 && Math.abs(t.y - p.y) <= 15 && (t.k || 2864) === p.k)
+            pts.push({ v: 6, x: t.x, y: t.y, k: p.k, id: 5000 + ti, pointType: 24, b: { id: t.id, bid: t.bid || 71003, st: t.st || 3, aid: t.aid || F.odin.aid, a_tag: 'Dog*', pid: 'secret-pid', playerInfo: '{"uid":"secret"}' } });
+        });
         setTimeout(function () { cb({ c: 901, o: String(n), d: JSON.stringify({ rtype: 2, pointList: pts }) }); }, 20);
         return true;
+      } else if (rid === 1034) {                           // a Refine Center's info (the game sends it when you tap one)
+        if (F.odin.infoMode === 'silent') return true;
+        var tinfo = F.odin.infos[p.id];
+        ans = F.odin.infoMode === 'refuse' ? { s: 3, d: 'tower_not_exist' } : tinfo ? { s: 0, d: JSON.stringify(Object.assign({ pid: 'secret-pid', playerInfo: '{"uid":"secret"}' }, tinfo)) } : { s: 3, d: 'tower_not_exist' };
+      } else if (rid === 855) {                            // wear a base skin
+        F.odin.skinLog.push(p.skinId);
+        if (F.odin.skinRefuse.indexOf(p.skinId) >= 0) ans = { s: 0, d: JSON.stringify({ ret: 5 }) };
+        else { F.odin.using = p.skinId; ans = { s: 0, d: JSON.stringify({ ret: 0 }) }; }
       } else if (rid === 815) {                            // use an item: a letter puts a camp by the base; capsules add VIT
         var RF = F.rfc, it = p.itemid;
         if (it === 1700039) {
@@ -288,16 +329,19 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       getItemAmount: function (id) { return id === 520002 ? F.bag : id === 1700039 ? F.rfc.letters : id === 600001 ? F.rfc.small : id === 600002 ? F.rfc.large : 0; },
       getEnergy: function () { return { Point: F.rfc.vit, PointMax: F.rfc.vitMax, BuyTimes: F.rfc.buys }; },
       get myMarchNum() { return F.rfc.used; }, get myMarchNumMAX() { return F.rfc.max; }, Heros: {},
-      FunctionOn: function (k) { return !!F.rfc.func[k]; }, Buff: { getBuffAddValue: function (k) { return k === 'BattleHeroAddNum' ? F.rfc.heroAddBuff : 0; } },
-      get VipLevel() { return F.vip; }, get Level() { return F.level; }, get Alliance() { return { Rank: F.rank }; }, OriginServerId: 2864, ServerId: 2864,
+      FunctionOn: function (k) { return !!F.rfc.func[k]; },
+      Buff: { getBuffAddValue: function (k) { return k === 'BattleHeroAddNum' ? F.rfc.heroAddBuff : k === 143 ? F.odin.buffs.add143 : k === 159 ? F.odin.buffs.add159 : 0; },
+        getBuffPercentValue: function (k) { return k === 143 ? F.odin.buffs.pct143 : k === 159 ? F.odin.buffs.pct159 : 0; } },
+      get _MyCastleFace() { return F.odin.faces; }, get _UsingCastleFace() { return F.odin.using; }, set UsingCastleFace(v) { F.odin.using = v; },
+      get VipLevel() { return F.vip; }, get Level() { return F.level; }, get Alliance() { return { Rank: F.rank, Aid: F.odin.aid }; }, OriginServerId: 2864, ServerId: 2864,
       get itemCityRewardReceivedNum() { return F.serverNum; }, get itemCityRewardReceivedInstIds() { return F.serverIds; } } } };
     if (name === 'newChatController') return { newChatController: { _instance: chatInst } };
     if (name === 'NetMgr') return { NET: NET };
     if (name === 'GameTools') return { default: {
-      getDataConfigData: function (id) { return ({ 630051: F.gifLevel, 250908001: F.htg.cap, 2021116: '115|117|1117', 2021115: '3', 5041: '50|200|500|500|1000' })[id] || null; },
+      getDataConfigData: function (id) { return ({ 630051: F.gifLevel, 250908001: F.htg.cap, 2021116: '115|117|1117', 2021115: '3', 5041: '50|200|500|500|1000', 6000037: '960002,990159,990442|982001|982002|982003|990220,990544,990545', 930086: '10|30' })[id] || null; },
       getAttackerMyArmys: function () {                 // one entry per unit at home
         var out = [];
-        F.rfc.units.forEach(function (g) { for (var i = g.n - (F.rfc.unitOut[g.armyID] || 0); i > 0; i--) out.push({ armyID: g.armyID, armyNum: 0, ArmyData: { type: g.type, level: g.level, power: g.power, mecha_id: g.mecha || 0 }, battleMechaData: g.mecha ? { mechaId: g.mecha } : null }); });
+        F.rfc.units.forEach(function (g) { for (var i = g.n - (F.rfc.unitOut[g.armyID] || 0); i > 0; i--) out.push({ armyID: g.armyID, armyNum: 0, ArmyData: { type: g.type, level: g.level, power: g.power, mecha_id: g.mecha || 0, thor_group: g.thor || 0 }, battleMechaData: g.mecha ? { mechaId: g.mecha } : null }); });
         return out;
       } } };
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
@@ -305,6 +349,8 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       get _activityMap() { return F.angelInMap ? { a292: F.angelInMap } : {}; },
       getActivityByActivitytype: function (t) { return t === 26 && F.siege ? { id: 153, alMonsterSiege: F.siege } : null; } } } };
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
+    if (name === 'AllianceRecordController') return { default: { _inst: { _categoryData: { get 3() { return F.odin.records; } } } } };
+    if (name === 'NBattleUtil') return { NBattleUtil: { getArmyLoad: function (id, u) { var g = F.rfc.units.filter(function (x) { return x.armyID === Number(id); })[0]; return (g && g.mecha ? 131000 : 120000) * (1 + u); } } };
     if (name === 'PlayerInfo') return { default: function () { var u = ''; this.update = function (s) { try { u = JSON.parse(s).username; } catch (e) { u = ''; } }; this.getDisplayName = function () { return u; }; } };
     if (name === 'TableManager') return { TABLE: { getTableDataById: function (t, id) {
       if (t === 'vip_shop' && id === 70202) return { id: 70202, item_id: 520002, need_vip_level: 2, price_shop: 37 };
@@ -315,21 +361,27 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       if (t === 'item' && Number(id) === 1700039) return { para1: '12', para2: '14' };
       if (t === 'monster_group' && Number(id) === 12) return { cost_energy: 5 };
       if (t === 'alliance_parade') return { bag_reward_num: F.htg.bagCap };
+      if (t === 'resource' && String(id) === '1603') return { gather_speed: 0.005, load_factor: 40000, resource_type: 20 };
+      if (t === 'resource' && String(id) === '1304') return { gather_speed: 0.012, load_factor: 40000, resource_type: 20 };
+      if (t === 'map_building' && String(id) === '71003') return { gather_coefficient: 1.2, force_capacity: 2500, duration: 36000, produce_type: 20 };
+      if (t === 'skin') return { equip_buff: F.odin.skins[id] || '' };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
     if (name === 'NRequestIdV2') return { NRequestIdV2: { PINK_MECHA_MONSTER_LIST: 8802, FLOAT_PARADE_QUERY_CAN_REWARD_BAG: 8852, ENIGMA_BEAST_TREASURE_GET_KUANG_LIST: 8623 } };
-    if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902, GET_WORLD_INFO: 901, ITEM_USE: 815, BuyEnergry: 801, GetRefugee: 1021, ALLIANCE_Assembly_Create: 1201 } };
-    if (name === 'NWorldMapMarchCommon') return { NMarchType: { MECHA_TREASURE_BOSS: F.marchType189, DOMAIN_TREASURE: F.marchType180 } };
+    if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902, GET_WORLD_INFO: 901, ITEM_USE: 815, BuyEnergry: 801, GetRefugee: 1021, ALLIANCE_Assembly_Create: 1201, GET_TOWERINFO: 1034, USE_CASTLE_FACE: 855 } };
+    if (name === 'NWorldMapMarchCommon') return { NMarchType: { MECHA_TREASURE_BOSS: F.marchType189, DOMAIN_TREASURE: F.marchType180, ATTACK_TOWER: 26 } };
     if (name === 'NWorldMapData') return { default: { instance: { get marches() { return F.carrier; } } } };
     if (name === 'PushResponse') return { PUSH_FIND_REFUGEECAMP: PushFindCamp };
     if (name === 'WorldMapCommon') return { MarchType: { CHIP_BLESSING_ITEM_DROP: 256, CHIP_BLESSING_GET_ITEM_DROP_REWARD: 257 }, WorldMapEntityType: { CHIP_BLESSING_ITEMDROP_BUILD: 259 } };
     if (name === 'TableName') return { TableName: { alliance_parade: 'alliance_parade' } };
-    if (name === 'GameDefine') return { FunctionKey: { mecha: 'mecha', refugee_v2: 'refugee_v2', monster_battle_replace: 'monster_battle_replace' }, BuffType: { BattleHeroAddNum: 'BattleHeroAddNum' } };
+    if (name === 'GameDefine') return { FunctionKey: { mecha: 'mecha', refugee_v2: 'refugee_v2', monster_battle_replace: 'monster_battle_replace' }, BuffType: { BattleHeroAddNum: 'BattleHeroAddNum', WorldGatherSpeed: 143, ArmyGatherLoad: 159 } };
     // like the game: getAllEnabledHero reads the current battle's type, unset until a battle screen has opened (right
     // after login, in base); a rally's heroes are the march-able list (HeroController.getHaveHeroCanMarchList)
     var freeHeroes = function () { return F.rfc.heroes.filter(function (h) { return !F.rfc.heroOut[h.Id]; }).map(function (h) { return Object.assign({ Quality: 5, Star: 5, Level: 120, TryOut: 0 }, h); }); };
     if (name === 'HeroTools') return { default: { getAllEnabledHero: function () { if (!F.curBattle) throw new TypeError("Cannot read properties of undefined (reading 'Type')"); return freeHeroes(); } } };
     if (name === 'HeroData') return { HeroQuality: { Orange: 5 } };
-    if (name === 'HeroController') return { HeroController: { getInstance: function () { return { checkHeroExclude: function () { return false; }, getHaveHeroCanMarchList: freeHeroes }; } }, HeroState: { March: 2 } };
+    if (name === 'HeroController') return { HeroController: { getInstance: function () { return { checkHeroExclude: function () { return false; }, getHaveHeroCanMarchList: freeHeroes,
+      getHeroSkillTalantBuffAddWithBuffId: function (id, b) { return b === 960002 ? (F.odin.heroScore[id] || 0) : 0; },
+      getHeroSkillTalantBuffAdd: function (id, type) { return type === 143 ? (F.odin.heroPct[id] || 0) : type === 159 ? (F.odin.heroLoad[id] || 0) : 0; } }; } }, HeroState: { March: 2 } };
     if (name === 'NBattleModel') return { NBattleModel: { instance: { myMaxArmysNum: 9, getMarchHeroNumMax: function () { return F.rfc.heroMax; }, getOtherStageUsedHeros: function () { return []; } } } };
     if (name === 'NBattlePositionBiz') return { NBattlePositionBiz: { getPositionCount: function () { return F.rfc.positions; } } };
     if (name === 'MarchStorageController') return { MarchStorageController: { getInstance: function () { return { getMaxCoutByPos: function (y) { var a = F.rfc.armyAdd; return 1 + Math.floor(a / 9) + (a % 9 > y ? 1 : 0); } }; } } };
@@ -338,7 +390,8 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       pubilc911: 'Reward claimed', mask_limit_1: 'Daily limit reached', view_too_fast: 'Too frequent',
       backup_mecha_lottery_21: 'March failed! A commander can only attack the same Heavy Mothership Angel once!',
       field_lottery_37: 'Not enough time remaining on the Vein to start a march.', field_lottery_35: 'March failed! Only one march is allowed on the same Vein at a time.',
-      field_lottery_36: 'Each Vein can only be mined once!', gourmet_key17: 'Too many marches out.' };
+      field_lottery_36: 'Each Vein can only be mined once!', gourmet_key17: 'Too many marches out.',
+      alliance_records_027: 'Well done! The Lv. {4} {5} ({2},{3}) built by {0} - {1} is completed.', tower_full: 'Garrison Troop is full', tower_not_exist: 'The building is gone.', skin_013: 'Clear the tiles around your base first.' };
     if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return TEXT[k] || k; } } };
     return null;
   };
