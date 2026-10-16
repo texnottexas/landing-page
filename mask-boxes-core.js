@@ -235,7 +235,17 @@
         expireTime: pt.endMs / 1000, contentParams: [String(host || '')], jumpServerId: pt.w }, actt: cfg.msgType };
   }
 
+  // The Angels switch shows only while the Angel event runs (Tex 2026-10-16): the Ops Center's rule, its registry types.
+  var ANGEL_EVENT = [292];
+  function eventLive(types, acts, nowSec) {
+    if (!Array.isArray(types) || !types.length) return true;
+    return (Array.isArray(acts) ? acts : []).some(function (a) {
+      return !!a && typeof a === 'object' && types.indexOf(Number(a.type)) >= 0 && (Number(a.begintime) || 0) <= nowSec && nowSec < (Number(a.endtime) || 0);
+    });
+  }
+
   var MaskBoxesCore = {
+    ANGEL_EVENT: ANGEL_EVENT, eventLive: eventLive,
     TYPES: TYPES, DAILY_CAP: DAILY_CAP, MIN_LEFT_MS: MIN_LEFT_MS, CLAIMED: CLAIMED, ITEM_BASE: ITEM_BASE,
     gameDay: gameDay, boxKey: boxKey, candidates: candidates, findBox: findBox, classifyCollect: classifyCollect,
     gate: gate, countsFor: countsFor, cardRows: cardRows, trackServer: trackServer, countsWith: countsWith,

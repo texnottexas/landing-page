@@ -12,7 +12,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json', 'ops-drag.js', 'ops-jam.js'];
+const OWN = ['mask-boxes.js', 'mask-boxes-core.js', 'map-collector.js', 'map-collector-core.js', 'ops-tools.json', 'ops-drag.js', 'ops-jam.js', 'ops-stack.js'];
 const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 const T = 260617001;                                     // a box's item is T + its type
@@ -988,5 +988,57 @@ test('MBX-JAM-1 (Tex 2026-10-14): on the folded bar, the note plays Rickroll wit
   await page.mouse.move(at.x, at.y); await page.mouse.down(); await page.mouse.move(at.x + 20, at.y + 20); await page.mouse.move(at.x + 40, at.y + 40); await page.mouse.up();
   assert.equal(await page.$eval('#mbx-root', (e) => e.getBoundingClientRect().left), card0, 'a press that moves from the note is not a drag');
   assert.equal(await page.evaluate(() => localStorage.getItem('ops_pos_v1_mask-boxes')), null);
+  await ctx.close();
+});
+
+// Tex 2026-10-16: tools that run together. A map view another tool is still waiting on is a wait, never a strike.
+test('MBX-PEND-1: a pending 901 (anyone\'s) holds the view; nothing sent, no stop; it goes once clear', async () => {
+  feed = [box({ server: 619, x: 404, y: 612, type: 1 })];
+  const { ctx, page } = await open((t) => { __fake.cities['619:404:612'] = { pid: '222', itemId: t + 1, instanceId: 'i2' }; __fake.pending.push(901); }, T);
+  await launch(page);
+  await waitText(page, '#mbx-foot', /The game is busy\. Trying again shortly\./);
+  await page.waitForTimeout(1500);
+  assert.equal((await sent(page)).filter((x) => x.rid === 901).length, 0);
+  assert.equal(await page.evaluate(() => window.__MBX.running), true);
+  await page.evaluate(() => { __fake.pending = []; });
+  await waitSent(page, 2);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [901, 2503]);
+  await ctx.close();
+});
+
+test('MBX-PEND-2: a pending 2503 holds the collect up to five turns, then the box is left (no stop)', async () => {
+  feed = [box({ server: 619, x: 404, y: 612, type: 1 })];
+  const { ctx, page } = await open((t) => { __fake.cities['619:404:612'] = { pid: '222', itemId: t + 1, instanceId: 'i2' }; __fake.pending.push(2503); }, T);
+  await launch(page);
+  await waitSent(page, 1);
+  await page.waitForTimeout(4000);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [901], 'no collect while one is pending');
+  assert.equal(await page.evaluate(() => window.__MBX.running), true);
+  await ctx.close();
+});
+
+test('MBX-ANGEV-1: no Angel event: the Angels switch is hidden; the row is Share / Stop', async () => {
+  const { ctx, page } = await open(() => { __fake.angelEvent = null; });
+  await launch(page);
+  await page.waitForSelector('#mbx-stop');
+  await page.waitForTimeout(300);
+  assert.equal(await page.isHidden('#mbx-angels'), true);
+  assert.deepEqual(await page.$$eval('.mbx-row3 button', (b) => b.filter((x) => !x.hidden).map((x) => x.textContent)), ['Share: off', 'Stop']);
+  await ctx.close();
+});
+
+test('MBX-ANGEV-2: the Angel event running: the switch shows; the event ending hides it', async () => {
+  const { ctx, page } = await open(() => { __fake.angelEvent = { id: 83000151, type: 292, endtime: Math.floor(Date.now() / 1000) + 7200, extra: { attackMonsterIds: [], groupId: 5 } }; });
+  await launch(page);
+  await page.waitForSelector('#mbx-angels:not([hidden])');
+  await page.evaluate(() => { __fake.angelEvent.endtime = Math.floor(Date.now() / 1000) - 1; });
+  await page.waitForSelector('#mbx-angels[hidden]', { state: 'attached', timeout: 4000 });
+  await ctx.close();
+});
+
+test('MBX-ANGEV-3: activities that cannot be read: the switch shows (fails open)', async () => {
+  const { ctx, page } = await open(() => { __fake.activityThrows = true; });
+  await launch(page);
+  await page.waitForSelector('#mbx-angels:not([hidden])');
   await ctx.close();
 });

@@ -248,3 +248,8 @@ test('alongside (Tex 2026-10-14): only Rickroll runs alongside; the Jam cards li
   assert.ok(/ ops-jam\.js /.test(cpLine), 'deployed');
   assert.ok(/test\/ops-jam\.test\.js/.test(read('.github/workflows/pages.yml')), 'rule in the gate');
 });
+
+test('Mask Boxes knows the Angel event types the registry names (Tex 2026-10-16)', () => {
+  const MB = require('../mask-boxes-core.js');
+  assert.deepEqual(MB.ANGEL_EVENT, raw.tools.find((t) => t.id === 'angels').event);
+});

@@ -15,7 +15,7 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14.4';
+  var VERSION = '2026-10-16';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
@@ -89,6 +89,16 @@
   // registry names; the two share the request clock. Off stops it.
   var angLoading = false, angFailed = false;
   function angelsOn() { return !!(window.__ANG && window.__ANG.running); }
+  // The game's activities, for the Angels switch (Tex 2026-10-16: it shows only during the Angel event). null when
+  // they can't be read: then the switch shows.
+  function angelActs() {
+    try {
+      var m = req('ActivityController'), A = m && (m.ActivityController || m.default || m), I = A && (A.Instance || A.instance);
+      if (!I || !Array.isArray(I._activityList)) return null;
+      var d = req('DataCenter'), now = Number(d && d.DATA && d.DATA.ServerTime);
+      return { acts: I._activityList, now: now > 0 ? now : Math.floor(Date.now() / 1000) };
+    } catch (e) { return null; }
+  }
   function loadScript(src) {
     return new Promise(function (resolve, reject) {
       var s = document.createElement('script');
@@ -108,7 +118,7 @@
       .then(function (reg) {
         var t = (reg && Array.isArray(reg.tools) ? reg.tools : []).filter(function (x) { return x && x.id === 'angels'; })[0];
         if (!t || !Array.isArray(t.scripts)) throw new Error('not listed');
-        return t.scripts.reduce(function (p, f) { return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam)\.js$/.test(f) ? q.catch(function () {}) : q; }); }, Promise.resolve());   // the drag and Jam helpers are optional
+        return t.scripts.reduce(function (p, f) { return p.then(function () { var q = loadScript(base + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam|stack)\.js$/.test(f) ? q.catch(function () {}) : q; }); }, Promise.resolve());   // the drag, Jam and stack helpers are optional
       })
       .then(function () { angLoading = false; angFailed = false; paint(); }, function () { angLoading = false; angFailed = true; paint(); });
   }
@@ -352,10 +362,14 @@
   function stopText(key, fallback) { return key ? gameText(key) || 'The game answered ' + key + '.' : fallback; }
   // Wait for the shared clock, then check again: the wait can be long, and the game can drop meanwhile.
   async function turn() { await idle(); await pace(); return S.running && ready() && !flight; }
+  // Another tool's request of the same kind still waiting for the game (Tex 2026-10-16: tools run together): a wait,
+  // never a strike and never a resend.
+  function othersBusy(rid) { try { var N = NET(); return typeof N.checkRequestIdNoRes === 'function' && !!N.checkRequestIdNoRes(rid); } catch (e) { return false; } }
   async function tryBox(b) {
     var isPasted = b.src === 'pasted', isBase = b.src === 'base' || isPasted, where = 'S' + b.server + ' (' + b.x + ', ' + b.y + ')';
     setFoot(isPasted ? 'Checking a pasted spot at ' + where : isBase ? 'Checking a shared base at ' + where : 'Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
     if (!(await turn())) return;                            // nothing sent: the box stays untried
+    if (othersBusy(VIEW)) { setFoot('The game is busy. Trying again shortly.', 'warn'); if (FAST) await delay(400); return; }   // the box stays untried; the loop waits 3-5 s
     S.tried[isBase ? C.cityKey(b) : C.boxKey(b)] = 1;       // a base share or pasted spot: no type or end time, just a place
     if (isBase) { (isPasted ? S.pasteLog : S.baseLog).push(Date.now()); saveRate(); }
     if (isPasted) remember(b, null, C.pastedUntil(b, Date.now()));   // one look, ever: even if the game refuses it
@@ -371,7 +385,12 @@
     if (!type || !S.types[type] || counts()[type] >= C.DAILY_CAP) { note('gone'); return; }   // unknown, off or full
     await delay(FAST ? 0 : 1500 + rand(1500));             // a person's pause between looking and tapping
     if (!S.running) return;
-    if (!(await turn())) { note('aborted'); return; }       // the view went out, the collect never did
+    for (var w = 0; ; w++) {                                // the view went out: wait the game out, up to 5 turns
+      if (!(await turn())) { note('aborted'); return; }
+      if (!othersBusy(COLLECT)) break;
+      if (w >= 4) { note('aborted'); return; }
+      setFoot('The game is busy. Trying again shortly.', 'warn'); await delay(FAST ? 200 : 3000);
+    }
     var c = C.classifyCollect(await sendCollect(found.pid));
     note(c.kind === 'ok' || c.kind === 'claimed' ? c.kind : 'failed');
     if (c.kind === 'ok') {
@@ -459,7 +478,20 @@
     var mb = document.getElementById('mbx-min');
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show Mask Boxes' : 'Minimize Mask Boxes'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
-  function toggleMin() { S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint(); }
+  function toggleMin() {
+    if (!S.min && lastFold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
+  }
+  // Tools that run together keep their cards apart (Tex 2026-10-16): ops-stack.js finds this card a free spot, or folds
+  // it for room; without the helper the card stays at its own spot.
+  var forceOpen = false, lastFold = false;
+  function where() { return window.OpsStack ? window.OpsStack.layout(root, 'mask-boxes', !!(card && /\bmin\b/.test(card.className)), paint) : { placed: true, top: '', left: '', right: '', fold: false }; }   // no helper: leave the card where it is
+  function place(L) {
+    if (!root || L.placed) return;
+    if (root.style.top !== L.top) root.style.top = L.top;
+    if (root.style.left !== L.left) root.style.left = L.left;
+    if (root.style.right !== L.right) root.style.right = L.right;
+  }
   function button(id, label, fn, cls) { var b = el('button', cls || null, label); b.id = id; b.type = 'button'; b.addEventListener('click', fn); return b; }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
@@ -512,8 +544,14 @@
     var sb = document.getElementById('mbx-share');
     if (sb) { var on = String(!!S.share); if (sb.getAttribute('aria-pressed') !== on) sb.setAttribute('aria-pressed', on); var st = S.shareBusy ? 'Share: ...' : S.share ? 'Share: on' : 'Share: off'; if (sb.textContent !== st) sb.textContent = st; sb.title = 'Share collected boxes to world chat'; }
     var ab = document.getElementById('mbx-angels');
-    if (ab) { var aon = angelsOn(), at = angLoading ? 'Angels: ...' : aon ? 'Angels: on' : angFailed ? 'Retry' : 'Angels: off'; if (ab.textContent !== at) ab.textContent = at; if (ab.getAttribute('aria-pressed') !== String(aon)) ab.setAttribute('aria-pressed', String(aon)); ab.title = angFailed ? 'Angel Attacks did not load. Tap to try again.' : 'Attack each Heavy Mothership Angel once (carrier, no normal march): ' + (aon ? 'on' : 'off'); }
-    card.className = 'mbx-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
+    if (ab) {
+      var aon = angelsOn(), ev = angelActs(), live = !ev || C.eventLive(C.ANGEL_EVENT, ev.acts, ev.now);
+      var showA = live || aon || angLoading;               // a running Angels keeps its switch until it stops
+      if (ab.hidden !== !showA) ab.hidden = !showA;
+      var at = angLoading ? 'Angels: ...' : aon ? 'Angels: on' : angFailed ? 'Retry' : 'Angels: off'; if (ab.textContent !== at) ab.textContent = at; if (ab.getAttribute('aria-pressed') !== String(aon)) ab.setAttribute('aria-pressed', String(aon)); ab.title = angFailed ? 'Angel Attacks did not load. Tap to try again.' : 'Attack each Heavy Mothership Angel once (carrier, no normal march): ' + (aon ? 'on' : 'off'); }
+    var L = where(), folded = S.min || (L.fold && !forceOpen); lastFold = !!L.fold;
+    card.className = 'mbx-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');
+    place(L);
   }
 
   // ---------------------------------------------------------------- start

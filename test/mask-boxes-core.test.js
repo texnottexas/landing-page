@@ -235,3 +235,13 @@ test('pastedUntil: a pasted spot is remembered until the list drops it (30 min a
   assert.equal(M.pastedUntil({ addedAt: NOW - 1700000 }, NOW), NOW + M.SPOT_NO_BOX_MS, 'nearly gone from the list: the usual 30 min');
   assert.equal(M.pastedUntil({}, NOW), NOW + M.SPOT_NO_BOX_MS);
 });
+
+test('the Angels switch follows the Angel event (Tex 2026-10-16): same rule as the Ops Center', () => {
+  assert.deepEqual(M.ANGEL_EVENT, [292]);
+  const now = 1000;
+  assert.equal(M.eventLive([292], [{ type: 292, begintime: 900, endtime: 2000 }], now), true);
+  assert.equal(M.eventLive([292], [{ type: 292, endtime: 2000 }], now), true, 'no begin time: already begun');
+  assert.equal(M.eventLive([292], [{ type: 292, begintime: 900, endtime: 1000 }], now), false, 'ended');
+  assert.equal(M.eventLive([292], [{ type: 279, begintime: 0, endtime: 2000 }], now), false);
+  assert.equal(M.eventLive([292], [], now), false);
+});
