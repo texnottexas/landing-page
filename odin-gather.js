@@ -71,7 +71,7 @@
       var ms = req('NWorldMapData').default.instance.marches || {};
       Object.keys(ms).forEach(function (k) {
         var m = ms[k];
-        if (m && m.marchType === type && String(m.realUid) === me) out[m.target_tx + ',' + m.target_ty] = { arrive: Number(m.marchArrive) || 0, gathering: Number(m.gatherStartTime) > 0 };
+        if (m && m.marchType === type && String(m.realUid != null ? m.realUid : m.uid) === me) out[m.target_tx + ',' + m.target_ty] = { arrive: Number(m.marchArrive) || 0, gathering: Number(m.gatherStartTime) > 0 };   // a gathering march names its owner in uid (live)
       });
     } catch (e) {}
     return out;

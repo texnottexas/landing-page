@@ -270,6 +270,17 @@ test('ODIN-DRAG: the card drags by its title and keeps its spot after a relaunch
   await ctx.close();
 });
 
+test('ODIN-15 (live 2026-10-16): its own gathering march is known by the uid the game gives it: Marches 1 sends 1, long after the send', async () => {
+  const { ctx, page } = await open([T1, T2], { marchSetting: 1 });
+  await page.evaluate(() => { window.__ODIN_UNSHOWN_MS = 100; });
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
+  await page.waitForTimeout(2500);                                  // many rounds after the send, well past the unshown window
+  assert.equal((await marches(page)).length, 1);
+  await waitText(page, '#odin-stat', /^Out 1 \/ 1/);
+  await ctx.close();
+});
+
 // Final review fixes (2026-10-16).
 test('REV-1 (C1): Stop between marches of a skin batch: no march after Stop, the old skin back, no second copy can start meanwhile', async () => {
   const { ctx, page } = await open([T1, T2], { odin: Object.assign({}, SKIN, { travelMs: 60000, skinMs: 400 }) });

@@ -281,4 +281,5 @@ test('Odinium Gatherer tile (Tex 2026-10-16): for members, game ready, its own o
   const yml = read('.github/workflows/pages.yml');
   assert.ok(/cp [^\n]*\bodin-gather-core\.js\b/.test(yml) && /cp [^\n]*\bodin-gather\.js\b/.test(yml), 'deployed');
   assert.ok(/node --test [^\n]*test\/odin-gather-core\.test\.js/.test(yml), 'gated');
+  assert.match(read('pages/map-collector.html'), /'odin-gather': \['march', 'marches'\]/, 'its count reads "N marches" in the Tool usage panel');
 });
