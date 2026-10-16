@@ -38,6 +38,7 @@
   // Shared by every copy of this file the tools load: the cards to repaint, their last sizes, one repaint timer.
   var reg = root.__opsStack || (root.__opsStack = { order: [], size: {}, bar: {}, timer: null });
   if (!reg.bar) reg.bar = {};
+  reg.tick = tick;                                        // the newest copy's repaint, for the one resize listener
   function rectOf(el) {
     var c = el && el.isConnected ? (el.firstElementChild || el) : null;
     if (!c) return null;
@@ -54,7 +55,8 @@
     if (root.OpsDrag && root.OpsDrag.placed && root.OpsDrag.placed(key)) return { placed: true, top: '', left: '', right: '', fold: false };
     reg.order = reg.order.filter(function (e) { return e.el.isConnected && !(e.key === key && e.el !== el); });
     if (!reg.order.some(function (e) { return e.el === el; })) reg.order.push({ key: key, el: el, repaint: repaint });
-    if (!reg.timer && root.setInterval) { reg.timer = root.setInterval(tick, 1000); root.addEventListener('resize', tick); }
+    if (!reg.timer && root.setInterval) reg.timer = root.setInterval(tick, 1000);
+    if (!reg.onResize && root.addEventListener) { reg.onResize = function () { if (reg.tick) reg.tick(); }; root.addEventListener('resize', reg.onResize); }   // once per page, whatever copy
     var r = rectOf(el);
     if (r) reg[folded ? 'bar' : 'size'][key] = { w: r.right - r.left, h: r.bottom - r.top };   // full size, or the folded bar's
     var doc = root.document;
@@ -68,7 +70,22 @@
     if (s.fold) return { top: s.top + 'px', left: 'auto', right: 'calc(8px + env(safe-area-inset-right))', fold: true };
     return { top: s.top + 'px', left: s.left + 'px', right: '', fold: false };
   }
-  var api = { spot: spot, layout: layout };
+  // A card's fold, given its layout L and the player's own fold (min). fs: the card's fold state, kept by the tool.
+  // A fold made for room isn't the player's choice: the chevron opens it anyway until the card has room again; a bar
+  // the player drags stays a bar until they open it.
+  function fold(fs, L, min) {
+    if (L.placed && !min && fs.last && !fs.force) fs.drag = true;
+    if (!L.fold) fs.force = false;
+    fs.last = !!L.fold;
+    return !!(min || fs.drag || (L.fold && !fs.force));
+  }
+  // The chevron. true: it opened (or folded back) a fold made for room or by a drag; false: the player's own fold.
+  function foldTap(fs, min) {
+    if (fs.drag) { fs.drag = false; return true; }
+    if (!min && fs.last) { fs.force = !fs.force; return true; }
+    return false;
+  }
+  var api = { spot: spot, layout: layout, fold: fold, foldTap: foldTap };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.OpsStack = api;
 })(typeof window !== 'undefined' ? window : this);

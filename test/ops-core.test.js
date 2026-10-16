@@ -332,3 +332,55 @@ test('a group session: group tools say Running when their card is up, else their
 test('ore is a known icon (Odinium Gatherer)', () => {
   assert.equal(OC.validateTools({ tools: [tool({ id: 'o', icon: 'ore' })] }).tools[0].icon, 'ore');
 });
+
+// Review minor (2026-10-16): a tool launched beside the open one is tracked while it loads.
+test('tracker: closing the first card while a second group tool is still loading keeps the session; its card takes over', () => {
+  let s = OC.trackerReduce(OC.trackerInit(), { type: 'launch', at: 0 });
+  s = OC.trackerReduce(s, { type: 'loaded', at: 100 });
+  s = OC.trackerReduce(s, { type: 'nodeAdded', id: 1, at: 200 });
+  s = OC.trackerReduce(s, { type: 'join', at: 1000 });
+  s = OC.trackerReduce(s, { type: 'nodeRemoved', id: 1, at: 2000 });
+  s = OC.trackerReduce(s, { type: 'tick', at: 4000 });
+  assert.equal(s.phase, 'running', 'still loading the second tool');
+  s = OC.trackerReduce(s, { type: 'nodeAdded', id: 2, at: 5000 });
+  s = OC.trackerReduce(s, { type: 'joined', at: 5001 });
+  s = OC.trackerReduce(s, { type: 'tick', at: 8000 });
+  assert.equal(s.phase, 'running');
+  s = OC.trackerReduce(s, { type: 'nodeRemoved', id: 2, at: 9000 });
+  s = OC.trackerReduce(s, { type: 'tick', at: 10100 });
+  assert.equal(s.phase, 'idle');
+});
+test('tracker: a join counts 30 s at most; a joined tool with no card ends the session after the grace', () => {
+  let s = OC.trackerReduce(OC.trackerInit(), { type: 'launch', at: 0 });
+  s = OC.trackerReduce(s, { type: 'loaded', at: 100 });
+  s = OC.trackerReduce(s, { type: 'nodeAdded', id: 1, at: 200 });
+  s = OC.trackerReduce(s, { type: 'join', at: 1000 });
+  s = OC.trackerReduce(s, { type: 'nodeRemoved', id: 1, at: 2000 });
+  assert.equal(OC.trackerReduce(s, { type: 'tick', at: 30999 }).phase, 'running');
+  assert.equal(OC.trackerReduce(s, { type: 'tick', at: 31001 }).phase, 'idle', 'a load that never settles');
+  const j = OC.trackerReduce(s, { type: 'joined', at: 3000 });
+  assert.equal(OC.trackerReduce(j, { type: 'tick', at: 3900 }).phase, 'running', 'its card gets the grace to show');
+  assert.equal(OC.trackerReduce(j, { type: 'tick', at: 4100 }).phase, 'idle');
+  assert.deepEqual(OC.trackerReduce(OC.trackerInit(), { type: 'join', at: 5 }), OC.trackerInit(), 'no session: nothing to join');
+});
+test('tracker: the first tool failing to load keeps a session another card is in (or is loading), and says it failed', () => {
+  let s = OC.trackerReduce(OC.trackerInit(), { type: 'launch', at: 0 });
+  s = OC.trackerReduce(s, { type: 'join', at: 100 });
+  s = OC.trackerReduce(s, { type: 'nodeAdded', id: 2, at: 500 });
+  s = OC.trackerReduce(s, { type: 'loadError', at: 600 });
+  assert.equal(s.phase, 'running'); assert.equal(s.failed, true); assert.equal(s.error, false);
+  let w = OC.trackerReduce(OC.trackerInit(), { type: 'launch', at: 0 });
+  w = OC.trackerReduce(w, { type: 'join', at: 100 });
+  w = OC.trackerReduce(w, { type: 'loadError', at: 200 });
+  assert.equal(w.phase, 'waiting', 'the second tool is still loading');
+  w = OC.trackerReduce(w, { type: 'nodeAdded', id: 2, at: 900 });
+  assert.equal(w.phase, 'running');
+});
+
+// Review minor (2026-10-16): a group tool that stopped and shows its message says so on its tile.
+test('a group session: a group tool whose card shows its stop message says Stopped, not Running', () => {
+  const g = tool({ id: 'g', together: true, overlay: '#g' });
+  const base = { member: true, unlocked: false, checks: { game: true } };
+  assert.deepEqual(OC.tileStatus(g, Object.assign({}, base, { group: true, groupOn: true, stopped: true })), { state: 'stopped', launch: null });
+  assert.deepEqual(OC.tileStatus(g, Object.assign({}, base, { group: true, groupOn: true })), { state: 'running', launch: null });
+});

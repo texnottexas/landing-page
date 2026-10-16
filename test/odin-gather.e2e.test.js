@@ -195,13 +195,14 @@ test('ODIN-9: a refused info or march stops the run with the game\'s words; a ma
   await c.ctx.close();
 });
 
-test('ODIN-10: caps: no more than 6 marches a minute; the card says when it goes on', async () => {
-  const list = Array.from({ length: 8 }, (_, i) => ({ x: 400 + i, y: 690, id: 'F' + i }));
-  const { ctx, page } = await open(list, { max: 8 });
+test('ODIN-10: caps: no more than 10 marches a minute (a 7-march player sends all 7 at once, Tex); the card says when it goes on', async () => {
+  const list = Array.from({ length: 12 }, (_, i) => ({ x: 400 + i, y: 690, id: 'F' + i }));
+  const { ctx, page } = await open(list, { max: 12 });
+  await page.evaluate(() => { __fake.rfc.units[0].n = 9000; });
   await launch(page);
-  await page.waitForFunction(() => __fake.sent.filter((x) => x.rid === 902).length >= 6, null, { timeout: 15000 });
-  await waitText(page, '#odin-foot', /Paused: 6 marches a minute\. Goes on in/, 8000);
-  assert.equal((await marches(page)).length, 6);
+  await page.waitForFunction(() => __fake.sent.filter((x) => x.rid === 902).length >= 10, null, { timeout: 20000 });
+  await waitText(page, '#odin-foot', /Paused: 10 marches a minute\. Goes on in/, 8000);
+  assert.equal((await marches(page)).length, 10);
   await ctx.close();
 });
 
@@ -281,6 +282,25 @@ test('ODIN-15 (live 2026-10-16): its own gathering march is known by the uid the
   await ctx.close();
 });
 
+test('ODIN-16 (live 2026-10-16): positions come from the player\'s level, as the game\'s world marches do, not the last battle screen\'s count', async () => {
+  const { ctx, page } = await open([T1]);
+  await page.evaluate(() => { __fake.rfc.armysNum = 5; __fake.rfc.positions = 9; __fake.rfc.armyAdd = 30; });   // live: Tex Lv. 100 = 9, stale value 5
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
+  assert.deepEqual((await marches(page))[0].p.armyList.map((a) => a.pos), [1, 2, 3, 11, 12, 13, 21, 22, 23]);
+  await ctx.close();
+});
+
+test('ODIN-17 (Tex 2026-10-16): the first march goes to the facility with the most time left, then down from there', async () => {
+  // a faster Odinium tier with less time must not go first (the old rank, speed x time, sent it first)
+  const list = [{ x: 402, y: 690, id: 'F', left: 20000, itemId: 1304 }, { x: 404, y: 692, id: 'L', left: 33000 }, { x: 406, y: 694, id: 'S', left: 9000 }];
+  const { ctx, page } = await open(list);
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.filter((x) => x.rid === 902).length >= 3, null, { timeout: 10000 });
+  assert.deepEqual((await marches(page)).map((m) => m.p.x + ',' + m.p.y), ['404,692', '402,690', '406,694']);
+  await ctx.close();
+});
+
 // Final review fixes (2026-10-16).
 test('REV-1 (C1): Stop between marches of a skin batch: no march after Stop, the old skin back, no second copy can start meanwhile', async () => {
   const { ctx, page } = await open([T1, T2], { odin: Object.assign({}, SKIN, { travelMs: 60000, skinMs: 400 }) });
@@ -346,12 +366,13 @@ test('REV-6 (I3): Stop when the old skin will not come back: the card says so an
   await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
   await page.click('#odin-stop');
   await waitText(page, '#odin-root .odin-msg', /Switch your base skin back/, 6000);
+  assert.equal(await page.$eval('#odin-root', (e) => e.getAttribute('data-ops-stopped')), '1', 'marked stopped for the Ops Center tile (review minor)');
   await ctx.close();
 });
 
 test('REV-7 (I6): a player with 6 march positions: troops only in those 6', async () => {
   const { ctx, page } = await open([T1]);
-  await page.evaluate(() => { __fake.rfc.armysNum = 6; __fake.rfc.armyAdd = 30; });   // small slots: the march needs more than 6
+  await page.evaluate(() => { __fake.rfc.positions = 6; __fake.rfc.armyAdd = 30; });   // small slots: the march needs more than 6
   await launch(page);
   await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
   const pos = (await marches(page))[0].p.armyList.map((a) => a.pos);

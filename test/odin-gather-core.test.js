@@ -117,18 +117,18 @@ test('pickHeroes: the top gatherers by their buff score', () => {
   assert.deepEqual(O.pickHeroes([], { max: 3 }), []);
 });
 
-test('rank: the most Odinium first: more time to gather, then a faster tier', () => {
-  const r = O.rank([{ k: 'short', left: 3600, free: 2500, speed: 0.02 }, { k: 'long', left: 30000, free: 2500, speed: 0.02 }, { k: 'fast', left: 30000, free: 2500, speed: 0.04 }]);
-  assert.deepEqual(r.map((f) => f.k), ['fast', 'long', 'short']);
+test('rank (Tex 2026-10-16): the most time left first, then down, so the best gatherers get the longest facility; ties: more room', () => {
+  const r = O.rank([{ k: 'short', left: 3600, free: 2500, speed: 0.04 }, { k: 'long', left: 30000, free: 1000, speed: 0.02 }, { k: 'mid', left: 20000, free: 2500, speed: 0.04 }, { k: 'long2', left: 30000, free: 2000, speed: 0.01 }]);
+  assert.deepEqual(r.map((f) => f.k), ['long2', 'long', 'mid', 'short']);
 });
 
-test('gate: marches 6 a minute and 20 per 10 minutes; views 10 and infos 20 per 10 minutes', () => {
+test('gate: marches 10 a minute (never below a player\'s march count, Tex 2026-10-16) and 20 per 10 minutes; views 10 and infos 20 per 10 minutes', () => {
   const now = 1e7, m = (t) => ({ t, kind: 'march' });
-  assert.equal(O.gate(many(6, (i) => m(now - 1000 * i)), now, 'march').ok, false);
-  assert.equal(O.gate(many(5, (i) => m(now - 1000 * i)), now, 'march').ok, true);
+  assert.equal(O.gate(many(10, (i) => m(now - 1000 * i)), now, 'march').ok, false);
+  assert.equal(O.gate(many(9, (i) => m(now - 1000 * i)), now, 'march').ok, true);
   assert.equal(O.gate(many(20, (i) => m(now - 61000 - 20000 * i)), now, 'march').ok, false);
-  const g = O.gate(many(6, (i) => m(now - 1000 * i)), now, 'march');
-  assert.ok(g.until > now && /6 marches a minute/.test(g.reason));
+  const g = O.gate(many(10, (i) => m(now - 1000 * i)), now, 'march');
+  assert.ok(g.until > now && /10 marches a minute/.test(g.reason));
   assert.equal(O.gate(many(10, (i) => ({ t: now - i * 1000, kind: 'view' })), now, 'view').ok, false);
   assert.equal(O.gate(many(10, (i) => ({ t: now - i * 1000, kind: 'view' })), now, 'info').ok, true, 'caps are per kind');
   assert.equal(O.gate(many(20, (i) => ({ t: now - i * 1000, kind: 'info' })), now, 'info').ok, false);

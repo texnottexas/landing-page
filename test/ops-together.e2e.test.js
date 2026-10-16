@@ -141,3 +141,52 @@ test('TOG-5: Mask Boxes and the Odinium Gatherer together, either opened first: 
     await ctx.close();
   }
 });
+
+// Review minors (2026-10-16).
+const FOLDED = (page) => page.evaluate(() => [['#mbx-root', '.mbx-head', 'mbx-min'], ['#vein-root', '.vein-head', 'vein-min'], ['#htg-root', '.htg-head', 'htg-min']]
+  .map(([q, h, m]) => { const c = document.querySelector(q + ' > *'); return c && /\bmin\b/.test(c.className) ? { q, h, m } : null; }).filter(Boolean));
+test('TOG-6 (minor): a bar folded for room that the player drags stays a bar; its chevron opens it', async () => {
+  const view = { width: 375, height: 520 };                       // short enough that a card must fold for room
+  const { ctx, page } = await open(view);
+  await page.waitForTimeout(2500);
+  const f = (await FOLDED(page))[0];
+  assert.ok(f, 'a card folded for room on a phone');
+  const h = await page.$eval(f.q + ' ' + f.h, (e) => { const r = e.getBoundingClientRect(); return { x: r.left + 12, y: r.top + r.height / 2 }; });
+  await page.mouse.move(h.x, h.y); await page.mouse.down(); await page.mouse.move(h.x - 40, h.y + 120, { steps: 6 }); await page.mouse.up();
+  await page.waitForTimeout(2200);                                   // two repaints
+  assert.ok((await FOLDED(page)).some((x) => x.q === f.q), 'still a bar where the player put it');
+  await page.click('#' + f.m);
+  await page.waitForTimeout(300);
+  assert.ok(!(await FOLDED(page)).some((x) => x.q === f.q), 'the chevron opens it');
+  await ctx.close();
+});
+
+test('TOG-7 (minor): an earlier card that grows pushes the later ones clear on the next repaint', async () => {
+  const view = { width: 1280, height: 800 };
+  const { ctx, page } = await open(view);
+  await page.waitForTimeout(2500);
+  await page.evaluate(() => { const b = document.querySelector('#mbx-root .mbx-body'); const d = document.createElement('div'); d.style.height = '160px'; b.appendChild(d); });
+  await page.waitForTimeout(2200);
+  assertApart(await cards(page), view);
+  await ctx.close();
+});
+
+test('TOG-8 (minor): a tool that stops with a message marks its card stopped (the Ops Center tile says Stopped); running cards are not marked', async () => {
+  const { ctx, page } = await open({ width: 1280, height: 800 });
+  await page.waitForSelector('#mbx-stop'); await page.waitForSelector('#vein-root .vein-card'); await page.waitForSelector('#htg-stop');
+  const marks = () => page.evaluate(() => ['mbx-root', 'vein-root', 'htg-root'].map((id) => document.getElementById(id).getAttribute('data-ops-stopped')));
+  assert.deepEqual(await marks(), [null, null, null]);
+  await page.evaluate(() => { window.__MBX.stop('a test reason'); window.__VEIN.stop('a test reason'); window.__HTG.stop('a test reason'); });
+  await page.waitForTimeout(300);
+  assert.deepEqual(await marks(), ['1', '1', '1']);
+  await ctx.close();
+});
+
+test('TOG-9 (minor): HT Gift Boxes asking for its password keeps its card clear of the cards opened before it', async () => {
+  const view = { width: 1280, height: 800 };
+  const { ctx, page } = await open(view, () => localStorage.removeItem('htg_pw_v1'));
+  await page.waitForSelector('#htg-pw');
+  await page.waitForTimeout(2500);
+  assertApart(await cards(page), view);
+  await ctx.close();
+});

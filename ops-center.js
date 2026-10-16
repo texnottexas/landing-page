@@ -198,7 +198,7 @@
     loadToolScripts(t).then(done, done);
   }
   function toolById(id) { return S.list ? S.list.tools.filter(function (t) { return t.id === id; })[0] : null; }
-  function statusOf(tool, ck) { var g = groupSession(); return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events), alongsideOn: !!tool.alongside && alongsideOn(tool), group: g, groupOn: g && groupOn(tool) }); }
+  function statusOf(tool, ck) { var g = groupSession(); return C().tileStatus(tool, { member: !!S.member, unlocked: S.unlocked, checks: ck, eventOff: eventOff(tool, ck.events), alongsideOn: !!tool.alongside && alongsideOn(tool), group: g, groupOn: g && groupOn(tool), stopped: g && groupStopped(tool) }); }
 
   // ---------------------------------------------------------------- shell
   function ensureRoot() { if (!S.root || !S.root.isConnected) S.root = K().root(); return S.root; }
@@ -301,7 +301,7 @@
     }
     updateTiles();
   }
-  var PILL = { ready: ['Ready', 'ok'], notready: ['Not ready', 'warn'], locked: ['Locked', 'mute'], blocked: ['Members only', 'mute'], off: ['Not running', 'mute'], playing: ['Playing', 'info'], running: ['Running', 'info'], wait: ['Wait', 'mute'] };
+  var PILL = { ready: ['Ready', 'ok'], notready: ['Not ready', 'warn'], locked: ['Locked', 'mute'], blocked: ['Members only', 'mute'], off: ['Not running', 'mute'], playing: ['Playing', 'info'], running: ['Running', 'info'], stopped: ['Stopped', 'warn'], wait: ['Wait', 'mute'] };
   function updateTiles() {
     if (S.view !== 'menu' || !S.list) return;
     var ck = checks();
@@ -394,7 +394,10 @@
     startObserver();
     var chain = Promise.resolve();
     t.scripts.forEach(function (f) { chain = chain.then(function () { var p = loadScript(BASE + f + '?v=' + encodeURIComponent(t.version)); return /^ops-(drag|jam|stack)\.js$/.test(f) ? p.catch(function () {}) : p; }); });   // the drag, Jam and stack helpers are optional
-    chain.then(function () { dispatch({ type: 'loaded', at: Date.now() }); }, function () { dispatch({ type: 'loadError', at: Date.now() }); });
+    chain.then(function () { dispatch({ type: 'loaded', at: Date.now() }); }, function () {
+      dispatch({ type: 'loadError', at: Date.now() });
+      if (S.tracker && S.tracker.phase !== 'idle') { ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.'); }   // the tools beside it go on
+    });
   }
   function dispatch(ev) {
     if (!S.tracker) return;
@@ -402,7 +405,9 @@
     S.tracker = C().trackerReduce(S.tracker, ev);
     var phase = S.tracker.phase;
     if (phase === 'running' && prev !== 'running') { closeCard(); showFab(fabText()); }
-    if (phase === 'running' && (ev.type === 'nodeAdded' || ev.type === 'nodeRemoved') && S.fab) S.fab.setText(fabText());
+    if (phase === 'running' && S.fab && (ev.type === 'nodeAdded' || ev.type === 'nodeRemoved' || (ev.type === 'tick' && groupSession()))) {   // a group card can stop without leaving
+      var ft = fabText(); if (ft !== S.fabText) { S.fabText = ft; S.fab.setText(ft); }
+    }
     if (phase === 'idle' && prev !== 'idle') {
       hideFab(); S.fabHidden = false;
       var failed = S.tracker.error, t = S.tool;
@@ -463,14 +468,18 @@
   }
   function runningNote() {
     var t = S.tool ? S.tool.title : 'The tool';
-    if (groupSession()) { var on = runningGroup().map(function (x) { return x.title; }); return (on.length ? on.join(', ') : t) + (on.length > 1 ? ' are' : ' is') + ' running.'; }
+    if (groupSession()) {
+      var on = runningGroup().map(function (x) { return x.title; });
+      if (!on.length && stoppedGroup().length) return stoppedGroup().map(function (x) { return x.title; }).join(', ') + ' stopped. Close its card to come back here.';
+      return (on.length ? on.join(', ') : t) + (on.length > 1 ? ' are' : ' is') + ' running.';
+    }
     return S.tracker && S.tracker.phase === 'running' ? t + ' is open. Close it from its own screen to come back here.' : 'Starting ' + t + '...';
   }
   function showFab(text) {
     if (S.fabHidden) return;                            // the player hid it: stays hidden until the tool closes
     ensureRoot();
-    if (S.fab) { S.fab.setText(text); return; }
-    S.fab = K().fab(S.root, text, showNote);
+    if (S.fab) { S.fab.setText(text); S.fabText = text; return; }
+    S.fab = K().fab(S.root, text, showNote); S.fabText = text;
   }
   // the note above the pill, with a way to hide the pill in case it covers one of the tool's own buttons
   function showNote() {
@@ -486,10 +495,14 @@
   // every other tool waits.
   function groupSession() { return !!(S.tool && S.tool.together && S.tracker && S.tracker.phase !== 'idle'); }
   function groupOn(t) { try { return !!(t && t.together && t.overlay && document.querySelector(t.overlay)); } catch (e) { return false; } }
-  function runningGroup() { return S.list ? S.list.tools.filter(groupOn) : []; }
+  // A group tool that stopped keeps its card up with the reason (and Close) until the player closes it: the card says so.
+  function groupStopped(t) { try { var e = t && t.together && t.overlay && document.querySelector(t.overlay); return !!(e && e.hasAttribute('data-ops-stopped')); } catch (x) { return false; } }
+  function runningGroup() { return S.list ? S.list.tools.filter(function (t) { return groupOn(t) && !groupStopped(t); }) : []; }
+  function stoppedGroup() { return S.list ? S.list.tools.filter(function (t) { return groupOn(t) && groupStopped(t); }) : []; }
   function fabText() {
-    var on = groupSession() ? runningGroup() : [];
+    var on = groupSession() ? runningGroup() : [], off = groupSession() && !on.length ? stoppedGroup() : [];
     if (on.length > 1) return 'Ops · ' + on.length + ' tools running';
+    if (off.length) return 'Ops · ' + (off.length > 1 ? off.length + ' tools' : off[0].title) + ' stopped';
     return 'Ops · ' + (on.length ? on[0].title : S.tool.title) + ' running';
   }
   function launchTogether(t) {
@@ -497,7 +510,11 @@
     S.seen[t.id] = t.version; lsSet(LS.seen, S.seen);
     reportUse(t);
     closeCard();
-    loadToolScripts(t).catch(function () { ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.'); });
+    dispatch({ type: 'join', at: Date.now() });         // the session can't end while it loads (review minor)
+    loadToolScripts(t).then(function () { dispatch({ type: 'joined', at: Date.now() }); }, function () {
+      dispatch({ type: 'joined', at: Date.now() });
+      ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.');
+    });
   }
   // Tools that run alongside the others (Rickroll, Tex 2026-10-14): never the running tool, never holding the menu.
   function alongsideTool() {

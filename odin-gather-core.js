@@ -12,7 +12,7 @@
   var SLOT_POS = [1, 2, 3, 11, 12, 13, 21, 22, 23];
   var MAX_OVER = 3600;                                    // a march may fill up to an hour after the facility ends (Tex)
   var CAPS = {                                            // per kind: [count, window ms, words]
-    march: [[6, 60000, '6 marches a minute'], [20, 600000, '20 marches per 10 minutes']],
+    march: [[10, 60000, '10 marches a minute'], [20, 600000, '20 marches per 10 minutes']],   // never below a player's march count (Tex: 7 out of 7)
     view: [[10, 600000, '10 map looks per 10 minutes']],
     info: [[20, 600000, '20 facility checks per 10 minutes']],
     skin: [[6, 3600000, '6 skin changes an hour']]   // a base skin change shows on the map: never a flicker (review C2)
@@ -129,11 +129,12 @@
       .slice(0, max).map(function (h) { return h.id; });
   }
 
-  // The most Odinium first: the facility's speed tier times the time there is to gather.
+  // The most time left first, then down (Tex 2026-10-16): the first march takes the best gatherers, so the strongest
+  // march gets the longest facility. Ties: more room first.
   function rank(list) {
     return (Array.isArray(list) ? list.slice() : []).sort(function (a, b) {
-      var sa = num(a.speed, 0) * num(a.left, 0), sb = num(b.speed, 0) * num(b.left, 0);
-      return sb !== sa ? sb - sa : num(b.free, 0) - num(a.free, 0);
+      var la = num(a.left, 0), lb = num(b.left, 0);
+      return lb !== la ? lb - la : num(b.free, 0) - num(a.free, 0);
     });
   }
 

@@ -122,6 +122,7 @@ test('ANG-3: a refusal stops the run with the game\'s text; nothing more is sent
   await page.evaluate(event, [{}, {}, {}]);
   await launch(page);
   await waitText(page, '#ang-root', /Angel Attacks stopped: March failed! A commander can only attack the same Heavy Mothership Angel once!/);
+  assert.equal(await page.$eval('#ang-root', (e) => e.getAttribute('data-ops-stopped')), '1', 'marked stopped for the Ops Center tile (review minor)');
   await page.waitForTimeout(1500);
   assert.equal((await attacks(page)).length, 1);
   assert.equal(await page.evaluate(() => window.__ANG.running), false);

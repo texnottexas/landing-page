@@ -1054,3 +1054,26 @@ test('MBX-ANGEV-4 (review): the Angel event held only in the game\'s activity ma
   assert.equal(await page.isHidden('#mbx-angels'), false);
   await ctx.close();
 });
+
+// Review minors (2026-10-16).
+test('MBX-ANGEV-5 (minor): the Angel event ends while Angels runs: the switch stays until Angels stops', async () => {
+  const { ctx, page } = await open(() => { __fake.angelEvent = { id: 83000151, type: 292, endtime: Math.floor(Date.now() / 1000) + 7200, extra: { attackMonsterIds: [], groupId: 5 } }; });
+  await launch(page);
+  await page.waitForSelector('#mbx-angels:not([hidden])');
+  await page.evaluate(() => { window.__ANG = { running: true, stop: function () { window.__ANG.running = false; } }; __fake.angelEvent.endtime = Math.floor(Date.now() / 1000) - 1; });
+  await page.waitForTimeout(2500);
+  assert.equal(await page.isHidden('#mbx-angels'), false, 'a running Angels keeps its switch');
+  await page.evaluate(() => { window.__ANG.running = false; });
+  await page.waitForSelector('#mbx-angels[hidden]', { state: 'attached', timeout: 4000 });
+  await ctx.close();
+});
+
+test('MBX-STUCK-1 (minor): a view the game never answers (ours or another tool\'s): no view while it waits, and after 3 minutes the run stops and says why', async () => {
+  feed = [box({ server: 619, x: 404, y: 612, type: 1 })];
+  const { ctx, page } = await open((t) => { __fake.cities['619:404:612'] = { pid: '222', itemId: t + 1, instanceId: 'i2' }; __fake.pending.push(901); window.__MBX_STUCK_MS = 1500; }, T);
+  await launch(page);
+  await waitText(page, '#mbx-root .mbx-msg', /stopped: a map view has had no answer for 3 minutes/, 10000);
+  assert.equal((await sent(page)).filter((x) => x.rid === 901).length, 0);
+  assert.equal(await page.$eval('#mbx-root', (e) => e.getAttribute('data-ops-stopped')), '1', 'the Ops Center tile says Stopped');
+  await ctx.close();
+});

@@ -11,7 +11,7 @@
   var C = window.OdinGatherCore;
   if (!C) { try { alert('Odinium Gatherer did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.2';
+  var VERSION = '2026-10-16.3';
   var WORKER = window.__ODIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__ODIN_FAST, TIMEOUT_MS = window.__ODIN_TIMEOUT_MS || 10000;
   var WAIT_MS = window.__ODIN_WAIT_MS || 30000;            // no free march, or nothing to send to: look again after this
@@ -98,7 +98,12 @@
   function heroMax() { try { return Number(req('NBattleModel').NBattleModel.instance.getMarchHeroNumMax()) || 3; } catch (e) { return 3; } }
   function slotCaps(heroes) {
     var M = req('MarchStorageController').MarchStorageController.getInstance(), out = [], n = C.SLOT_POS.length;
-    try { var k = Number(req('NBattleModel').NBattleModel.instance.myMaxArmysNum); if (k > 0) n = Math.min(n, k); } catch (e) {}   // the positions this player has opened
+    // The positions this player has opened: the game's world marches use the count for their level (initWorldSite);
+    // NBattleModel.myMaxArmysNum keeps the last battle screen's count (live: 5 for a Lv. 100 player with 9).
+    var k = 0;
+    try { k = Number(req('NBattlePositionBiz').NBattlePositionBiz.getPositionCount(UD().Level)) || 0; } catch (e) {}
+    if (!(k > 0)) try { k = Number(req('NBattleModel').NBattleModel.instance.myMaxArmysNum) || 0; } catch (e) {}
+    if (k > 0) n = Math.min(n, k);
     for (var y = 0; y < n; y++) out.push(Number(M.getMaxCoutByPos(y, 0, heroes)) || 0);
     return out;
   }
@@ -509,11 +514,15 @@
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show Odinium Gatherer' : 'Minimize Odinium Gatherer'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
   function toggleMin() {
-    if (!S.min && lastFold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    if (foldTap()) { paint(); return; }                // a fold made for room or by a drag: not the player's choice
     S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
   }
   // Tools that run together keep their cards apart (ops-stack.js); without the helper the card stays at its own spot.
-  var forceOpen = false, lastFold = false;
+  // The card's fold (review minor, 2026-10-16): the shared ops-stack.js rule (a fold made for room opens anyway until
+  // the card has room again; a dragged bar stays a bar until opened), or the old rule when the helper didn't load.
+  var FS = {};
+  function foldOf(L) { var O = window.OpsStack; if (O && O.fold) return O.fold(FS, L, S.min); FS.last = !!L.fold; return !!(S.min || (L.fold && !FS.force)); }
+  function foldTap() { var O = window.OpsStack; if (O && O.foldTap) return O.foldTap(FS, S.min); if (!S.min && FS.last) { FS.force = !FS.force; return true; } return false; }
   function where() { return window.OpsStack ? window.OpsStack.layout(root, 'odin-gather', !!(card && /\bmin\b/.test(card.className)), paint) : { placed: true, top: '', left: '', right: '', fold: false }; }
   function place(L) {
     if (!root || L.placed) return;
@@ -530,6 +539,7 @@
   }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
+    root.removeAttribute('data-ops-stopped');
     var st = el('div', 'odin-stat'); st.id = 'odin-stat'; body.appendChild(st);
     var sub = el('div', 'odin-sub'); sub.id = 'odin-sub'; body.appendChild(sub);
     var foot = el('div', 'odin-foot'); foot.id = 'odin-foot'; body.appendChild(foot);
@@ -546,6 +556,7 @@
   }
   function showMessage(text, withClose) {
     ensureRoot(); body.textContent = ''; setView('message');
+    if (withClose) root.setAttribute('data-ops-stopped', '1'); else root.removeAttribute('data-ops-stopped');   // stopped: the Ops Center's tile says so (review minor)
     body.appendChild(el('div', 'odin-msg', text));
     if (withClose) { var btns = el('div', 'odin-btns'); btns.appendChild(button('odin-close', 'Close', removeRoot)); body.appendChild(btns); }
     card.className = 'odin-card';
@@ -559,7 +570,7 @@
     put('odin-last', S.last);
     put('odin-skin', S.skinNote);
     put('odin-mini', S.out + '/' + S.cap);
-    var L = where(), folded = S.min || (L.fold && !forceOpen); lastFold = !!L.fold;
+    var L = where(), folded = foldOf(L);
     var tt = card.querySelector('.odin-title'), tx = folded ? 'Odinium' : 'Odinium Gatherer';
     if (tt && tt.textContent !== tx) tt.textContent = tx;
     card.className = 'odin-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');

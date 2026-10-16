@@ -8,7 +8,7 @@
   var C = window.EnigmaVeinsCore;
   if (!C) { try { alert('Enigma Veins did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.2';
+  var VERSION = '2026-10-16.3';
   var WORKER = window.__VEIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__VEIN_FAST, CHECK_MS = window.__VEIN_CHECK_MS || 120000, IDLE_MS = window.__VEIN_IDLE_MS || 600000, TIMEOUT_MS = window.__VEIN_TIMEOUT_MS || 10000;
   var UNSHOWN_MS = window.__VEIN_UNSHOWN_MS || 10000;     // how long a send counts as out before the game's march list shows it
@@ -252,12 +252,16 @@
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show Enigma Veins' : 'Minimize Enigma Veins'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
   function toggleMin() {
-    if (!S.min && lastFold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    if (foldTap()) { paint(); return; }                // a fold made for room or by a drag: not the player's choice
     S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
   }
   // Tools that run together keep their cards apart (Tex 2026-10-16): ops-stack.js finds this card a free spot, or folds
   // it for room; without the helper the card stays at its own spot.
-  var forceOpen = false, lastFold = false;
+  // The card's fold (review minor, 2026-10-16): the shared ops-stack.js rule (a fold made for room opens anyway until
+  // the card has room again; a dragged bar stays a bar until opened), or the old rule when the helper didn't load.
+  var FS = {};
+  function foldOf(L) { var O = window.OpsStack; if (O && O.fold) return O.fold(FS, L, S.min); FS.last = !!L.fold; return !!(S.min || (L.fold && !FS.force)); }
+  function foldTap() { var O = window.OpsStack; if (O && O.foldTap) return O.foldTap(FS, S.min); if (!S.min && FS.last) { FS.force = !FS.force; return true; } return false; }
   function where() { return window.OpsStack ? window.OpsStack.layout(root, 'enigma-veins', !!(card && /\bmin\b/.test(card.className)), paint) : { placed: true, top: '', left: '', right: '', fold: false }; }   // no helper: leave the card where it is
   function place(L) {
     if (!root || L.placed) return;
@@ -267,6 +271,7 @@
   }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
+    root.removeAttribute('data-ops-stopped');
     var st = el('div', 'vein-stat'); st.id = 'vein-stat'; body.appendChild(st);
     var sub = el('div', 'vein-sub'); sub.id = 'vein-sub'; body.appendChild(sub);
     var foot = el('div', 'vein-foot'); foot.id = 'vein-foot'; body.appendChild(foot);
@@ -278,6 +283,7 @@
   }
   function showMessage(text, withClose) {
     ensureRoot(); body.textContent = ''; setView('message');
+    if (withClose) root.setAttribute('data-ops-stopped', '1'); else root.removeAttribute('data-ops-stopped');   // stopped: the Ops Center's tile says so (review minor)
     body.appendChild(el('div', 'vein-msg', text));
     if (withClose) { var btns = el('div', 'vein-btns'); btns.appendChild(button('vein-close', 'Close', removeRoot)); body.appendChild(btns); }
     card.className = 'vein-card';
@@ -291,7 +297,7 @@
     put('vein-foot', S.foot);
     put('vein-last', S.last);
     put('vein-mini', String(todayCount()));
-    var L = where(), folded = S.min || (L.fold && !forceOpen); lastFold = !!L.fold;
+    var L = where(), folded = foldOf(L);
     var tt = card.querySelector('.vein-title'), tx = folded ? 'Veins' : 'Enigma Veins';
     if (tt && tt.textContent !== tx) tt.textContent = tx;
     card.className = 'vein-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');

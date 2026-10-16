@@ -10,7 +10,7 @@
   var C = window.AngelAttacksCore;
   if (!C) { try { alert('Angel Attacks did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.2';
+  var VERSION = '2026-10-16.3';
   var WORKER = window.__ANG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__ANG_FAST, CHECK_MS = window.__ANG_CHECK_MS || 180000, IDLE_MS = window.__ANG_IDLE_MS || 600000, TIMEOUT_MS = window.__ANG_TIMEOUT_MS || 10000;
   var LIST = 8802, MARCH = 902, BOSS_MARCH = 189;          // what the game used on 2026-10-13; read live when it names them
@@ -253,11 +253,12 @@
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show Angel Attacks' : 'Minimize Angel Attacks'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
   function toggleMin() {
-    if (!S.min && where().fold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    if (foldTap()) { paint(); return; }                // a fold made for room or by a drag: not the player's choice
     S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
   }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
+    root.removeAttribute('data-ops-stopped');
     var st = el('div', 'ang-stat'); st.id = 'ang-stat'; body.appendChild(st);
     var sub = el('div', 'ang-sub'); sub.id = 'ang-sub'; body.appendChild(sub);
     var foot = el('div', 'ang-foot'); foot.id = 'ang-foot'; body.appendChild(foot);
@@ -269,6 +270,7 @@
   }
   function showMessage(text, withClose) {
     ensureRoot(); body.textContent = ''; setView('message');
+    if (withClose) root.setAttribute('data-ops-stopped', '1'); else root.removeAttribute('data-ops-stopped');   // stopped: the Ops Center's tile says so (review minor)
     body.appendChild(el('div', 'ang-msg', text));
     if (withClose) { var btns = el('div', 'ang-btns'); btns.appendChild(button('ang-close', 'Close', removeRoot)); body.appendChild(btns); }
     card.className = 'ang-card';
@@ -277,7 +279,12 @@
   // Where the card goes, so it never covers the Mask Boxes or Map Collector card: under the Mask Boxes card when the
   // full card fits there; else to its right; else (a phone) folded to its bar at the right edge. A fold made for
   // room isn't saved as the player's choice, and tapping the bar opens the card anyway.
-  var fullH = 200, forceOpen = false;
+  var fullH = 200;
+  // The card's fold (review minor, 2026-10-16): the shared ops-stack.js rule (a fold made for room opens anyway until
+  // the card has room again; a dragged bar stays a bar until opened), or the old rule when the helper didn't load.
+  var FS = {};
+  function foldOf(L) { var O = window.OpsStack; if (O && O.fold) return O.fold(FS, L, S.min); FS.last = !!L.fold; return !!(S.min || (L.fold && !FS.force)); }
+  function foldTap() { var O = window.OpsStack; if (O && O.foldTap) return O.foldTap(FS, S.min); if (!S.min && FS.last) { FS.force = !FS.force; return true; } return false; }
   function rectOf(id) { var e = document.getElementById(id); if (!e || !e.isConnected) return null; var r = (e.firstElementChild || e).getBoundingClientRect(); return r.height > 0 ? r : null; }
   function layout() {
     if (window.OpsDrag && window.OpsDrag.placed('angels')) return { placed: true, top: '', left: '', right: '', fold: false };   // the player put it somewhere
@@ -304,7 +311,7 @@
     put('ang-foot', S.foot);
     put('ang-last', S.last);
     put('ang-mini', String(S.attackedRound));
-    var L = where(), folded = S.min || (L.fold && !forceOpen);
+    var L = where(), folded = foldOf(L);
     var tt = card.querySelector('.ang-title'), tx = folded ? 'Angels' : 'Angel Attacks';
     if (tt && tt.textContent !== tx) tt.textContent = tx;
     card.className = 'ang-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');

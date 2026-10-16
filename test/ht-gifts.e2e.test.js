@@ -333,3 +333,13 @@ test('HTG-PEND-901 (Tex 2026-10-16): a map view another tool is still waiting on
   await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
   await ctx.close();
 });
+
+// Review minors (2026-10-16).
+test('HTG-STUCK-901 (minor): another map view waiting on the game: no gift query meanwhile; 3 minutes with no answer stops the run and says why', async () => {
+  const { ctx, page } = await open([[10, 10]], () => { __fake.pending.push(901); window.__HTG_STUCK_MS = 1500; });
+  await launch(page);
+  await waitText(page, '#htg-root .htg-msg', /stopped: a map view has had no answer for 3 minutes/, 10000);
+  assert.equal((await sent(page)).filter((x) => x.rid === 8852 || x.rid === 901).length, 0, 'no gift query or view while a view waits');
+  assert.equal(await page.$eval('#htg-root', (e) => e.getAttribute('data-ops-stopped')), '1');
+  await ctx.close();
+});

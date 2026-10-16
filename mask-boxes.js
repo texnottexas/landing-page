@@ -15,10 +15,11 @@
   var C = window.MaskBoxesCore;
   if (!C) { try { alert('Mask Mystery Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.2';
+  var VERSION = '2026-10-16.3';
   var WORKER = window.__MBX_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__MBX_FAST, FEED_MS = window.__MBX_FEED_MS || 60000, TIMEOUT_MS = window.__MBX_TIMEOUT_MS || 8000;
   var LATE_MS = window.__MBX_LATE_MS || 30000;            // an unanswered request counts as in flight this long
+  var STUCK_MS = window.__MBX_STUCK_MS || 180000;         // the game still waiting on a view or collect this long: the connection is gone
   var VIEW = 901, COLLECT = 2503;                          // RequestId world view, Mask Mystery box collect (PB v2)
   var LS_TYPES = 'mbx_types_v1', LS_COUNT = 'mbx_count_v1_', LS_DONE = 'mbx_done_v1_', LS_MIN = 'mbx_min_v1', LS_SPOTS = 'mbx_spots_v1_';
   var LS_SHARE = 'mbx_share_v1', LS_SHARED = 'mbx_shared_v1_', LS_RATE = 'mbx_rate_v1_';
@@ -371,7 +372,12 @@
     var isPasted = b.src === 'pasted', isBase = b.src === 'base' || isPasted, where = 'S' + b.server + ' (' + b.x + ', ' + b.y + ')';
     setFoot(isPasted ? 'Checking a pasted spot at ' + where : isBase ? 'Checking a shared base at ' + where : 'Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
     if (!(await turn())) return;                            // nothing sent: the box stays untried
-    if (othersBusy(VIEW) || othersBusy(COLLECT)) { setFoot('The game is busy. Trying again shortly.', 'warn'); if (FAST) await delay(400); return; }   // the box stays untried (no look it can't follow with a collect); the loop waits 3-5 s
+    if (othersBusy(VIEW) || othersBusy(COLLECT)) {
+      var bn = Date.now(); if (!S.busySince || bn - S.busyLast > 30000) S.busySince = bn; S.busyLast = bn;   // a continuous wait only
+      if (bn - S.busySince > STUCK_MS) { stop('a map view has had no answer for 3 minutes; reload the game, then start again'); return; }
+      setFoot('The game is busy. Trying again shortly.', 'warn'); if (FAST) await delay(400); return;
+    }
+    S.busySince = 0;   // the box stays untried (no look it can't follow with a collect); the loop waits 3-5 s
     S.tried[isBase ? C.cityKey(b) : C.boxKey(b)] = 1;       // a base share or pasted spot: no type or end time, just a place
     if (isBase) { (isPasted ? S.pasteLog : S.baseLog).push(Date.now()); saveRate(); }
     if (isPasted) remember(b, null, C.pastedUntil(b, Date.now()));   // one look, ever: even if the game refuses it
@@ -481,12 +487,16 @@
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show Mask Boxes' : 'Minimize Mask Boxes'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
   function toggleMin() {
-    if (!S.min && lastFold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    if (foldTap()) { paint(); return; }                // a fold made for room or by a drag: not the player's choice
     S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
   }
   // Tools that run together keep their cards apart (Tex 2026-10-16): ops-stack.js finds this card a free spot, or folds
   // it for room; without the helper the card stays at its own spot.
-  var forceOpen = false, lastFold = false;
+  // The card's fold (review minor, 2026-10-16): the shared ops-stack.js rule (a fold made for room opens anyway until
+  // the card has room again; a dragged bar stays a bar until opened), or the old rule when the helper didn't load.
+  var FS = {};
+  function foldOf(L) { var O = window.OpsStack; if (O && O.fold) return O.fold(FS, L, S.min); FS.last = !!L.fold; return !!(S.min || (L.fold && !FS.force)); }
+  function foldTap() { var O = window.OpsStack; if (O && O.foldTap) return O.foldTap(FS, S.min); if (!S.min && FS.last) { FS.force = !FS.force; return true; } return false; }
   function where() { return window.OpsStack ? window.OpsStack.layout(root, 'mask-boxes', !!(card && /\bmin\b/.test(card.className)), paint) : { placed: true, top: '', left: '', right: '', fold: false }; }   // no helper: leave the card where it is
   function place(L) {
     if (!root || L.placed) return;
@@ -497,6 +507,7 @@
   function button(id, label, fn, cls) { var b = el('button', cls || null, label); b.id = id; b.type = 'button'; b.addEventListener('click', fn); return b; }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
+    root.removeAttribute('data-ops-stopped');
     var row = el('div', 'mbx-types');                       // one row of three, so the card stays short beside Map Collector's
     [1, 2, 3].forEach(function (t) {
       var b = button('mbx-t' + t, '', function () { S.types[t] = !S.types[t]; lsSet(LS_TYPES, JSON.stringify(S.types)); paint(); }, 'mbx-type');
@@ -520,6 +531,7 @@
   }
   function showMessage(text, withClose) {
     ensureRoot(); body.textContent = ''; setView('message');
+    if (withClose) root.setAttribute('data-ops-stopped', '1'); else root.removeAttribute('data-ops-stopped');   // stopped: the Ops Center's tile says so (review minor)
     body.appendChild(el('div', 'mbx-msg', text));
     if (withClose) { var btns = el('div', 'mbx-btns'); btns.appendChild(button('mbx-close', 'Close', removeRoot)); body.appendChild(btns); }
     card.className = 'mbx-card';
@@ -551,7 +563,7 @@
       var showA = live || aon || angLoading;               // a running Angels keeps its switch until it stops
       if (ab.hidden !== !showA) ab.hidden = !showA;
       var at = angLoading ? 'Angels: ...' : aon ? 'Angels: on' : angFailed ? 'Retry' : 'Angels: off'; if (ab.textContent !== at) ab.textContent = at; if (ab.getAttribute('aria-pressed') !== String(aon)) ab.setAttribute('aria-pressed', String(aon)); ab.title = angFailed ? 'Angel Attacks did not load. Tap to try again.' : 'Attack each Heavy Mothership Angel once (carrier, no normal march): ' + (aon ? 'on' : 'off'); }
-    var L = where(), folded = S.min || (L.fold && !forceOpen); lastFold = !!L.fold;
+    var L = where(), folded = foldOf(L);
     card.className = 'mbx-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');
     place(L);
   }

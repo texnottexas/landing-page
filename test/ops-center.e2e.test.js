@@ -888,3 +888,51 @@ test('OPS-GRP-6 (review): in a group session the Ops pill still offers Hide this
   await page.waitForFunction(() => !document.querySelector('.ops-fab'));
   await ctx.close();
 });
+
+// Review minors (2026-10-16).
+const FAB = (page) => page.evaluate(() => (document.querySelector('.ops-fab') || {}).textContent || '');
+test('OPS-GRP-7 (minor): closing the first card while a tool launched beside it is still loading keeps the session; its card takes over', async () => {
+  const { ctx, page } = await open(PHONE, null, { group: true });
+  let release; const held = new Promise((r) => { release = r; });
+  await ctx.route('**/fake-group-b.js*', async (rt) => { await held; rt.continue(); });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group A'); await page.waitForSelector('#fake-ga');
+  await page.evaluate(() => window.OpsCenter.toggle()); await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group B');                                 // its script is held
+  await page.click('#fake-ga-close');
+  await page.waitForTimeout(2000);                                   // past the 1 s grace
+  assert.equal(await count(page, '.ops-tile'), 0, 'the session did not end under the loading tool');
+  release();
+  await page.waitForSelector('#fake-gb');
+  await page.waitForFunction(() => /Group B running/.test((document.querySelector('.ops-fab') || {}).textContent || ''), null, { timeout: 4000 });
+  await page.evaluate(() => window.OpsCenter.toggle()); await page.waitForSelector('.ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Wait'], 'still a group session');
+  await ctx.close();
+});
+
+test('OPS-GRP-8 (minor): the first group tool failing to load leaves the one launched beside it running, and says so', async () => {
+  const { ctx, page } = await open(PHONE, null, { group: true });
+  let release; const held = new Promise((r) => { release = r; });
+  await ctx.route('**/fake-group-a.js*', async (rt) => { await held; rt.fulfill({ status: 404, body: '' }); });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group A');                                 // loading, held
+  await page.evaluate(() => window.OpsCenter.toggle()); await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group B'); await page.waitForSelector('#fake-gb');
+  release();
+  await page.waitForSelector('.ops-bubble:has-text("Couldn\'t load Group A")', { timeout: 4000 });
+  await page.waitForTimeout(1500);
+  assert.equal(await count(page, '.ops-tile'), 0, 'no menu: Group B still runs');
+  assert.match(await FAB(page), /Group B running/);
+  await ctx.close();
+});
+
+test('OPS-GRP-9 (minor): a group tool that stopped and shows why says Stopped on its tile and in the pill, until its card closes', async () => {
+  const { ctx, page } = await open(PHONE, null, { group: true });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group A'); await page.waitForSelector('#fake-ga');
+  await page.evaluate(() => document.getElementById('fake-ga').setAttribute('data-ops-stopped', '1'));
+  await page.waitForFunction(() => /Group A stopped/.test((document.querySelector('.ops-fab') || {}).textContent || ''), null, { timeout: 3000 });
+  await page.evaluate(() => window.OpsCenter.toggle()); await page.waitForSelector('.ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Group A'), ['Stopped']);
+  await ctx.close();
+});

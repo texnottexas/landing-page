@@ -9,10 +9,11 @@
   var C = window.HtGiftsCore;
   if (!C) { try { alert('HT Gift Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.2';
+  var VERSION = '2026-10-16.3';
   var WORKER = window.__HTG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__HTG_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__HTG_TIMEOUT_MS || 10000, POLL_MS = window.__HTG_POLL_MS || 1000;
   var BUSY_MS = window.__HTG_BUSY_MS || 10000, IDLE_MS = window.__HTG_IDLE_MS || 30000;
+  var STUCK_MS = window.__HTG_STUCK_MS || 180000;         // a map view with no answer this long: the connection is gone
   var LS_PW = 'htg_pw_v1', LS_SENT = 'htg_sent_v1_', LS_OWN = 'htg_own_v1_', LS_COUNT = 'htg_count_v1_', LS_MIN = 'htg_min_v1';
   var TARGET = {};
 
@@ -116,6 +117,7 @@
     if (check) { var N = NET(); if (typeof N.checkRequestIdNoRes === 'function' && N.checkRequestIdNoRes(id)) return { s: 'busy' }; }
     return call(function (cb) { return NET()[fn](id, p, TARGET, cb); });
   }
+  function viewWaiting(I) { try { var N = NET(); return typeof N.checkRequestIdNoRes === 'function' && !!N.checkRequestIdNoRes(I.view); } catch (e) { return false; } }
   function refused(r) { stop(gameText(r.key) || ('the game answered ' + r.s + (r.key ? ' (' + r.key + ')' : ''))); }
 
   // ---------------------------------------------------------------- the loop
@@ -136,6 +138,12 @@
       if (c.out >= C.MAX_OUT) { setFoot(C.MAX_OUT + ' out. Waiting for one to return.', 'ok'); await delay(POLL_MS); continue; }
       var g = C.gate(S.log, Date.now());
       if (!g.ok) { setFoot('Paused: ' + g.reason + '.', 'warn'); await delay(POLL_MS); continue; }
+      if (viewWaiting(I)) {                               // another map view still waits for the game: no gift query until it's answered (review minor)
+        var bn = Date.now(); if (!S.busySince || bn - S.busyLast > 30000) S.busySince = bn; S.busyLast = bn;   // a continuous wait only
+        if (bn - S.busySince > STUCK_MS) { stop("a map view has had no answer for 3 minutes; reload the game, then start again"); return; }
+        await idle(BUSY_MS, 'The game is busy. Looking again in'); continue;
+      }
+      S.busySince = 0;
       setFoot('Looking for gift boxes...', 'ok');
       var q = await ask('sendPBV2', I.query, { queryType: 1, marchType: I.drop });
       if (q.s === 'stopped') return;
@@ -249,12 +257,16 @@
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show HT Gift Boxes' : 'Minimize HT Gift Boxes'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
   function toggleMin() {
-    if (!S.min && lastFold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    if (foldTap()) { paint(); return; }                // a fold made for room or by a drag: not the player's choice
     S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
   }
   // Tools that run together keep their cards apart (Tex 2026-10-16): ops-stack.js finds this card a free spot, or folds
   // it for room; without the helper the card stays at its own spot.
-  var forceOpen = false, lastFold = false;
+  // The card's fold (review minor, 2026-10-16): the shared ops-stack.js rule (a fold made for room opens anyway until
+  // the card has room again; a dragged bar stays a bar until opened), or the old rule when the helper didn't load.
+  var FS = {};
+  function foldOf(L) { var O = window.OpsStack; if (O && O.fold) return O.fold(FS, L, S.min); FS.last = !!L.fold; return !!(S.min || (L.fold && !FS.force)); }
+  function foldTap() { var O = window.OpsStack; if (O && O.foldTap) return O.foldTap(FS, S.min); if (!S.min && FS.last) { FS.force = !FS.force; return true; } return false; }
   function where() { return window.OpsStack ? window.OpsStack.layout(root, 'ht-gifts', !!(card && /\bmin\b/.test(card.className)), paint) : { placed: true, top: '', left: '', right: '', fold: false }; }   // no helper: leave the card where it is
   function place(L) {
     if (!root || L.placed) return;
@@ -264,6 +276,7 @@
   }
   function showPassword(bad) {
     ensureRoot(); body.textContent = ''; setView('password'); card.className = 'htg-card' + (bad ? ' warn' : '');
+    root.removeAttribute('data-ops-stopped');
     var lab = el('label', 'htg-sub', 'Password'); lab.htmlFor = 'htg-pw'; body.appendChild(lab);
     var inp = el('input'); inp.id = 'htg-pw'; inp.type = 'password'; inp.autocomplete = 'off'; inp.setAttribute('autocapitalize', 'off'); inp.spellcheck = false;
     body.appendChild(inp);
@@ -278,10 +291,12 @@
     var btns = el('div', 'htg-btns');
     btns.appendChild(button('htg-unlock', 'Unlock', go)); btns.appendChild(button('htg-close', 'Close', removeRoot));
     body.appendChild(btns);
+    paint();                                              // kept clear of the cards opened before it (review minor)
     try { inp.focus(); } catch (e) {}
   }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
+    root.removeAttribute('data-ops-stopped');
     ['htg-stat', 'htg-sub', 'htg-foot', 'htg-last'].forEach(function (id) { var e = el('div', id); e.id = id; body.appendChild(e); });
     var btns = el('div', 'htg-btns');
     btns.appendChild(button('htg-stop', 'Stop', function () { stop('stopped by you'); }));
@@ -290,17 +305,20 @@
   }
   function showMessage(text, withClose) {
     ensureRoot(); body.textContent = ''; setView('message');
+    if (withClose) root.setAttribute('data-ops-stopped', '1'); else root.removeAttribute('data-ops-stopped');   // stopped: the Ops Center's tile says so (review minor)
     body.appendChild(el('div', 'htg-msg', text));
     if (withClose) { var btns = el('div', 'htg-btns'); btns.appendChild(button('htg-close', 'Close', removeRoot)); body.appendChild(btns); }
     card.className = 'htg-card' + (/stopped:/.test(text) ? ' warn' : '');
+    paint();
   }
   function put(id, text) { var e = document.getElementById(id); if (e && e.textContent !== text) { e.textContent = text; e.title = text; } }
   function paint() {
-    if (!card || S.view !== 'run') return;
+    if (!card) return;
+    if (S.view !== 'run') { place(where()); return; }    // the password and message cards keep clear of the others too (review minor)
     put('htg-stat', 'Claimed today ' + S.today + '/' + S.cap);
     put('htg-sub', 'Out ' + S.out + '/' + C.MAX_OUT);
     put('htg-foot', S.foot); put('htg-last', S.last); put('htg-mini', S.today + '/' + S.cap);
-    var L = where(), folded = S.min || (L.fold && !forceOpen); lastFold = !!L.fold;
+    var L = where(), folded = foldOf(L);
     card.className = 'htg-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');
     place(L);
   }

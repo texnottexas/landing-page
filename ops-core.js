@@ -18,7 +18,7 @@
   // what a tool says when it sorts a readiness item out itself (its list entry has "auto": [ids])
   var AUTO_TEXT = { base: 'Takes you to your base first', defender: 'Opens the defender monster itself', game: 'Waits for the game itself', r4: 'Checks your rank itself' };
   function isAutoFor(tool, id) { return !!(tool.auto && tool.auto.indexOf(id) >= 0); }
-  var WAIT_MS = 10000, GRACE_MS = 1000, WATCH_MS = 120000, RECENT_MAX = 3, MAX_TOOLS = 50;
+  var WAIT_MS = 10000, GRACE_MS = 1000, WATCH_MS = 120000, JOIN_MS = 30000, RECENT_MAX = 3, MAX_TOOLS = 50;
 
   function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
   function plainObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
@@ -114,7 +114,7 @@
     if (ctx.alongsideOn) return { state: 'playing', launch: 'Launch' };   // runs alongside (Rickroll) and is on now
     if (ctx.group) {                                    // tools that run together are open (Tex 2026-10-16)
       if (!tool.together && !tool.alongside) return { state: 'wait', launch: null };
-      if (tool.together && ctx.groupOn) return { state: 'running', launch: null };
+      if (tool.together && ctx.groupOn) return { state: ctx.stopped ? 'stopped' : 'running', launch: null };   // stopped: its card shows why
     }
     if (ctx.eventOff) return { state: 'off', launch: 'Launch anyway' };   // its event isn't running: it can still open
     var ok = tool.ready.every(function (r) { return isAutoFor(tool, r) || (ctx.checks && ctx.checks[r] === true); });
@@ -139,20 +139,35 @@
 
   // Running tracker. Phases: idle -> loading -> waiting -> running -> idle.
   function trackerInit() {
-    return { phase: 'idle', nodes: [], launchedAt: null, loadedAt: null, emptySince: null, watchUntil: 0, error: false };
+    return { phase: 'idle', nodes: [], launchedAt: null, loadedAt: null, emptySince: null, watchUntil: 0, error: false, joins: [], failed: false };
   }
+  // Tools launched beside the open one (tools that run together) still loading: each counts JOIN_MS at most.
+  function joining(s, at) { return (s.joins || []).some(function (t) { return at - t <= JOIN_MS; }); }
   function trackerWatching(s, now) {
     return s.launchedAt != null && !s.error && (s.phase !== 'idle' || now <= s.watchUntil);
   }
   function trackerReduce(s, ev) {
-    var n = Object.assign({}, s, { nodes: s.nodes.slice() });
+    var n = Object.assign({}, s, { nodes: s.nodes.slice(), joins: (s.joins || []).slice() });
     switch (ev.type) {
       case 'launch':
-        return { phase: 'loading', nodes: [], launchedAt: ev.at, loadedAt: null, emptySince: null, watchUntil: ev.at + WATCH_MS, error: false };
+        return { phase: 'loading', nodes: [], launchedAt: ev.at, loadedAt: null, emptySince: null, watchUntil: ev.at + WATCH_MS, error: false, joins: [], failed: false };
+      case 'join':                                      // a group tool launched beside the open one starts loading
+        if (n.phase === 'idle') return s;
+        n.joins.push(ev.at);
+        return n;
+      case 'joined':                                    // it loaded (or failed): its card gets the grace to show
+        n.joins.shift();
+        if (!n.nodes.length) n.emptySince = ev.at;
+        return n;
       case 'loaded':
         if (n.phase === 'loading') { n.phase = n.nodes.length ? 'running' : 'waiting'; n.loadedAt = ev.at; }
         return n;
-      case 'loadError':
+      case 'loadError':                                 // another card is up, or loading: the session goes on without this one
+        if (n.nodes.length || joining(n, ev.at)) {
+          n.failed = true;
+          if (n.phase === 'loading') { n.phase = n.nodes.length ? 'running' : 'waiting'; n.loadedAt = ev.at; }
+          return n;
+        }
         return Object.assign(trackerInit(), { error: true });
       case 'nodeAdded':
         if (!trackerWatching(s, ev.at)) return s;
@@ -168,6 +183,8 @@
         if (n.phase === 'idle') n.watchUntil = 0;
         return n;
       case 'tick':
+        n.joins = n.joins.filter(function (t) { return ev.at - t <= JOIN_MS; });
+        if (n.joins.length) return n;                   // a tool beside it is still loading
         if (n.phase === 'waiting' && ev.at - n.loadedAt > WAIT_MS) n.phase = 'idle';
         else if (n.phase === 'running' && !n.nodes.length && n.emptySince != null && ev.at - n.emptySince > GRACE_MS) {
           n.phase = 'idle'; n.watchUntil = 0;              // closed for real: stop watching
