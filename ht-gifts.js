@@ -9,7 +9,7 @@
   var C = window.HtGiftsCore;
   if (!C) { try { alert('HT Gift Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-15';
+  var VERSION = '2026-10-16';
   var WORKER = window.__HTG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__HTG_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__HTG_TIMEOUT_MS || 10000, POLL_MS = window.__HTG_POLL_MS || 1000;
   var BUSY_MS = window.__HTG_BUSY_MS || 10000, IDLE_MS = window.__HTG_IDLE_MS || 30000;
@@ -107,13 +107,13 @@
       (function check() { var wait = P.at + GAP_MS - Date.now(); if (wait <= 0) { P.at = Date.now(); resolve(); } else setTimeout(check, Math.min(wait, 1000)); })();
     });
   }
-  // One request: the shared clock, a fresh check (running, connected, and for a march no other march request still
-  // waiting), then send. 'stopped' / 'offline' / 'busy': not sent.
-  async function ask(fn, id, p, march) {
+  // One request: the shared clock, a fresh check (running, connected, and for a march or a map view no other such
+  // request still waiting: tools run together, Tex 2026-10-16), then send. 'stopped' / 'offline' / 'busy': not sent.
+  async function ask(fn, id, p, check) {
     await pace();
     if (!S.running) return { s: 'stopped' };
     if (!ready() || flight) return { s: 'offline' };
-    if (march) { var N = NET(); if (typeof N.checkRequestIdNoRes === 'function' && N.checkRequestIdNoRes(id)) return { s: 'busy' }; }
+    if (check) { var N = NET(); if (typeof N.checkRequestIdNoRes === 'function' && N.checkRequestIdNoRes(id)) return { s: 'busy' }; }
     return call(function (cb) { return NET()[fn](id, p, TARGET, cb); });
   }
   function refused(r) { stop(gameText(r.key) || ('the game answered ' + r.s + (r.key ? ' (' + r.key + ')' : ''))); }
@@ -143,9 +143,10 @@
       var Q = C.classifyQuery(q);
       if (Q.kind === 'silent') { await idle(IDLE_MS, "The game didn't answer. Looking again in"); continue; }
       if (Q.kind === 'none') { await idle(IDLE_MS, 'No gift boxes right now. Looking again in'); continue; }
-      var v = await ask('send', I.view, { x: Q.x, y: Q.y, k: homeK(), rid: 0, width: 25, height: 30, marchInfo: true, viewLevel: 0 });
+      var v = await ask('send', I.view, { x: Q.x, y: Q.y, k: homeK(), rid: 0, width: 25, height: 30, marchInfo: true, viewLevel: 0 }, true);
       if (v.s === 'stopped') return;
       if (v.s === 'offline') { await delay(POLL_MS); continue; }
+      if (v.s === 'busy') { await idle(BUSY_MS, 'The game is busy. Looking again in'); continue; }   // another tool's view (Tex 2026-10-16)
       var V = C.classifyView(v);
       if (V.kind === 'silent') { await idle(IDLE_MS, "The game didn't answer. Looking again in"); continue; }
       if (V.kind === 'refused') { refused(V); return; }          // an unknown answer: never claim right after it
@@ -247,7 +248,20 @@
     var mb = document.getElementById('htg-min');
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show HT Gift Boxes' : 'Minimize HT Gift Boxes'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
-  function toggleMin() { S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint(); }
+  function toggleMin() {
+    if (!S.min && lastFold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
+  }
+  // Tools that run together keep their cards apart (Tex 2026-10-16): ops-stack.js finds this card a free spot, or folds
+  // it for room; without the helper the card stays at its own spot.
+  var forceOpen = false, lastFold = false;
+  function where() { return window.OpsStack ? window.OpsStack.layout(root, 'ht-gifts', !!(card && /\bmin\b/.test(card.className)), paint) : { placed: true, top: '', left: '', right: '', fold: false }; }   // no helper: leave the card where it is
+  function place(L) {
+    if (!root || L.placed) return;
+    if (root.style.top !== L.top) root.style.top = L.top;
+    if (root.style.left !== L.left) root.style.left = L.left;
+    if (root.style.right !== L.right) root.style.right = L.right;
+  }
   function showPassword(bad) {
     ensureRoot(); body.textContent = ''; setView('password'); card.className = 'htg-card' + (bad ? ' warn' : '');
     var lab = el('label', 'htg-sub', 'Password'); lab.htmlFor = 'htg-pw'; body.appendChild(lab);
@@ -286,7 +300,9 @@
     put('htg-stat', 'Claimed today ' + S.today + '/' + S.cap);
     put('htg-sub', 'Out ' + S.out + '/' + C.MAX_OUT);
     put('htg-foot', S.foot); put('htg-last', S.last); put('htg-mini', S.today + '/' + S.cap);
-    card.className = 'htg-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
+    var L = where(), folded = S.min || (L.fold && !forceOpen); lastFold = !!L.fold;
+    card.className = 'htg-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');
+    place(L);
   }
 
   // ---------------------------------------------------------------- start

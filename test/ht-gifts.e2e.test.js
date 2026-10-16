@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['ht-gifts.js', 'ht-gifts-core.js', 'ops-tools.json', 'ops-drag.js'];
+const OWN = ['ht-gifts.js', 'ht-gifts-core.js', 'ops-tools.json', 'ops-stack.js', 'ops-drag.js'];
 const UID = 'test-owner-uid';
 const PW = crypto.createHash('sha256').update('bananas').digest('hex');
 
@@ -320,5 +320,16 @@ test('HTG-19: the card drags by its title and keeps its spot after a relaunch', 
   await page.waitForFunction(() => window.__HTG.state().view === 'run');
   assert.deepEqual(await cardAt(page, '#htg-root'), b);
   await page.click('#htg-stop');
+  await ctx.close();
+});
+
+test('HTG-PEND-901 (Tex 2026-10-16): a map view another tool is still waiting on: no view, no strike; it goes once clear', async () => {
+  const { ctx, page } = await open([[10, 10]], () => { __fake.pending.push(901); });
+  await launch(page);
+  await waitText(page, '#htg-foot', /The game is busy\. Looking again in/);
+  assert.equal((await sent(page)).filter((x) => x.rid === 901).length, 0);
+  assert.equal(await page.evaluate(() => window.__HTG.state().running), true);
+  await page.evaluate(() => { __fake.pending = []; });
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
   await ctx.close();
 });

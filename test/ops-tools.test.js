@@ -185,7 +185,7 @@ test('HT Gift Boxes tile: for members, game ready, its own overlay and chest ico
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#htg-root');
   assert.equal(t.icon, 'chest');
-  assert.deepEqual(t.scripts, ['ops-drag.js', 'ht-gifts-core.js', 'ht-gifts.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-stack.js', 'ht-gifts-core.js', 'ht-gifts.js']);
   assert.match(t.desc, /password/);
   assert.ok(!/—/.test(t.desc) && !/bananas/i.test(t.desc + t.keywords), 'no em dash; the password is not printed');
   const ver = (read('ht-gifts.js').match(/var VERSION = '([^']+)'/) || [])[1];
@@ -205,7 +205,7 @@ test('Enigma Veins tile: for members, game ready, its own overlay and gem icon, 
   assert.deepEqual(t.ready, ['game']);
   assert.equal(t.overlay, '#vein-root');
   assert.equal(t.icon, 'gem');
-  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-jam.js', 'enigma-veins-core.js', 'enigma-veins.js']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-jam.js', 'ops-stack.js', 'enigma-veins-core.js', 'enigma-veins.js']);
   assert.match(t.desc, /Enigma Field Hunt/);
   assert.ok(!/—/.test(t.desc), 'no em dash');
   const ver = (read('enigma-veins.js').match(/var VERSION = '([^']+)'/) || [])[1];

@@ -8,7 +8,7 @@
   var C = window.EnigmaVeinsCore;
   if (!C) { try { alert('Enigma Veins did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-14.4';
+  var VERSION = '2026-10-16';
   var WORKER = window.__VEIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__VEIN_FAST, CHECK_MS = window.__VEIN_CHECK_MS || 120000, IDLE_MS = window.__VEIN_IDLE_MS || 600000, TIMEOUT_MS = window.__VEIN_TIMEOUT_MS || 10000;
   var UNSHOWN_MS = window.__VEIN_UNSHOWN_MS || 10000;     // how long a send counts as out before the game's march list shows it
@@ -251,7 +251,20 @@
     var mb = document.getElementById('vein-min');
     if (mb) { mb.hidden = v !== 'run'; mb.setAttribute('aria-label', S.min ? 'Show Enigma Veins' : 'Minimize Enigma Veins'); mb.setAttribute('aria-expanded', String(!S.min)); }
   }
-  function toggleMin() { S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint(); }
+  function toggleMin() {
+    if (!S.min && lastFold) { forceOpen = !forceOpen; paint(); return; }   // a fold made for room: not the player's choice
+    S.min = !S.min; lsSet(LS_MIN, S.min ? '1' : null); setView(S.view); paint();
+  }
+  // Tools that run together keep their cards apart (Tex 2026-10-16): ops-stack.js finds this card a free spot, or folds
+  // it for room; without the helper the card stays at its own spot.
+  var forceOpen = false, lastFold = false;
+  function where() { return window.OpsStack ? window.OpsStack.layout(root, 'enigma-veins', !!(card && /\bmin\b/.test(card.className)), paint) : { placed: true, top: '', left: '', right: '', fold: false }; }   // no helper: leave the card where it is
+  function place(L) {
+    if (!root || L.placed) return;
+    if (root.style.top !== L.top) root.style.top = L.top;
+    if (root.style.left !== L.left) root.style.left = L.left;
+    if (root.style.right !== L.right) root.style.right = L.right;
+  }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
     var st = el('div', 'vein-stat'); st.id = 'vein-stat'; body.appendChild(st);
@@ -278,9 +291,11 @@
     put('vein-foot', S.foot);
     put('vein-last', S.last);
     put('vein-mini', String(todayCount()));
-    var tt = card.querySelector('.vein-title'), tx = S.min ? 'Veins' : 'Enigma Veins';
+    var L = where(), folded = S.min || (L.fold && !forceOpen); lastFold = !!L.fold;
+    var tt = card.querySelector('.vein-title'), tx = folded ? 'Veins' : 'Enigma Veins';
     if (tt && tt.textContent !== tx) tt.textContent = tx;
-    card.className = 'vein-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (S.min ? ' min' : '');
+    card.className = 'vein-card' + (S.tone === 'ok' ? '' : ' ' + S.tone) + (folded ? ' min' : '');
+    place(L);
   }
 
   // ---------------------------------------------------------------- start

@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
-const OWN = ['enigma-veins.js', 'enigma-veins-core.js', 'ops-drag.js', 'ops-jam.js', 'ops-tools.json'];
+const OWN = ['enigma-veins.js', 'enigma-veins-core.js', 'ops-drag.js', 'ops-jam.js', 'ops-tools.json', 'ops-stack.js'];
 const UID = 'test-owner-uid';
 const SK = crypto.createHash('sha256').update(UID).digest('hex').slice(0, 16);
 
@@ -237,7 +237,7 @@ test('VEIN-13: it reports its marches for the Tool usage panel: siteKey, name, t
   const last = usageLog[usageLog.length - 1];
   assert.equal(last.type, 'text/plain');
   assert.equal(last.body.siteKey, SK); assert.equal(last.body.name, 'Tex'); assert.equal(last.body.tool, 'enigma-veins');
-  assert.equal(last.body.count, 1); assert.match(last.body.day, /^\d{4}-\d{2}-\d{2}$/); assert.match(last.body.version, /^2026-10-14/);
+  assert.equal(last.body.count, 1); assert.match(last.body.day, /^\d{4}-\d{2}-\d{2}$/); assert.match(last.body.version, /^2026-10-1[4-9]/);
   assert.ok(usageLog.every((u) => !u.raw.includes(UID) && !u.raw.includes('finder')), 'no UID anywhere');
   await ctx.close();
 });
