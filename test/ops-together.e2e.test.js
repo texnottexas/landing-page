@@ -42,7 +42,7 @@ test.beforeEach(() => { feed = [{ server: 619, x: 404, y: 612, owner: 'A', type:
 
 // The fake game with one Mask box, two veins and one HT gift box; then the helpers and the three tools, as the
 // Ops Center loads them (helpers first). No pace overrides: the shared clock runs at its real gaps.
-async function open(viewport) {
+async function open(viewport, before) {
   const ctx = await browser.newContext({ viewport });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { throw e; });
@@ -57,6 +57,7 @@ async function open(viewport) {
     __fake.vein.veins = [{ x: 500, y: 300, expireMs: now + 3600000, status: 0 }, { x: 501, y: 301, expireMs: now + 3000000, status: 0 }];
     __fake.htg.gifts = [{ x: 10, y: 10, k: 2864, m: { receiveBagUidList: [], endSecsTime: s + 1200, floatParadeId: 4, luckyBagNum: 10, marchIdStr: 'M1' } }];
   }, [base, PW, T]);
+  if (before) await page.evaluate(before);
   for (const f of ['ops-drag.js', 'ops-stack.js', 'mask-boxes-core.js', 'enigma-veins-core.js', 'ht-gifts-core.js', 'mask-boxes.js', 'enigma-veins.js', 'ht-gifts.js']) await page.addScriptTag({ url: base + f });
   await page.waitForSelector('#mbx-root .mbx-card');
   await page.waitForSelector('#vein-root .vein-card');
@@ -110,5 +111,15 @@ test('TOG-3: phone 375x740: the cards stack or fold, all on screen, none overlap
   await page.evaluate(() => { window.__HTG.stop(); const r = document.getElementById('htg-root'); if (r) r.remove(); });
   await page.waitForTimeout(2500);
   assert.deepEqual((await cards(page)).find((c) => c.id === '#vein-root'), before, 'the dragged card stays put');
+  await ctx.close();
+});
+
+test('TOG-4 (review): a card the player dragged earlier is taken, whatever opened first: the others keep off it', async () => {
+  const view = { width: 1280, height: 800 };
+  const { ctx, page } = await open(view, () => localStorage.setItem('ops_pos_v1_ht-gifts', JSON.stringify({ x: 8, y: 200 })));
+  await page.waitForTimeout(2500);
+  const list = await cards(page);
+  assert.deepEqual(list.find((c) => c.id === '#htg-root').t, 200, 'the dragged card stays where the player put it');
+  assertApart(list, view);
   await ctx.close();
 });

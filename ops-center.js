@@ -463,13 +463,14 @@
   }
   function runningNote() {
     var t = S.tool ? S.tool.title : 'The tool';
+    if (groupSession()) { var on = runningGroup().map(function (x) { return x.title; }); return (on.length ? on.join(', ') : t) + (on.length > 1 ? ' are' : ' is') + ' running.'; }
     return S.tracker && S.tracker.phase === 'running' ? t + ' is open. Close it from its own screen to come back here.' : 'Starting ' + t + '...';
   }
   function showFab(text) {
     if (S.fabHidden) return;                            // the player hid it: stays hidden until the tool closes
     ensureRoot();
     if (S.fab) { S.fab.setText(text); return; }
-    S.fab = K().fab(S.root, text, onFab);
+    S.fab = K().fab(S.root, text, showNote);
   }
   // the note above the pill, with a way to hide the pill in case it covers one of the tool's own buttons
   function showNote() {
@@ -477,6 +478,7 @@
     var al = alongsideTool(), extra = null;            // the song can start alongside whatever is open (Tex 2026-10-14)
     // the button is Jam Mode, as on the tool cards (Tex): Rickroll is what it plays
     if (al) extra = alongsideOn(al) ? { text: 'Jam Mode is on', disabled: true } : { text: 'Jam Mode \u266a', onClick: function () { launchAlongside(al); } };
+    if (groupSession()) extra = { text: 'Open menu', onClick: function () { openMenu(); } };   // tools that run together: the menu starts the others (and Rickroll)
     if (S.fab) K().bubble(S.root, runningNote(), 6000, 'Hide this button', function () { S.fabHidden = true; hideFab(); }, extra);
     else K().bubble(S.root, runningNote(), undefined, null, null, extra);
   }
@@ -497,7 +499,6 @@
     closeCard();
     loadToolScripts(t).catch(function () { ensureRoot(); K().bubble(S.root, 'Couldn\'t load ' + t.title + '. Check your connection.'); });
   }
-  function onFab() { if (groupSession()) openMenu(); else showNote(); }
   // Tools that run alongside the others (Rickroll, Tex 2026-10-14): never the running tool, never holding the menu.
   function alongsideTool() {
     if (!S.list) return null;

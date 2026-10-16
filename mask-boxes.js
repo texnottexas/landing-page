@@ -96,7 +96,9 @@
       var m = req('ActivityController'), A = m && (m.ActivityController || m.default || m), I = A && (A.Instance || A.instance);
       if (!I || !Array.isArray(I._activityList)) return null;
       var d = req('DataCenter'), now = Number(d && d.DATA && d.DATA.ServerTime);
-      return { acts: I._activityList, now: now > 0 ? now : Math.floor(Date.now() / 1000) };
+      var acts = I._activityList.slice();               // the live game keeps activities in a list and a map: read both
+      if (I._activityMap && typeof I._activityMap === 'object') Object.keys(I._activityMap).forEach(function (k) { acts.push(I._activityMap[k]); });
+      return { acts: acts, now: now > 0 ? now : Math.floor(Date.now() / 1000) };
     } catch (e) { return null; }
   }
   function loadScript(src) {
@@ -369,7 +371,7 @@
     var isPasted = b.src === 'pasted', isBase = b.src === 'base' || isPasted, where = 'S' + b.server + ' (' + b.x + ', ' + b.y + ')';
     setFoot(isPasted ? 'Checking a pasted spot at ' + where : isBase ? 'Checking a shared base at ' + where : 'Checking ' + C.TYPES[b.type] + ' at ' + where, 'ok');
     if (!(await turn())) return;                            // nothing sent: the box stays untried
-    if (othersBusy(VIEW)) { setFoot('The game is busy. Trying again shortly.', 'warn'); if (FAST) await delay(400); return; }   // the box stays untried; the loop waits 3-5 s
+    if (othersBusy(VIEW) || othersBusy(COLLECT)) { setFoot('The game is busy. Trying again shortly.', 'warn'); if (FAST) await delay(400); return; }   // the box stays untried (no look it can't follow with a collect); the loop waits 3-5 s
     S.tried[isBase ? C.cityKey(b) : C.boxKey(b)] = 1;       // a base share or pasted spot: no type or end time, just a place
     if (isBase) { (isPasted ? S.pasteLog : S.baseLog).push(Date.now()); saveRate(); }
     if (isPasted) remember(b, null, C.pastedUntil(b, Date.now()));   // one look, ever: even if the game refuses it

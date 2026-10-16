@@ -871,3 +871,20 @@ test('OPS-GRP-5: tapping a Running tile closes the menu and loads nothing again'
   assert.equal(await page.evaluate(() => window.__gaRuns), 1);
   await ctx.close();
 });
+
+test('OPS-GRP-6 (review): in a group session the Ops pill still offers Hide this button, and Open menu opens the menu', async () => {
+  const { ctx, page } = await open(PHONE, null, { group: true });
+  await page.waitForSelector('.ops-tile');
+  await launchTile(page, 'Group A'); await page.waitForSelector('#fake-ga');
+  await page.waitForSelector('.ops-fab');
+  await page.click('.ops-fab');
+  await page.waitForSelector('.ops-bubble:has-text("Hide this button")');
+  await page.click('.ops-bubble .ops-btn:text-is("Open menu")');
+  await page.waitForSelector('.ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Group A'), ['Running']);
+  await page.evaluate(() => window.OpsCenter.toggle());              // close the menu
+  await page.click('.ops-fab');
+  await page.click('.ops-bubble .ops-btn:text-is("Hide this button")');
+  await page.waitForFunction(() => !document.querySelector('.ops-fab'));
+  await ctx.close();
+});

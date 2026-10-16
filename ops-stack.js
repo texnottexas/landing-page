@@ -32,6 +32,9 @@
   var DEFAULT = { top: '', left: '', right: '', fold: false };
   // The group cards: whichever of these sits earlier in the page opened first, helper or not.
   var IDS = ['mbx-root', 'vein-root', 'htg-root', 'ang-root'];
+  var KEYS = { 'mbx-root': 'mask-boxes', 'vein-root': 'enigma-veins', 'htg-root': 'ht-gifts', 'ang-root': 'angels' };
+  // A card the player dragged never moves, so it's taken whatever opened first (review).
+  function dragged(id) { return !!(root.OpsDrag && root.OpsDrag.placed && root.OpsDrag.placed(KEYS[id])); }
   // Shared by every copy of this file the tools load: the cards to repaint, their last sizes, one repaint timer.
   var reg = root.__opsStack || (root.__opsStack = { order: [], size: {}, bar: {}, timer: null });
   if (!reg.bar) reg.bar = {};
@@ -56,7 +59,7 @@
     if (r) reg[folded ? 'bar' : 'size'][key] = { w: r.right - r.left, h: r.bottom - r.top };   // full size, or the folded bar's
     var doc = root.document;
     var others = IDS.map(function (id) { return doc.getElementById(id); })
-      .filter(function (e) { return e && e !== el && !!(e.compareDocumentPosition(el) & 4); })   // e comes before this card
+      .filter(function (e) { return e && e !== el && (!!(e.compareDocumentPosition(el) & 4) || dragged(e.id)); })   // e comes before this card, or was dragged
       .map(rectOf).filter(Boolean);
     if (!others.length) return DEFAULT;                  // the first card keeps the tool's own spot
     var mc = rectOf(doc.getElementById('mapc-root'));

@@ -1006,14 +1006,17 @@ test('MBX-PEND-1: a pending 901 (anyone\'s) holds the view; nothing sent, no sto
   await ctx.close();
 });
 
-test('MBX-PEND-2: a pending 2503 holds the collect up to five turns, then the box is left (no stop)', async () => {
+test('MBX-PEND-2 (review): a pending 2503 holds the box before its view: no look is spent that cannot be collected; it goes once clear', async () => {
   feed = [box({ server: 619, x: 404, y: 612, type: 1 })];
   const { ctx, page } = await open((t) => { __fake.cities['619:404:612'] = { pid: '222', itemId: t + 1, instanceId: 'i2' }; __fake.pending.push(2503); }, T);
   await launch(page);
-  await waitSent(page, 1);
-  await page.waitForTimeout(4000);
-  assert.deepEqual((await sent(page)).map((x) => x.rid), [901], 'no collect while one is pending');
+  await waitText(page, '#mbx-foot', /The game is busy\. Trying again shortly\./);
+  await page.waitForTimeout(1500);
+  assert.equal((await sent(page)).length, 0, 'no view while a collect is pending');
   assert.equal(await page.evaluate(() => window.__MBX.running), true);
+  await page.evaluate(() => { __fake.pending = []; });
+  await waitSent(page, 2);
+  assert.deepEqual((await sent(page)).map((x) => x.rid), [901, 2503]);
   await ctx.close();
 });
 
@@ -1040,5 +1043,14 @@ test('MBX-ANGEV-3: activities that cannot be read: the switch shows (fails open)
   const { ctx, page } = await open(() => { __fake.activityThrows = true; });
   await launch(page);
   await page.waitForSelector('#mbx-angels:not([hidden])');
+  await ctx.close();
+});
+
+test('MBX-ANGEV-4 (review): the Angel event held only in the game\'s activity map: the switch shows (as the Ops Center reads it)', async () => {
+  const { ctx, page } = await open(() => { __fake.angelEvent = null; __fake.angelInMap = { id: 83000151, type: 292, endtime: Math.floor(Date.now() / 1000) + 7200, extra: { attackMonsterIds: [], groupId: 5 } }; });
+  await launch(page);
+  await page.waitForSelector('#mbx-stop');
+  await page.waitForTimeout(300);
+  assert.equal(await page.isHidden('#mbx-angels'), false);
   await ctx.close();
 });
