@@ -64,7 +64,7 @@ async function open(list, o, viewport) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { throw e; });
   await page.goto(base);
-  await page.evaluate((b) => { window.__ODIN_WORKER = b.replace(/\/$/, ''); window.__ODIN_FAST = true; window.__ODIN_GAP_MS = 60; window.__ODIN_WAIT_MS = 300; window.__ODIN_TIMEOUT_MS = 800; window.__ODIN_SHOW_MS = 300; }, base);
+  await page.evaluate((b) => { window.__ODIN_WORKER = b.replace(/\/$/, ''); window.__ODIN_FAST = true; window.__ODIN_GAP_MS = 60; window.__ODIN_WAIT_MS = 300; window.__ODIN_TIMEOUT_MS = 800; window.__ODIN_SHOW_MS = 300; window.__ODIN_SKIN_MS = 1500; }, base);
   await page.addScriptTag({ url: base + 'odin-gather-core.js' });
   await page.evaluate(SETUP, [list, o || {}]);
   return { ctx, page };
@@ -267,5 +267,83 @@ test('ODIN-DRAG: the card drags by its title and keeps its spot after a relaunch
   await launch(page);
   await page.waitForSelector('#odin-root .odin-head');
   assert.deepEqual(await at(), b);
+  await ctx.close();
+});
+
+// Final review fixes (2026-10-16).
+test('REV-1 (C1): Stop between marches of a skin batch: no march after Stop, the old skin back, no second copy can start meanwhile', async () => {
+  const { ctx, page } = await open([T1, T2], { odin: Object.assign({}, SKIN, { travelMs: 60000, skinMs: 400 }) });
+  await page.evaluate(() => { window.__ODIN_GAP_MS = 600; });       // room between the two marches for the click
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
+  await page.click('#odin-stop');
+  assert.equal(await page.evaluate(() => window.__ODIN.running), true, 'still running until the skin is back');
+  await page.waitForFunction(() => __fake.odin.using === 1719000, null, { timeout: 6000 });
+  await page.waitForTimeout(800);
+  assert.equal((await marches(page)).length, 1, 'no march after Stop');
+  const after = (await sent(page)).filter((x) => x.rid === 901 || x.rid === 1034).length;
+  await page.waitForTimeout(800);
+  assert.equal((await sent(page)).filter((x) => x.rid === 901 || x.rid === 1034).length, after, 'no looks after Stop');
+  assert.equal(await page.evaluate(() => __fake.odin.skinLog.filter((x) => x === 1719000).length), 1, 'one switch back');
+  assert.equal(await page.evaluate(() => window.__ODIN.running), false);
+  await ctx.close();
+});
+
+test('REV-2 (C2, I4): free marches but no units at home, a skin owned: no skin change and no repeated looks', async () => {
+  const { ctx, page } = await open([T1], { odin: SKIN });
+  await page.evaluate(() => { __fake.rfc.units = [{ armyID: 10102, type: 101, level: 102, power: 200, n: 0 }]; });
+  await launch(page);
+  await page.waitForTimeout(2500);                                  // many rounds at the test pace
+  assert.equal(await page.evaluate(() => __fake.odin.skinLog.length), 0);
+  const s = await sent(page);
+  assert.ok(s.filter((x) => x.rid === 901).length <= 1 && s.filter((x) => x.rid === 1034).length <= 1, JSON.stringify(s.map((x) => x.rid)));
+  await ctx.close();
+});
+
+test('REV-3 (I4): a facility with no room is checked once, not every round', async () => {
+  const { ctx, page } = await open([Object.assign({}, T1, { size: 2480 })]);
+  await launch(page);
+  await page.waitForTimeout(2500);
+  assert.equal((await sent(page)).filter((x) => x.rid === 1034).length, 1);
+  await ctx.close();
+});
+
+test('REV-4 (I1): Stop while the skin switch is on its way: the record is kept and the old skin comes back', async () => {
+  const { ctx, page } = await open([T1], { odin: Object.assign({}, SKIN, { skinMs: 700 }) });
+  await launch(page);
+  await page.waitForFunction(() => __fake.odin.skinLog.length >= 1, null, { timeout: 8000 });
+  const rec = await page.evaluate((k) => JSON.parse(localStorage.getItem('odin_skin_v1_' + k)), SK);
+  assert.equal(rec && rec.prev, 1719000, 'saved before the switch went out');
+  await page.click('#odin-stop');
+  await page.waitForFunction(() => __fake.odin.using === 1719000 && __fake.odin.skinLog.length >= 2, null, { timeout: 6000 });
+  await page.waitForFunction((k) => localStorage.getItem('odin_skin_v1_' + k) === null, SK, { timeout: 3000 });
+  await ctx.close();
+});
+
+test('REV-5 (I2): a skin switch the game confirms too late changes nothing: no late switch request', async () => {
+  const { ctx, page } = await open([T1], { odin: Object.assign({}, SKIN, { offCosMs: 2500 }) });
+  await launch(page);
+  await waitText(page, '#odin-skin', /Couldn't switch to your gathering skin/, 8000);
+  await page.waitForTimeout(1800);                                  // past the game's late confirm
+  assert.equal(await page.evaluate(() => __fake.odin.skinLog.length), 0);
+  await ctx.close();
+});
+
+test('REV-6 (I3): Stop when the old skin will not come back: the card says so and stays', async () => {
+  const { ctx, page } = await open([T1], { odin: Object.assign({}, SKIN, { travelMs: 60000, skinRefuse: [1719000] }) });
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
+  await page.click('#odin-stop');
+  await waitText(page, '#odin-root .odin-msg', /Switch your base skin back/, 6000);
+  await ctx.close();
+});
+
+test('REV-7 (I6): a player with 6 march positions: troops only in those 6', async () => {
+  const { ctx, page } = await open([T1]);
+  await page.evaluate(() => { __fake.rfc.armysNum = 6; __fake.rfc.armyAdd = 30; });   // small slots: the march needs more than 6
+  await launch(page);
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 8000 });
+  const pos = (await marches(page))[0].p.armyList.map((a) => a.pos);
+  assert.ok(pos.every((p) => [1, 2, 3, 11, 12, 13].includes(p)), JSON.stringify(pos));
   await ctx.close();
 });

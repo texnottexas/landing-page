@@ -158,3 +158,10 @@ test('gameDay: the game day runs from reset (12:00 ET), named by the date it sta
   assert.equal(O.gameDay(Date.UTC(2026, 9, 16, 15, 59)), '2026-10-15');   // 11:59 ET
   assert.equal(O.gameDay(Date.UTC(2026, 9, 16, 16, 0)), '2026-10-16');    // 12:00 ET
 });
+
+test('gate: skin changes 6 an hour (review C2)', () => {
+  const now = 1e8;
+  assert.equal(O.gate(Array.from({ length: 6 }, (_, i) => ({ t: now - i * 60000, kind: 'skin' })), now, 'skin').ok, false);
+  assert.equal(O.gate(Array.from({ length: 5 }, (_, i) => ({ t: now - i * 60000, kind: 'skin' })), now, 'skin').ok, true);
+  assert.match(O.gate(Array.from({ length: 6 }, (_, i) => ({ t: now - i * 60000, kind: 'skin' })), now, 'skin').reason, /6 skin changes an hour/);
+});

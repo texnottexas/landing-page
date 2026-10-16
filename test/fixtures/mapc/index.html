@@ -39,7 +39,7 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   // gathering marches (902 marchType 26), the buffs and hero scores the deploy screen reads, and base skins (855)
   odin: { aid: 500273604, records: [], towers: [], infos: {}, viewMode: 'ok', infoMode: 'ok', mode: 'ok', travelMs: 300, sent: [], marches: {},
     buffs: { pct143: 2.375, add143: 0, pct159: 1.455, add159: 0 }, heroScore: {}, heroPct: {}, heroLoad: {},
-    faces: {}, using: 1719000, skins: {}, skinLog: [], skinRefuse: [] },
+    faces: {}, using: 1719000, skins: {}, skinLog: [], skinRefuse: [], skinMs: 20, offCosMs: 0 },
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -173,8 +173,9 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         ans = F.odin.infoMode === 'refuse' ? { s: 3, d: 'tower_not_exist' } : tinfo ? { s: 0, d: JSON.stringify(Object.assign({ pid: 'secret-pid', playerInfo: '{"uid":"secret"}' }, tinfo)) } : { s: 3, d: 'tower_not_exist' };
       } else if (rid === 855) {                            // wear a base skin
         F.odin.skinLog.push(p.skinId);
-        if (F.odin.skinRefuse.indexOf(p.skinId) >= 0) ans = { s: 0, d: JSON.stringify({ ret: 5 }) };
-        else { F.odin.using = p.skinId; ans = { s: 0, d: JSON.stringify({ ret: 0 }) }; }
+        var sans = F.odin.skinRefuse.indexOf(p.skinId) >= 0 ? { s: 0, d: JSON.stringify({ ret: 5 }) } : (F.odin.using = p.skinId, { s: 0, d: JSON.stringify({ ret: 0 }) });
+        setTimeout(function () { cb(sans); }, F.odin.skinMs);
+        return true;
       } else if (rid === 815) {                            // use an item: a letter puts a camp by the base; capsules add VIT
         var RF = F.rfc, it = p.itemid;
         if (it === 1700039) {
@@ -347,7 +348,8 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
     if (name === 'ActivityController') return { ActivityController: { Instance: { get _activityList() { if (F.activityThrows) throw new Error('no list'); return (F.activity ? [activity] : []).concat(F.angelEvent ? [F.angelEvent] : []).concat(F.vein.event ? [F.vein.event] : []); },
       get _activityMap() { return F.angelInMap ? { a292: F.angelInMap } : {}; },
-      getActivityByActivitytype: function (t) { return t === 26 && F.siege ? { id: 153, alMonsterSiege: F.siege } : null; } } } };
+      getActivityByActivitytype: function (t) { return t === 26 && F.siege ? { id: 153, alMonsterSiege: F.siege } : null; },
+      tryOffCastleCos: function (go) { if (F.odin.offCosMs) setTimeout(go, F.odin.offCosMs); else go(); } } } };
     if (name === 'NWorldMapMarchModel') return { default: { instance: { _myMarch: F.myMarch } } };
     if (name === 'AllianceRecordController') return { default: { _inst: { _categoryData: { get 3() { return F.odin.records; } } } } };
     if (name === 'NBattleUtil') return { NBattleUtil: { getArmyLoad: function (id, u) { var g = F.rfc.units.filter(function (x) { return x.armyID === Number(id); })[0]; return (g && g.mecha ? 131000 : 120000) * (1 + u); } } };
@@ -382,7 +384,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
     if (name === 'HeroController') return { HeroController: { getInstance: function () { return { checkHeroExclude: function () { return false; }, getHaveHeroCanMarchList: freeHeroes,
       getHeroSkillTalantBuffAddWithBuffId: function (id, b) { return b === 960002 ? (F.odin.heroScore[id] || 0) : 0; },
       getHeroSkillTalantBuffAdd: function (id, type) { return type === 143 ? (F.odin.heroPct[id] || 0) : type === 159 ? (F.odin.heroLoad[id] || 0) : 0; } }; } }, HeroState: { March: 2 } };
-    if (name === 'NBattleModel') return { NBattleModel: { instance: { myMaxArmysNum: 9, getMarchHeroNumMax: function () { return F.rfc.heroMax; }, getOtherStageUsedHeros: function () { return []; } } } };
+    if (name === 'NBattleModel') return { NBattleModel: { instance: { get myMaxArmysNum() { return F.rfc.armysNum || 9; }, getMarchHeroNumMax: function () { return F.rfc.heroMax; }, getOtherStageUsedHeros: function () { return []; } } } };
     if (name === 'NBattlePositionBiz') return { NBattlePositionBiz: { getPositionCount: function () { return F.rfc.positions; } } };
     if (name === 'MarchStorageController') return { MarchStorageController: { getInstance: function () { return { getMaxCoutByPos: function (y) { var a = F.rfc.armyAdd; return 1 + Math.floor(a / 9) + (a % 9 > y ? 1 : 0); } }; } } };
     if (name === 'MechaController') return { MechaController: { getInstance: function () { return { getMyMechaList: function () { return F.rfc.mechas; } }; } } };

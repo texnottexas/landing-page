@@ -14,7 +14,8 @@
   var CAPS = {                                            // per kind: [count, window ms, words]
     march: [[6, 60000, '6 marches a minute'], [20, 600000, '20 marches per 10 minutes']],
     view: [[10, 600000, '10 map looks per 10 minutes']],
-    info: [[20, 600000, '20 facility checks per 10 minutes']]
+    info: [[20, 600000, '20 facility checks per 10 minutes']],
+    skin: [[6, 3600000, '6 skin changes an hour']]   // a base skin change shows on the map: never a flicker (review C2)
   };
 
   function num(v, d) { var n = Number(v); return isFinite(n) ? n : d; }

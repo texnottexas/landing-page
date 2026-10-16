@@ -276,6 +276,7 @@ test('Odinium Gatherer tile (Tex 2026-10-16): for members, game ready, its own o
   assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-stack.js', 'odin-gather-core.js', 'odin-gather.js']);
   const ver = (read('odin-gather.js').match(/var VERSION = '([^']+)'/) || [])[1];
   assert.equal(t.version, ver);
+  assert.ok(t.version >= '2026-10-16.2', 'not the ops-stack cache key that served the older helper (review I5)');
   assert.ok(!/\u2014/.test(t.desc + t.title), 'no em dash');
   const yml = read('.github/workflows/pages.yml');
   assert.ok(/cp [^\n]*\bodin-gather-core\.js\b/.test(yml) && /cp [^\n]*\bodin-gather\.js\b/.test(yml), 'deployed');

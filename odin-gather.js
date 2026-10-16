@@ -11,12 +11,14 @@
   var C = window.OdinGatherCore;
   if (!C) { try { alert('Odinium Gatherer did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16';
+  var VERSION = '2026-10-16.2';
   var WORKER = window.__ODIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__ODIN_FAST, TIMEOUT_MS = window.__ODIN_TIMEOUT_MS || 10000;
   var WAIT_MS = window.__ODIN_WAIT_MS || 30000;            // no free march, or nothing to send to: look again after this
   var UNSHOWN_MS = window.__ODIN_UNSHOWN_MS || 10000;      // a send counts as out until the game's march list shows it
   var SHOW_MS = window.__ODIN_SHOW_MS || 5000;             // after a send, wait this long at most for the game to list it
+  var SKIN_MS = window.__ODIN_SKIN_MS || 30000;            // a skin switch not confirmed by then counts as unknown
+  var HOLD_MS = 600000, CHECK_MS = window.__ODIN_CHECK_MS || 600000;   // an empty skin hold; a checked facility that got no march
   var MIN_FREE = 50, MIN_LEFT = 1800;                      // skip a facility with less room or time than this
   var GATHER_BUFF = 960002;                                // equip_buff "Gathering Speed-up" (WorldGatherSpeed)
   var LS_SET = 'odin_settings_v1', LS_SENT = 'odin_sent_v1_', LS_COUNT = 'odin_count_v1_', LS_SKIN = 'odin_skin_v1_', LS_MIN = 'odin_min_v1';
@@ -95,8 +97,9 @@
   }
   function heroMax() { try { return Number(req('NBattleModel').NBattleModel.instance.getMarchHeroNumMax()) || 3; } catch (e) { return 3; } }
   function slotCaps(heroes) {
-    var M = req('MarchStorageController').MarchStorageController.getInstance(), out = [];
-    for (var y = 0; y < C.SLOT_POS.length; y++) out.push(Number(M.getMaxCoutByPos(y, 0, heroes)) || 0);
+    var M = req('MarchStorageController').MarchStorageController.getInstance(), out = [], n = C.SLOT_POS.length;
+    try { var k = Number(req('NBattleModel').NBattleModel.instance.myMaxArmysNum); if (k > 0) n = Math.min(n, k); } catch (e) {}   // the positions this player has opened
+    for (var y = 0; y < n; y++) out.push(Number(M.getMaxCoutByPos(y, 0, heroes)) || 0);
     return out;
   }
   function healing() {
@@ -128,6 +131,7 @@
       return { armyID: Number(a.armyID), type: Number(d.type) || 0, power: Number(d.power) || 0, mecha: Number(d.mecha_id) || 0, thor: Number(d.thor_group) || 0, battleMecha: !!a.battleMechaData, load: load };
     });
   }
+  function unitsHome() { try { return (req('GameTools').default.getAttackerMyArmys() || []).length > 0; } catch (e) { return true; } }
   // One march's plan for a facility: heroes, the deploy screen's rates for them, and troops trimmed to its time left.
   function plan(f) {
     var res = table('resource', f.itemId);
@@ -161,56 +165,78 @@
     } catch (e) { return null; }
   }
   // The game's own switch (USE_CASTLE_FACE), after its own checks: the 4 tiles around the base, temporary cosmetics off.
-  function wearSkin(id) {
-    if (skinTerrainOk() === false) return Promise.resolve({ ok: false, why: gameText('skin_013') || 'the tiles around your base are not free' });
+  // {ok} once the game confirms; {ok: false, refused} when it says no; {ok: false} with neither when the answer is
+  // unknown (the game may still have switched). force: also while stopping (the switch back on Stop).
+  function wearSkin(id, force) {
+    if (skinTerrainOk() === false) return Promise.resolve({ ok: false, refused: true, why: gameText('skin_013') || 'the tiles around your base are not free' });
     return new Promise(function (resolve) {
-      var settled = false;
-      function done(r) { if (!settled) { settled = true; resolve(r); } }
-      setTimeout(function () { done({ ok: false, why: 'the skin change was not confirmed' }); }, 30000);
+      var settled = false, timer = setTimeout(function () { done({ ok: false, why: 'the skin change was not confirmed' }); }, SKIN_MS);
+      function done(r) { if (settled) return; settled = true; clearTimeout(timer); resolve(r); }
       function go() {
-        turn().then(function (ok) {
-          if (!ok) { done({ ok: false, why: 'not connected' }); return; }
+        if (settled) return;                                   // the game's cosmetics step answered after we gave up: send nothing
+        pace().then(function () {
+          if (settled) return;
+          if (!((force || S.running) && ready() && !flight)) { done({ ok: false, refused: true, why: 'not connected' }); return; }
+          S.log.push({ t: Date.now(), kind: 'skin' }); if (S.log.length > 200) S.log.shift();
           call(function (cb) { return NET().send(ids().skin, { skinId: id, special: 0 }, TARGET, cb); }).then(function (r) {
-            var d = null; try { d = typeof r.d === 'string' ? JSON.parse(r.d) : r.d; } catch (e) {}
+            if (r.timeout) { done({ ok: false, why: 'the skin change was not confirmed' }); return; }
+            var d = parseD(r);
             if (r.s === 0 && (!d || d.ret == null || d.ret === 0)) { try { UD().UsingCastleFace = id; } catch (e) {} done({ ok: true }); }
-            else done({ ok: false, why: 'the game would not switch skins (' + (d && d.ret != null ? d.ret : r.s) + ')' });
+            else done({ ok: false, refused: true, why: 'the game would not switch skins (' + (d && d.ret != null ? d.ret : r.s) + ')' });
           });
         });
       }
       try { req('ActivityController').ActivityController.Instance.tryOffCastleCos(go); } catch (e) { go(); }
     });
   }
-  // The skin we hold: {id, prev, tiles: {"x,y": arriveSec}}. Saved so a relaunch can put the old skin back.
+  // One skin change at a time (Stop waits for the one under way).
+  async function skinOp(fn) {
+    while (S.skinBusy) await delay(50);
+    S.skinBusy = true;
+    try { return await fn(); } finally { S.skinBusy = false; }
+  }
+  // The skin we hold: {id, prev, tiles: {"x,y": arriveSec}, at}. Saved before the switch goes out, so a Stop or a
+  // relaunch can always put the old skin back.
   function skinState() { return lsJSON(LS_SKIN + S.siteKey); }
   function saveSkin(v) { lsSet(LS_SKIN + S.siteKey, v ? JSON.stringify(v) : null); }
-  // Before a batch: wear the best gathering skin, when one is owned and beats the one worn.
-  async function wearForBatch() {
-    var held = skinState();
-    if (held) return true;
+  // Right before a march that will go: wear the best gathering skin, when one is owned, beats the one worn and the
+  // skin cap allows. A failed switch is not tried again this run. Returns true when a skin went on.
+  function wearForMarch() {
+    if (skinState() || S.skinFailed) return Promise.resolve(false);
     var best = C.bestSkin(ownedGatherSkins(), currentSkin());
-    if (!best) return true;
-    setFoot('Switching to your gathering skin...', 'ok');
-    var prev = currentSkin(), r = await wearSkin(best.id);
-    if (!S.running) return false;
-    if (!r.ok) { S.skinNote = "Couldn't switch to your gathering skin: " + r.why + '. Sending without it.'; return true; }
-    saveSkin({ id: best.id, prev: prev, tiles: {} });
-    S.skinNote = '';
-    return true;
+    if (!best || !C.gate(S.log, Date.now(), 'skin').ok) return Promise.resolve(false);
+    return skinOp(async function () {
+      setFoot('Switching to your gathering skin...', 'ok');
+      saveSkin({ id: best.id, prev: currentSkin(), tiles: {}, at: Date.now() });
+      S.skinTries = 0;
+      var r = await wearSkin(best.id);
+      if (r.ok) { S.skinNote = ''; return true; }
+      S.skinFailed = true;
+      if (r.refused) saveSkin(null);                          // unknown: kept, the game may have switched
+      S.skinNote = "Couldn't switch to your gathering skin: " + r.why + '. Sending without it.';
+      return false;
+    });
   }
   function holdTile(tile, arrive) { var h = skinState(); if (!h) return; h.tiles[tile] = arrive || 0; saveSkin(h); }
   // Every march of the batch has arrived (it is gathering, its arrival time has passed, or it is gone): skin back.
-  async function returnSkin(force) {
-    var h = skinState();
-    if (!h) return;
-    var mine = ourMarches(), now = serverSec();
-    var waiting = Object.keys(h.tiles).filter(function (t) { var m = mine[t]; return m && !m.gathering && !(m.arrive && now >= m.arrive + 2); });
-    if (waiting.length && !force) return;
-    if (currentSkin() !== h.id) { saveSkin(null); return; }   // the player changed it: leave it
-    setFoot('Putting your base skin back...', 'ok');
-    var r = await wearSkin(h.prev);
-    if (r.ok) { saveSkin(null); S.skinTries = 0; S.skinNote = ''; return; }
-    S.skinTries = (S.skinTries || 0) + 1;
-    if (S.skinTries >= 3) { saveSkin(null); S.skinNote = 'Switch your base skin back: ' + r.why + '.'; }
+  // A hold with no march yet is kept 10 minutes. force (Stop): back now; a failure is told on the card.
+  function returnSkin(force) {
+    var h0 = skinState();
+    if (!h0) return Promise.resolve();
+    return skinOp(async function () {
+      var h = skinState();
+      if (!h) return;
+      var mine = ourMarches(), now = serverSec(), tiles = Object.keys(h.tiles || {});
+      var waiting = tiles.filter(function (t) { var m = mine[t]; return m && !m.gathering && !(m.arrive && now >= m.arrive + 2); });
+      if (!force && (waiting.length || (!tiles.length && Date.now() - (h.at || 0) < HOLD_MS))) return;
+      if (currentSkin() !== Number(h.id)) { saveSkin(null); return; }   // the player changed it (or it never went on): leave it
+      setFoot('Putting your base skin back...', 'ok');
+      var r = await wearSkin(Number(h.prev), force);
+      if (r.ok) { saveSkin(null); S.skinTries = 0; S.skinNote = ''; return; }
+      S.skinTries = (S.skinTries || 0) + 1;
+      if (force) { S.skinNote = 'Switch your base skin back: ' + r.why + '.'; return; }   // kept: the next launch tries again
+      if (S.skinTries >= 3) { saveSkin(null); S.skinFailed = true; S.skinNote = 'Switch your base skin back: ' + r.why + '.'; }
+    });
   }
 
   // ---------------------------------------------------------------- state
@@ -218,7 +244,7 @@
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function lsJSON(k) { try { return JSON.parse(lsGet(k)); } catch (e) { return null; } }
-  var S = { running: false, stopped: false, siteKey: '', sent: {}, gone: {}, count: null, log: [], recent: [], held: [], facilities: 0, out: 0, cap: 0,
+  var S = { running: false, stopped: false, siteKey: '', sent: {}, gone: {}, checked: {}, skinBusy: false, skinFailed: false, count: null, log: [], recent: [], held: [], facilities: 0, out: 0, cap: 0,
     sentRun: 0, foot: 'Starting...', tone: 'ok', last: '', note: '', noteTone: 'ok', skinNote: '', skinTries: 0, min: lsGet(LS_MIN) === '1', view: '',
     marches: Math.max(0, Number((lsJSON(LS_SET) || {}).marches) || 0) };       // 0 = all free
   function today() { return C.gameDay(Date.now()); }
@@ -314,10 +340,14 @@
     S.note = ''; S.noteTone = 'ok';
     pruneSent();
     var aid = myAid(), now = serverSec(), mine = c.mine;
-    var cands = logList().filter(function (f) { var t = f.x + ',' + f.y; return !mine[t] && !S.sent[t] && !(S.gone[t] && S.gone[t] >= f.at); });
-    S.facilities = cands.length;
+    var since = Date.now() - CHECK_MS;
+    Object.keys(S.checked).forEach(function (k) { if (S.checked[k] < since) delete S.checked[k]; });
+    var open0 = logList().filter(function (f) { var t = f.x + ',' + f.y; return !mine[t] && !S.sent[t] && !(S.gone[t] && S.gone[t] >= f.at); });
+    var cands = open0.filter(function (f) { return !S.checked[f.x + ',' + f.y]; });   // checked lately and got no march: later
+    S.facilities = open0.length;
     if (!aid) { note("You're not in an alliance.", 'warn'); return 0; }
-    if (!cands.length) { note('No open Refine Centers to send to.', 'ok'); return 0; }
+    if (!cands.length) { note(open0.length ? 'Waiting to check the Refine Centers again.' : 'No open Refine Centers to send to.', 'ok'); return 0; }
+    if (!unitsHome()) { note('No units at home to send.', 'ok'); return 0; }
     var I = ids(), open = [];
     // map views: one per cluster (a view shows 25 x 30 tiles around its centre)
     var left = cands.slice();
@@ -353,17 +383,23 @@
     }
     var list = C.rank(ready2), sent = 0;
     if (!list.length) { note('No Refine Center has room right now.', 'ok'); return 0; }
-    if (!(await wearForBatch())) return 0;
     for (var j = 0; j < list.length && S.running; j++) {
       var cn = counts();
       if (cn.free <= 0) break;
       var fac = list[j];
       if (cn.mine[fac.tile] || S.sent[fac.tile]) continue;
       var p = plan(fac);
-      if (!p || !p.units) { note(p ? 'No units free to send.' : "Couldn't read this facility's Odinium.", 'warn'); break; }
-      setFoot('Sending ' + p.units + ' units to ' + fac.tile + '...', 'ok');
+      if (!p || !p.units) { noMarch(list.slice(j), p); break; }
       var g = C.gate(S.log, Date.now(), 'march');
       if (!g.ok) { S.paused = { until: g.until, reason: g.reason }; break; }
+      if (busy(I.march)) { note('The game is busy with a march. Trying again shortly.', 'warn'); break; }
+      if (await wearForMarch()) {                                  // the skin's bonus changes the speed: plan again
+        if (!S.running) break;
+        p = plan(fac);
+        if (!p || !p.units) { noMarch(list.slice(j), p); break; }
+      }
+      if (!S.running) break;
+      setFoot('Sending ' + p.units + ' units to ' + fac.tile + '...', 'ok');
       if (!(await turn())) break;
       if (busy(I.march)) { note('The game is busy with a march. Trying again shortly.', 'warn'); break; }
       if (ourMarches()[fac.tile]) continue;                       // the wait can be long: ours by now?
@@ -388,6 +424,13 @@
     if (sent) note('Sent ' + sent + '.', 'ok');
     return sent;
   }
+  // Checked, but no march can go (no units free, or the facility's Odinium unknown): not checked again for 10 minutes.
+  // A wait for the game or a cap is not this: those facilities are checked again next round.
+  function noMarch(rest, p) {
+    var at = Date.now();
+    (p ? rest : rest.slice(0, 1)).forEach(function (f) { S.checked[f.tile] = at; });
+    note(p ? 'No units free to send.' : "Couldn't read this facility's Odinium.", 'warn');
+  }
   function skipped(r) {
     if (r.skip === 'cap') S.paused = { until: r.gate.until, reason: r.gate.reason };
     else if (r.skip === 'busy') note('The game is busy. Trying again shortly.', 'warn');
@@ -395,15 +438,19 @@
   }
 
   // ---------------------------------------------------------------- start / stop
+  // Stop sends nothing more. When a gathering skin is held, it waits for a skin change under way, then puts the old skin
+  // back; until then the tool still counts as running, so a second copy can't start meanwhile.
   function stop(reason) {
     if (S.stopped) return;
     S.stopped = true; S.running = false;
-    window.__ODIN.running = false;
-    var back = skinState() ? Promise.resolve().then(function () { S.running = true; return returnSkin(true); }).then(function () { S.running = false; }, function () { S.running = false; }) : Promise.resolve();
-    back.then(function () {
+    var finish = function () {
+      window.__ODIN.running = false;
       if (reason === 'stopped by you' && !S.skinNote) { removeRoot(); return; }
       showMessage((reason === 'stopped by you' ? 'Stopped.' : 'Odinium Gatherer stopped: ' + reason) + (S.skinNote ? ' ' + S.skinNote : ''), true);
-    });
+    };
+    if (!S.skinBusy && !(S.siteKey && skinState())) { finish(); return; }
+    if (card && S.view === 'run') setFoot('Stopping: putting your base skin back...', 'ok');
+    returnSkin(true).then(finish, function (e) { S.skinNote = S.skinNote || 'Switch your base skin back: ' + (e && e.message ? e.message : e) + '.'; finish(); });
   }
 
   // ---------------------------------------------------------------- the card
