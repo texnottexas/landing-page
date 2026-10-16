@@ -38,7 +38,7 @@ test.before(async () => {
 test.after(async () => { await browser.close(); server.close(); });
 
 const WORKER = 'https://push-worker.27tb8s6fct.workers.dev';
-async function open(viewport, before, o) {
+async function open(viewport, before, o, arg) {
   const ctx = await browser.newContext({ viewport });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { throw e; });
@@ -68,7 +68,7 @@ async function open(viewport, before, o) {
     rt.fulfill({ response: r, body: JSON.stringify(j) });
   });
   await page.goto(base);
-  if (before) await page.evaluate(before);
+  if (before) await page.evaluate(before, arg);
   await page.addScriptTag({ url: base + 'ops-center.js' });          // what the bookmarklet does
   await page.waitForSelector('.ops-card');
   return { ctx, page, usage };
@@ -203,8 +203,8 @@ async function assertRestricted(page) {
     ['2864tw.com/transfer', 'https://2864tw.com/transfer.html', '_blank', 'noopener noreferrer']]);
 }
 
-test('not an S2864 member: no tiles, the restriction message with the transfer links', async () => {
-  const { ctx, page } = await open(PHONE, () => { window.__fake.uid = '1000000000002'; });
+test('home server unknown and not on the roster: no tiles, the restriction message with the transfer links', async () => {
+  const { ctx, page } = await open(PHONE, () => { window.__fake.uid = '1000000000002'; window.__fake.server = 0; });
   await assertRestricted(page);
   await ctx.close();
 });
@@ -250,8 +250,8 @@ test('the tool list fails to load: a plain message with Retry, not a broken menu
   await ctx.close();
 });
 
-test('the member list fails to load: a plain message with Retry, no tiles', async () => {
-  const { ctx, page } = await open(PHONE, () => { window.__OPS_BASE = location.origin + '/nomember/'; });
+test('home server unknown and the member list fails to load: a plain message with Retry, no tiles', async () => {
+  const { ctx, page } = await open(PHONE, () => { window.__OPS_BASE = location.origin + '/nomember/'; window.__fake.server = 0; });
   await page.waitForSelector('.ops-toast:has-text("Couldn\'t check your membership")');
   assert.equal(await page.$('.ops-tile'), null);
   await ctx.close();
@@ -313,8 +313,8 @@ test('a corrupt recent-tools entry does not empty the menu', async () => {
   await ctx.close();
 });
 
-test('a member list that is not a list offers Retry instead of saying you are not a member', async () => {
-  const { ctx, page } = await open(PHONE, () => { window.__OPS_BASE = location.origin + '/badroster/'; });
+test('home server unknown and a member list that is not a list: Retry instead of saying you are not a member', async () => {
+  const { ctx, page } = await open(PHONE, () => { window.__OPS_BASE = location.origin + '/badroster/'; window.__fake.server = 0; });
   await page.waitForSelector('.ops-toast:has-text("Couldn\'t check your membership")');
   assert.equal(await page.$('.ops-note:has-text("' + RESTRICTED + '")'), null);
   await ctx.close();
@@ -703,14 +703,14 @@ test('OPS-OUT-1: from another server: the message stays, Rickroll starts at its 
   await ctx.close();
 });
 
-test('OPS-OUT-2: on 2864 but not on the roster: the message only, no Rickroll; logged as not on the roster with server 2864', async () => {
+test('OPS-OUT-2 (Tex 2026-10-16): on 2864 but not on the roster: the menu, no Rickroll, no visitor log', async () => {
   const { ctx, page, usage } = await open(PHONE, () => { window.__fake.uid = '1000000000002'; window.__fake.name = 'New Guy'; }, { alongside: true });
-  await assertRestricted(page);
-  await waitReports(page, usage, 1);
+  await page.waitForSelector('.ops-tile');
+  assert.equal(await page.textContent('.ops-sub'), 'New Guy · S2864 ✓');
+  assert.equal(await page.$$eval('.ops-note', (n) => n.filter((e) => e.textContent.includes('influx')).length), 0, 'no transfer message');
   await page.waitForTimeout(500);
   assert.equal(await rrCount(page), 0);
-  assert.equal(await page.evaluate(() => window.__rrLoads || 0), 0);
-  assert.deepEqual(usageReports(usage), [{ siteKey: '2f9bc8619956f5da', name: 'New Guy', tool: 'not-on-roster', version: '1', open: true, server: 2864 }]);
+  assert.equal(usageReports(usage).length, 0);
   await ctx.close();
 });
 
@@ -758,5 +758,35 @@ test('OPS-OUT-6: home server unknown and not on the roster: logged without a ser
   await waitReports(page, usage, 1);
   assert.deepEqual(usageReports(usage), [{ siteKey: '2f9bc8619956f5da', name: 'Tester', tool: 'not-on-roster', version: '1', open: true }]);
   assert.equal(await rrCount(page), 0);
+  await ctx.close();
+});
+
+// Tex 2026-10-16: on 2864 the home server decides membership; the roster only adds name and rank. A player who isn't on
+// the roster takes their alliance rank from the game, and a roster that can't be read never turns a 2864 player away.
+test('OPS-SRV-1: on 2864, not on the roster: the game\'s alliance rank decides R4 readiness', async () => {
+  for (const [rank, text] of [[4, 'You are R4 or leader'], [3, 'You need to be R4 or leader in your alliance']]) {
+    const { ctx, page } = await open(PHONE, (r) => { window.__fake.uid = '1000000000002'; window.__fake.allianceRank = r; }, null, rank);
+    await page.waitForSelector('.ops-tile');
+    await clickTile(page, 'Gamma Tool');
+    await page.waitForFunction((t) => document.querySelector('.ops-box').textContent.includes(t), text, { timeout: 4000 });
+    await ctx.close();
+  }
+});
+
+test('OPS-SRV-2: on 2864 with the member list down (or not a list): the menu anyway, named from the game', async () => {
+  for (const mode of ['nomember', 'badroster']) {
+    const { ctx, page } = await open(PHONE, (m) => { window.__OPS_BASE = location.origin + '/' + m + '/'; }, null, mode);
+    await page.waitForSelector('.ops-tile');
+    assert.equal(await page.textContent('.ops-sub'), 'Tester · S2864 ✓');
+    assert.equal(await page.$$eval('.ops-toast', (e) => e.length), 0, 'no Retry');
+    await ctx.close();
+  }
+});
+
+test('OPS-SRV-3: a roster member keeps the roster\'s rank (the game\'s rank does not replace it)', async () => {
+  const { ctx, page } = await open(PHONE, () => { window.__fake.allianceRank = 1; });   // Tester is rank 5 on the fake roster
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Gamma Tool');
+  await page.waitForFunction(() => document.querySelector('.ops-box').textContent.includes('You are R4 or leader'), null, { timeout: 4000 });
   await ctx.close();
 });

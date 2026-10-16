@@ -84,6 +84,8 @@
       }, function () { S.listErr = true; });
   }
   // Home server from the game (OriginServerId stays the home server during cross-server events); 0 when unknown.
+  // Membership (Tex 2026-10-16): home server 2864 = member, on the roster or not (the roster adds name and rank);
+  // another server = turned away; unknown = the roster decides.
   function homeServer() { try { var u = UD(); return Number(u && (u.OriginServerId || u.ServerId)) || 0; } catch (e) { return 0; } }
   function checkMember() {
     var id = uid();
@@ -114,10 +116,20 @@
         return;
       }
       return load.then(function (m) {
-        if (!m) { S.member = null; S.memberErr = 'not'; S.visitor = { sk: sk, server: home, away: false }; return; }
-        S.member = m; S.memberErr = null;
+        if (m) { S.member = m; S.memberErr = null; return; }
+        if (home === HOME_SERVER) { S.member = gameMember(); S.memberErr = null; return; }   // on 2864: the server decides (Tex 2026-10-16)
+        S.member = null; S.memberErr = 'not'; S.visitor = { sk: sk, server: home, away: false };
+      }, function (e) {
+        if (home === HOME_SERVER) { S.member = gameMember(); S.memberErr = null; return; }   // a roster we can't read never turns a 2864 player away
+        throw e;
       });
     }).catch(function () { S.member = null; S.memberErr = 'net'; });
+  }
+  // A 2864 player who isn't on the roster: name and alliance rank from the game (the roster's rank wins for those on it).
+  function gameMember() {
+    var r = 0;
+    try { r = Number(UD().Alliance.Rank) || 0; } catch (e) {}
+    return { name: playerName(), rank: r };
   }
   // Tool usage (Tex, 2026-10-08): who opened which tool, for the Map Collector dashboard's Tool usage panel (Tex only). siteKey and in-game name only,
   // never the UID; plain text, so no preflight; fire and forget, so a failed report never touches the tool.
