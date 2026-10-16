@@ -253,3 +253,16 @@ test('Mask Boxes knows the Angel event types the registry names (Tex 2026-10-16)
   const MB = require('../mask-boxes-core.js');
   assert.deepEqual(MB.ANGEL_EVENT, raw.tools.find((t) => t.id === 'angels').event);
 });
+
+test('together (Tex 2026-10-16): exactly the four collectors run together, list ops-stack.js among their helpers before their own scripts, and the helper deploys and gates', () => {
+  assert.deepEqual(list.tools.filter((t) => t.together).map((t) => t.id).sort(), ['angels', 'enigma-veins', 'ht-gifts', 'mask-boxes']);
+  list.tools.filter((t) => t.together).forEach((t) => {
+    const i = t.scripts.indexOf('ops-stack.js');
+    assert.ok(i > 0, t.id);
+    assert.ok(t.scripts.slice(0, i).every((f) => /^ops-(drag|jam)\.js$/.test(f)), t.id + ': helpers first');
+    assert.equal(t.version, '2026-10-16', t.id);
+  });
+  const yml = read('.github/workflows/pages.yml');
+  assert.ok(/cp [^\n]*\bops-stack\.js\b/.test(yml), 'deployed');
+  assert.ok(/node --test [^\n]*test\/ops-stack\.test\.js/.test(yml), 'gated');
+});

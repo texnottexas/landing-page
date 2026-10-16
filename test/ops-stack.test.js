@@ -34,3 +34,8 @@ test('three cards on a phone: the first two stack, the third folds', () => {
   assert.deepEqual(spot([a, R(b.left, b.top, 190, 180)], { w: 240, h: 220 }, PHONE), { fold: true, top: 84 });
   assert.deepEqual(spot([a, R(b.left, b.top, 190, 180)], { w: 240, h: 200 }, PHONE), { left: 8, top: 530 }, 'one that just fits stacks');
 });
+test('a folded bar wider than the default: it goes lower rather than over a card', () => {
+  const a = R(8, 84, 190, 250);
+  assert.deepEqual(spot([a], { w: 240, h: 700 }, PHONE, { w: 150, h: 44 }), { fold: true, top: 84 });
+  assert.deepEqual(spot([a], { w: 240, h: 700 }, PHONE, { w: 185, h: 44 }), { fold: true, top: 342 }, '367 - 185 = 182 < 198: below the card instead');
+});
