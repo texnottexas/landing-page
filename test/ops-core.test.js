@@ -309,3 +309,22 @@ test('registered and owners together: both must allow the tool', () => {
   assert.deepEqual(OC.visibleTools(r, '03c2cd3196b2f243', { mapcollector: true }), []);
   assert.deepEqual(OC.visibleTools(r, 'd847a198622a518d', {}), []);
 });
+
+// Tex 2026-10-16: Mask Boxes, Enigma Veins, HT Gift Boxes and Angel Attacks run together, started from the Ops Center.
+test('together: kept only as true', () => {
+  const r = OC.validateTools({ tools: [tool({ id: 'a', together: true }), tool({ id: 'b', together: 'yes' }), tool({ id: 'c' })] }).tools;
+  assert.deepEqual(r.map((t) => t.together), [true, false, false]);
+});
+
+test('a group session: group tools say Running when their card is up, else their usual status; others Wait; Rickroll is unchanged', () => {
+  const [g, other, rr] = OC.validateTools({ tools: [tool({ id: 'g', together: true }), tool({ id: 'o' }), tool({ id: 'rr', alongside: true })] }).tools;
+  const ck = { game: true };
+  const base = { member: true, unlocked: false, checks: ck, eventOff: false, alongsideOn: false };
+  assert.deepEqual(OC.tileStatus(g, Object.assign({}, base, { group: true, groupOn: true })), { state: 'running', launch: null });
+  assert.deepEqual(OC.tileStatus(g, Object.assign({}, base, { group: true, groupOn: false })), { state: 'ready', launch: 'Launch' });
+  assert.deepEqual(OC.tileStatus(g, Object.assign({}, base, { group: true, groupOn: false, eventOff: true })), { state: 'off', launch: 'Launch anyway' });
+  assert.deepEqual(OC.tileStatus(other, Object.assign({}, base, { group: true })), { state: 'wait', launch: null });
+  assert.deepEqual(OC.tileStatus(rr, Object.assign({}, base, { group: true })), { state: 'ready', launch: 'Launch' });
+  assert.deepEqual(OC.tileStatus(other, Object.assign({}, base, { group: false })), { state: 'ready', launch: 'Launch' }, 'no session: as before');
+  assert.deepEqual(OC.tileStatus(other, Object.assign({}, base, { member: false, group: true })), { state: 'blocked', launch: null }, 'members only still first');
+});

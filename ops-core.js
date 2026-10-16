@@ -55,6 +55,7 @@
         event: (Array.isArray(t.event) ? t.event : []).filter(function (n) { return typeof n === 'number' && n > 0 && n % 1 === 0; }),
         tucked: t.tucked === true,                     // always under "Not running now" (Tex 2026-10-14: TC Squad Sync, Class Talent Reset (EL))
         alongside: t.alongside === true,               // runs alongside the others, never holding the Ops Center (Tex 2026-10-14: Rickroll)
+        together: t.together === true,                 // runs together with the other "together" tools (Tex 2026-10-16)
         // shown only to players the named registry holds; a key that isn't a known registry hides the tool from everyone
         registered: t.registered === undefined ? null : (REGISTRIES.indexOf(t.registered) >= 0 ? t.registered : ''),
         ownerOnly: t.owners !== undefined          // fail closed: an owners key that isn't a good list hides the tool
@@ -111,6 +112,10 @@
     if (!ctx.member) return { state: 'blocked', launch: null };
     if (tool.gate === 'code' && !ctx.unlocked) return { state: 'locked', launch: null };
     if (ctx.alongsideOn) return { state: 'playing', launch: 'Launch' };   // runs alongside (Rickroll) and is on now
+    if (ctx.group) {                                    // tools that run together are open (Tex 2026-10-16)
+      if (!tool.together && !tool.alongside) return { state: 'wait', launch: null };
+      if (tool.together && ctx.groupOn) return { state: 'running', launch: null };
+    }
     if (ctx.eventOff) return { state: 'off', launch: 'Launch anyway' };   // its event isn't running: it can still open
     var ok = tool.ready.every(function (r) { return isAutoFor(tool, r) || (ctx.checks && ctx.checks[r] === true); });
     return ok ? { state: 'ready', launch: 'Launch' } : { state: 'notready', launch: 'Launch anyway' };
