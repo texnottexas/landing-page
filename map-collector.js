@@ -10,7 +10,7 @@
   var C = window.MapCollectorCore;
   if (!C) { try { alert('Map Collector did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16';
+  var VERSION = '2026-10-16.2';
   var WORKER = window.__MAPC_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var DASH = 'https://2864tw.com/map-collector.html';
   var HOME_SERVER = 2864, CLAIM = 902, MARCH_TYPE = 143;   // RequestId.MARCH_WORLD_POINT, MarchType.Titan_Blessing_Gift
@@ -22,6 +22,9 @@
   // The game window: this page, or in Unattended mode the game running in a frame under the card, which
   // can be reloaded to log back in while this script keeps running (a full page reload would end it).
   var GW = window, frame = null;
+  // Ops Center Unattended mode on this tab (Tex 2026-10-16): its frame is the game, and its reconnect is the only one.
+  var shared = !!(window.__OPSU && window.__OPSU.running && window.__OPSU.frame && window.__OPSU.frame.isConnected);
+  if (shared) { frame = window.__OPSU.frame; GW = frame.contentWindow; }
   function req(n) { return GW.__require(n); }
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
 
@@ -309,7 +312,7 @@
     var now0 = Date.now();
     // Unattended mode: 65 minutes after the game went down (another login, a lost connection, a failed
     // reconnect), reload the frame by itself, exactly as the dashboard's Reconnect does; again 65 min later.
-    if (frame) {
+    if (frame && !shared) {
       if (!S.attached || !connected()) {
         if (!S.downSince) S.downSince = now0;
         var ar = C.autoReconnect(S.downSince, S.autoTryAt, now0, AUTO_MS);
@@ -401,7 +404,7 @@
       else if (S.pwTyped) { askPassword('Can\'t reach the Map Collector server. Try again in a minute.'); return; }
       S.active = true;
       S.timers.push(setInterval(scan, SCAN_MS), setInterval(tick, TICK_MS));
-      attachNow('page');
+      attachNow(frame ? 'frame' : 'page');
     });
   }
   function subscribe() {
@@ -461,7 +464,8 @@
     S.reconnecting = Date.now(); S.attached = false; window.__MAPC.attached = ''; unsubscribe();
     S.autoTryAt = S.reconnecting;                          // any reconnect restarts the 65-minute auto-reconnect clock
     note('Reconnecting...', ATTACH_LIMIT_MS);
-    try { frame.contentWindow.location.reload(); } catch (e) {}
+    if (shared && window.__OPSU && window.__OPSU.running) window.__OPSU.reconnect();
+    else try { frame.contentWindow.location.reload(); } catch (e) {}
     setTimeout(function () {
       waitForGame(ATTACH_LIMIT_MS).then(function (ok) {
         if (S.stopped) return;
@@ -549,6 +553,7 @@
   function button(id, label, fn) { var b = el('button', null, label); b.id = id; b.type = 'button'; b.addEventListener('click', fn); return b; }
   function showStats() {
     ensureRoot(); body.textContent = ''; setView('stats');
+    root.removeAttribute('data-ops-stopped');
     [['Collected', 'mapc-collected'], ['Missed', 'mapc-missed'], ['En route', 'mapc-enroute'], ['Claims left', 'mapc-left'], ['Speed-ups', 'mapc-speed']].forEach(function (r) {
       var row = el('div', 'mapc-row'); row.appendChild(el('span', 'mapc-k', r[0])); var v = el('span', 'mapc-v', '0'); v.id = r[1]; row.appendChild(v); body.appendChild(row);
     });
@@ -568,6 +573,7 @@
       ub.appendChild(button('mapc-unattended', 'Unattended mode', confirmUnattended));
       body.appendChild(ub);
     }
+    if (shared) body.appendChild(el('div', 'mapc-msg', 'Unattended mode is on for this tab'));
     paint();
   }
   // Mask Mystery Boxes in this same tab, for players running both: it gets its own card (top left) and the
@@ -609,6 +615,7 @@
   }
   function showMessage(text, withClose) {
     ensureRoot(); body.textContent = ''; setView('message');
+    if (withClose) root.setAttribute('data-ops-stopped', '1'); else root.removeAttribute('data-ops-stopped');   // its Ops tile and Unattended mode read it
     body.appendChild(el('div', 'mapc-msg', text));
     if (withClose) { var btns = el('div', 'mapc-btns'); btns.appendChild(button('mapc-close', 'Close', removeRoot)); body.appendChild(btns); }
     card.className = 'mapc-card';

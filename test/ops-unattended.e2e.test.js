@@ -284,3 +284,41 @@ test('OPSU-14: the card folds to its title bar and remembers it', async () => {
   assert.equal(await page.evaluate(() => localStorage.getItem('opsu_min_v1')), '1');
   await ctx.close();
 });
+
+// Map Collector on the shared frame (Tex 2026-10-16).
+async function startMapc(page) {
+  await page.evaluate(() => localStorage.setItem('mapc_pw_v1', 'good pass'));
+  const c = await send('start', 'map-collector');
+  assert.equal(await ack(c.nonce, 15000), 'Started');
+  await page.waitForFunction(() => window.__MAPC && window.__MAPC.attached === 'frame', null, { timeout: 15000 });
+}
+test('MCSF-1: Map Collector started here uses the shared frame: one frame, no Unattended button of its own', async () => {
+  const { ctx, page } = await open();
+  await turnOn(page);
+  await startMapc(page);
+  assert.equal(await count(page, 'iframe'), 1);
+  assert.equal(await count(page, '#mapc-unattended'), 0);
+  assert.match(await page.textContent('#mapc-root'), /Unattended mode is on for this tab/);
+  await ctx.close();
+});
+test('MCSF-2: Map Collector\'s own reconnect (its dashboard command) goes through Unattended mode: the frame reloads once', async () => {
+  const { ctx, page } = await open();
+  await turnOn(page);
+  await startMapc(page);
+  await frameEval(page, 'w.__marker = 1;');
+  W.mapcCommand = 'reconnect';
+  await page.waitForFunction(() => window.__OPSU.state().reconnects === 1, null, { timeout: 15000 });
+  await page.waitForFunction(() => { const w = document.getElementById('mapc-frame').contentWindow; return !!w.__fake && !w.__marker && window.__MAPC.attached === 'frame'; }, null, { timeout: 20000 });
+  await page.waitForTimeout(1500);
+  assert.equal(await page.evaluate(() => window.__OPSU.state().reconnects), 1, 'one reload');
+  await ctx.close();
+});
+test('MCSF-3: Map Collector stopped with a message is marked stopped; the tab reports it', async () => {
+  const { ctx, page } = await open();
+  await turnOn(page);
+  await startMapc(page);
+  await page.evaluate(() => window.__MAPC.stop('a test reason'));
+  assert.equal(await page.$eval('#mapc-root', (e) => e.getAttribute('data-ops-stopped')), '1');
+  await page.waitForFunction(() => window.__OPSU.state().tools['map-collector'].state === 'stopped', null, { timeout: 5000 });
+  await ctx.close();
+});
