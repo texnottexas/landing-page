@@ -261,6 +261,7 @@
     b.appendChild(search);
     S.grid = K().el('div', 'ops-grid'); b.appendChild(S.grid);
     renderGrid();
+    if (window.OpsPotato) { try { b.appendChild(window.OpsPotato.row()); } catch (e) {} }   // Potato mode switch (Tex 2026-10-17)
     S.timer = setInterval(updateTiles, 1000);
   }
   function addTile(grid) {
@@ -556,6 +557,7 @@
   }
   function start() {
     S.started = true;
+    if (window.OpsPotato) { try { window.OpsPotato.boot(); } catch (e) {} }   // a remembered Potato mode applies at once
     S.listErr = false; S.list = null;
     openMenu();
     loadList().then(checkMember).then(afterMember);
@@ -584,6 +586,7 @@
   if (!window.OpsKit) deps.push(loadScript(BASE + 'ops-kit.js?_=' + Date.now()));
   if (!window.OpsDrag) deps.push(loadScript(BASE + 'ops-drag.js?_=' + Date.now()).catch(function () {}));   // cards drag by the title (Tex); optional: never blocks the Ops Center
   if (!window.OpsCore) deps.push(loadScript(BASE + 'ops-core.js?_=' + Date.now()));
+  if (!window.OpsPotato) deps.push(loadScript(BASE + 'ops-potato.js?_=' + Date.now()).catch(function () {}));   // Potato mode (Tex 2026-10-17); optional: never blocks the Ops Center
   Promise.all(deps).then(start, function () {
     window.OpsCenter = null;
     alert('Ops Center failed to load. Check your connection and try again.');

@@ -327,3 +327,10 @@ test('Unattended mode tile (Tex 2026-10-16): only allowed accounts (worker /opsr
   assert.ok(/node --test [^\n]*test\/ops-unattended-core\.test\.js/.test(yml), 'gated');
   assert.ok(!/d847a198622a518d|c3c6f3200a4ec1fb/.test(read('ops-tools.json') + read('ops-unattended.js') + read('ops-unattended-core.js')), 'no account published');
 });
+
+test('Potato mode (Tex 2026-10-17): its helper deploys and its rules are in the deploy gate', () => {
+  const yml = read('.github/workflows/pages.yml');
+  assert.ok(/cp [^\n]*\bops-potato\.js\b/.test(yml), 'deployed');
+  assert.ok(/node --test [^\n]*test\/ops-potato\.test\.js/.test(yml), 'gated');
+  assert.match(read('ops-center.js'), /ops-potato\.js\?_=/, 'loaded fresh at every Ops Center load (no version to bump)');
+});

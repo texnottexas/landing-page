@@ -11,12 +11,25 @@
     if (name === 'DataCenter') return { DATA: { get ServerTime() { return Math.floor(Date.now() / 1000); }, UserData: { Name: __fake.name, StrUid: __fake.uid, Armys: __fake.armys || [], OriginServerId: __fake.server, Alliance: { Rank: __fake.allianceRank || 0 } } } };
     // the game's activities (events), only when a test sets them: otherwise the read fails, as on a page that isn't the game
     if (name === 'ActivityController' && __fake.activities) return { ActivityController: { Instance: { _activityList: __fake.activities } } };
+    // the game's quality setting as it started (potato mode reads it)
+    if (name === 'GlobalData') return { GLOBAL: { get LowQuality() { return !!__fake.low; } } };
     // Loot Quest (the hunt controller), only when a test sets it
     if (name === 'CSHuntController' && __fake.cshunt) return { CSHuntController: { getInstance: function () { return __fake.cshunt; } } };
     return null;
   };
+  // Potato mode's levers: the frame rate, the drawing resolution, the cameras, the windows open in PopLayer
+  __fake.fps = 30; __fake.retina = true; __fake.resizes = 0; __fake.pop = []; __fake.low = false;
+  __fake.cams = [{ node: { name: 'Main Camera' }, enabled: true }, { node: { name: '3DCamera' }, enabled: true }, { node: { name: 'UI Camera' }, enabled: true }];
   window.cc = {
+    // like Cocos 2.4.6: setFrameRate restarts the main loop, so a paused game runs again
+    game: { _prepared: true, setFrameRate: function (n) { __fake.fps = n; __fake.paused = false; }, getFrameRate: function () { return __fake.fps; },
+      isPaused: function () { return !!__fake.paused; }, pause: function () { __fake.paused = true; } },
+    view: { isRetinaEnabled: function () { return __fake.retina; }, enableRetina: function (b) { __fake.retina = !!b; }, _resizeEvent: function () { __fake.resizes++; },
+      getFrameSize: function () { return { width: window.innerWidth, height: window.innerHeight }; } },
+    Camera: { get cameras() { return __fake.cams; } },
+    isValid: function (o) { return !!o; },
     find: function (path) {
+      if (path === 'UICanvas/PopLayer') return { children: __fake.pop };
       if (path === 'Canvas/HomeMap') return __fake.base ? { getComponent: function () { return { armyInited: true, _BuildingComplete: true, _ArmyComplete: __fake.armyComplete !== false, ArmyItems: __fake.armyItems || {} }; } } : null;
       if (path === 'UICanvas/PopLayer/prefabWorlddefenderMonsterFortress') return __fake.defender ? { activeInHierarchy: true } : null;
       return null;

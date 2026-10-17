@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'ops');
-const OWN = ['ops-center.js', 'ops-kit.js', 'ops-core.js', 'ops-drag.js'];
+const OWN = ['ops-center.js', 'ops-kit.js', 'ops-core.js', 'ops-drag.js', 'ops-potato.js'];
 const TYPES = { '.js': 'text/javascript', '.json': 'application/json', '.html': 'text/html' };
 
 let server, base, browser;
@@ -55,6 +55,7 @@ async function open(viewport, before, o, arg) {
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
+  if (o && o.potatoMissing) await ctx.route('**/ops-potato.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
   if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside || o.registered || o.group)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
     j.tools.forEach((t) => {
@@ -947,5 +948,116 @@ test('OPS-GRP-9 (minor): a group tool that stopped and shows why says Stopped on
   await page.waitForFunction(() => /Group A stopped/.test((document.querySelector('.ops-fab') || {}).textContent || ''), null, { timeout: 3000 });
   await page.evaluate(() => window.OpsCenter.toggle()); await page.waitForSelector('.ops-tile');
   assert.deepEqual(await tileStatus(page, 'Group A'), ['Stopped']);
+  await ctx.close();
+});
+
+// Potato mode (Tex 2026-10-17): a switch in the menu, remembered on the device, for phones that run hot or lose the tab.
+const fake = (page) => page.evaluate(() => ({ fps: __fake.fps, retina: __fake.retina, cams: __fake.cams.map((c) => c.enabled), low: localStorage.getItem('topwar_LOW_EFFECT_MODE'), on: localStorage.getItem('ops_potato_v1') }));
+test('POT-1: Potato mode is off by default; switched on it caps the frame rate at 29 (even when the game asks for more), draws at 1x, saves low quality and asks for a reload', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('#opsp-switch');
+  assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'false');
+  assert.match(await page.textContent('.opsp-row'), /Potato mode/);
+  assert.deepEqual(await fake(page), { fps: 30, retina: true, cams: [true, true, true], low: null, on: null }, 'nothing changes while it is off');
+  await page.click('#opsp-switch');
+  assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'true');
+  assert.deepEqual(await fake(page), { fps: 29, retina: false, cams: [true, true, true], low: '1', on: '1' });
+  assert.ok(await page.evaluate(() => __fake.resizes) >= 1, 'the canvas is resized to 1x');
+  await page.evaluate(() => cc.game.setFrameRate(60));               // the game opening chat
+  assert.equal(await page.evaluate(() => __fake.fps), 29, 'held at 29');
+  assert.match(await page.textContent('.opsp-row'), /Reload the game to finish/);
+  assert.equal(await page.$$eval('#opsp-reload', (e) => e.length), 1);
+  assert.ok(!/\u2014/.test(await page.textContent('.opsp-row')), 'no em dash');
+  await ctx.close();
+});
+
+test('POT-2: on a phone held upright, a full-screen window (chat) stops drawing the base behind it; closing it brings the base back; small pop-ups never do', async () => {
+  const { ctx, page } = await open(PHONE, () => localStorage.setItem('ops_potato_v1', '1'));
+  await page.waitForFunction(() => __fake.fps === 29);
+  await page.evaluate(() => { __fake.pop = [{ name: 'UIFrameNone', active: true }, { name: 'UIFramePop', active: true }]; });
+  await page.waitForTimeout(500);
+  assert.deepEqual((await fake(page)).cams, [true, true, true], 'a pop-up: the base stays drawn');
+  await page.evaluate(() => { __fake.pop.push({ name: 'UIFrameScreenV1', active: true }); });
+  await page.waitForFunction(() => !__fake.cams[0].enabled && !__fake.cams[1].enabled, null, { timeout: 2000 });
+  assert.equal((await fake(page)).cams[2], true, 'the menus and chat camera keeps drawing');
+  await page.evaluate(() => { __fake.pop = []; });
+  await page.waitForFunction(() => __fake.cams.every((c) => c.enabled), null, { timeout: 2000 });
+  await ctx.close();
+});
+
+test('POT-3: on a wide screen the base is never frozen (it would show black sides)', async () => {
+  const { ctx, page } = await open(DESKTOP, () => localStorage.setItem('ops_potato_v1', '1'));
+  await page.waitForFunction(() => __fake.fps === 29);
+  await page.evaluate(() => { __fake.pop = [{ name: 'UIFrameScreenV1', active: true }]; });
+  await page.waitForTimeout(600);
+  assert.deepEqual((await fake(page)).cams, [true, true, true]);
+  await ctx.close();
+});
+
+test('POT-4: remembered: the next Ops Center load applies it at once, before the menu is even used', async () => {
+  const { ctx, page } = await open(PHONE, () => { localStorage.setItem('ops_potato_v1', '1'); localStorage.setItem('topwar_LOW_EFFECT_MODE', '1'); __fake.low = true; });
+  await page.waitForFunction(() => __fake.fps === 29 && __fake.retina === false, null, { timeout: 3000 });
+  await page.waitForSelector('#opsp-switch');
+  assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'true');
+  assert.ok(!/Reload the game/.test(await page.textContent('.opsp-row')), 'the game already runs low quality: no reload asked');
+  await ctx.close();
+});
+
+test('POT-5: off puts everything back: the frame rate the game last asked for, full sharpness, the base, and the player\'s own low-quality setting', async () => {
+  const { ctx, page } = await open(PHONE, () => localStorage.setItem('topwar_LOW_EFFECT_MODE', '0'));
+  await page.waitForSelector('#opsp-switch');
+  await page.click('#opsp-switch');
+  await page.evaluate(() => { cc.game.setFrameRate(60); __fake.pop = [{ name: 'UIFrameScreenV1', active: true }]; });
+  await page.waitForFunction(() => !__fake.cams[0].enabled, null, { timeout: 2000 });
+  await page.click('#opsp-switch');
+  assert.deepEqual(await fake(page), { fps: 60, retina: true, cams: [true, true, true], low: '0', on: '0' });
+  await page.evaluate(() => cc.game.setFrameRate(30));
+  assert.equal(await page.evaluate(() => __fake.fps), 30, 'the game sets its own frame rate again');
+  await ctx.close();
+});
+
+test('POT-6: if the potato helper can\'t load, the Ops Center works as before, with no switch', async () => {
+  const { ctx, page } = await open(PHONE, null, { potatoMissing: true });
+  await page.waitForSelector('.ops-tile');
+  assert.equal(await page.$$eval('#opsp-switch', (e) => e.length), 0);
+  await ctx.close();
+});
+
+// Review fixes (2026-10-17): Unattended mode's frame, a paused page game, the reload note on open.
+const FRAME = '<script>window.__fg={fps:30,retina:true,low:false,paused:false};window.cc={game:{_prepared:true,setFrameRate:function(n){__fg.fps=n;__fg.paused=false;},getFrameRate:function(){return __fg.fps;},isPaused:function(){return __fg.paused;},pause:function(){__fg.paused=true;}},view:{isRetinaEnabled:function(){return __fg.retina;},enableRetina:function(b){__fg.retina=!!b;},_resizeEvent:function(){},getFrameSize:function(){return{width:390,height:844};}},Camera:{cameras:[]},isValid:function(o){return !!o;},find:function(){return null;}};window.__require=function(n){return n==="GlobalData"?{GLOBAL:{LowQuality:__fg.low}}:null;};<\/script>';
+const addFrame = (page) => page.evaluate((src) => new Promise((res) => { const f = document.createElement('iframe'); f.id = 'mapc-frame'; f.onload = () => res(); f.srcdoc = src; document.body.appendChild(f); }), FRAME);
+const frameState = (page) => page.evaluate(() => { const w = document.getElementById('mapc-frame').contentWindow; return { fps: w.__fg.fps, retina: w.__fg.retina }; });
+
+test('POT-7 (review): switching Potato mode on or off never wakes a paused page game', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('#opsp-switch');
+  await page.evaluate(() => cc.game.pause());
+  await page.click('#opsp-switch');
+  assert.equal(await page.evaluate(() => __fake.paused), true, 'still paused after on');
+  await page.click('#opsp-switch');
+  assert.equal(await page.evaluate(() => __fake.paused), true, 'still paused after off');
+  await ctx.close();
+});
+
+test('POT-8 (review): with Unattended mode\'s frame up, the live game in the frame gets it, the paused page game is left alone, and a frame reload gets it again', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('#opsp-switch');
+  await page.evaluate(() => cc.game.pause());                       // Unattended mode pauses the page's game
+  await addFrame(page);
+  await page.click('#opsp-switch');
+  assert.deepEqual(await frameState(page), { fps: 29, retina: false }, 'the frame game');
+  assert.deepEqual(await page.evaluate(() => ({ fps: __fake.fps, paused: __fake.paused, retina: __fake.retina })), { fps: 30, paused: true, retina: true }, 'the page game untouched');
+  assert.equal(await page.$$eval('#opsp-reload', (e) => e.length), 0, 'no Reload button inside Unattended mode');
+  assert.match(await page.textContent('.opsp-row'), /Reload the game to finish/, 'the frame game runs normal quality: a reload is needed');
+  await page.evaluate((src) => { document.getElementById('mapc-frame').srcdoc = src + ' '; }, FRAME);   // the dashboard's reconnect reloads the frame
+  await page.waitForFunction(() => { const w = document.getElementById('mapc-frame').contentWindow; return w.__fg && w.__fg.fps === 29 && w.__fg.retina === false; }, null, { timeout: 5000 });
+  await ctx.close();
+});
+
+test('POT-9 (review): the menu says a reload is needed when Potato mode is on but the game started at normal quality', async () => {
+  const { ctx, page } = await open(PHONE, () => { localStorage.setItem('ops_potato_v1', '1'); localStorage.setItem('topwar_LOW_EFFECT_MODE', '1'); __fake.low = false; });
+  await page.waitForSelector('#opsp-switch');
+  assert.match(await page.textContent('.opsp-row'), /Reload the game to finish/);
+  assert.equal(await page.$$eval('#opsp-reload', (e) => e.length), 1);
   await ctx.close();
 });
