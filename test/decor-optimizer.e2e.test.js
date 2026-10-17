@@ -76,6 +76,7 @@ test('DPO-1: the preview sends nothing and shows the plan, the stats and what st
   assert.match(text, /To the bag: 2 that don't count/);
   assert.match(text, /Advanced Upgrade: 1 step/);
   assert.match(text, /Sea decor to the far corners: 1/);
+  assert.match(text, /Base decor into the showcase: 6 \(biggest first\)/, 'Weapon Box and the 5 Benches (Tex: showcase first)');
   assert.match(text, /All Units HP \+2\.00%/);
   assert.equal((await sent(page)).length, 0);
   await ctx.close();
@@ -95,15 +96,20 @@ test('DPO-2: Run follows the phase order and leaves the base as planned', async 
   assert.ok(first(4793) < first(4755) && first(4755) < first(104), rids.join(','));
   const st = await page.evaluate(() => {
     const U = __require('DataCenter').DATA.UserData;
-    const bench = U.Buildings.filter((b) => b.Data.group === 4080).map((b) => b.Data.level).sort();
+    const rows = __require('TableManager').TABLE._tableMap.building, inShow = U._museumData.flatMap((l) => l.labelStoreData.map((e) => rows[e.decorationId]));
+    const bench = U.Buildings.map((b) => b.Data).concat(inShow).filter((d) => d.group === 4080).map((d) => d.level).sort();
+    const baseLand = U.Buildings.filter((b) => b.Data.type === 4 && b.Data.point_type === 1 && b.Data.buff_id).map((b) => b.Data.name);
     return { slot79: U.collabDecorateBox[79] && U.collabDecorateBox[79].decorationId, hsLv1: __fake.count(48217), exp: __fake.up.exp,
       tab1: U._museumData[0].labelStoreData.map((e) => e.decorationId).sort(), bench, dockY: __fake.building('dock').Pos % 1000, buoy: __fake.building('buoy').Pos,
-      sax: !!__fake.building('sax'), troopDecor: U.Buildings.filter((b) => b.Data.type === 4 && b.Pos % 1000 < 10 && b.Data.buff_id).length };
+      sax: !!__fake.building('sax'), troopDecor: U.Buildings.filter((b) => b.Data.type === 4 && b.Pos % 1000 < 10 && b.Data.buff_id).length, baseLand,
+      wbInShow: inShow.some((d) => d.id === 47129) };
   });
   assert.equal(st.slot79, 53159, 'Toothless in its collab slot');
   assert.equal(st.hsLv1, 0); assert.equal(st.exp, 2, 'both spare Hardcore Shooters fed');
   assert.ok(st.tab1.includes(54731) && !st.tab1.includes(47128), 'Cherished Affection in the showcase; the spare Weapon Box out');
   assert.deepEqual(st.bench, [2, 2, 2, 2, 3], 'one Bench raised from the 6 spare Lv1');
+  assert.deepEqual(st.baseLand, [], 'showcase first: no wanted land decor left in the base (Tex)');
+  assert.equal(st.wbInShow, true);
   assert.ok(st.dockY >= 10, 'the Floating Dock left the troop area\'s water');
   assert.equal(st.buoy, 22004, 'decor with no stats never moves');
   assert.equal(st.sax, false, 'the completed set\'s member went to the bag');

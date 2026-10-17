@@ -363,9 +363,13 @@
   function setCells(m, key, x, y, w, h, v) { cellsAt(footprint(x, y, w, h)).forEach(function (p) { if (v) m[key][p] = 1; else delete m[key][p]; }); }
   function rankCmp(a, b) { return a.info.tier - b.info.tier || a.info.cells - b.info.cells || b.info.points - a.info.points || b.level - a.level; }
   function whyNot(snap, id) { return snap.rows[id].buffs.some(function (b) { return GOLD.indexOf(b[0]) >= 0; }) ? 'gold' : 'off'; }
-  // Where each wanted bag piece goes: land decor to the showcase first, then the south land; sea decor to the far
-  // corners; floor tiles under decor, then under units. A placed piece nobody wants (then a Green Apple Tree) gives way
-  // only to a piece ranked above it.
+  // Where each wanted piece goes.
+  // 1. Showcase first (Tex 2026-10-17): every wanted land piece, new from the bag or already in the base, biggest first,
+  //    until the showcase is full ("biggest first, to free the most base space"; "fill it completely"). A base piece
+  //    that gets a spot moves in. Gold, unit-off, floor tiles and sea decor stay where they are; no tab is unlocked.
+  // 2. The rest by rank: land decor to the south land, sea decor to the far corners, floor tiles under decor, then under
+  //    units. A placed piece nobody wants (then a Green Apple Tree) gives way only to a piece ranked above it.
+  // 3. Wanted decor still in the troop area moves to the south land.
   function placePlan(snap, settings, final) {
     var sets = {}, cands = [], left = [], seen = {};
     (snap.sets || []).forEach(function (g) { sets[g] = 1; });
@@ -393,7 +397,26 @@
       if (info.tier >= 2) evictable.push({ e: e, info: info, r: r, x: p.x, y: p.y });
     });
     evictable.sort(function (a, b) { return b.info.tier - a.info.tier || a.info.points - b.info.points; });
-    var place = [], evict = [];
+    var place = [], evict = [], moves = [], moved = {};
+    function zoneAt(x, y) { var k = m.cell[x * 1000 + y]; return k ? k[2] : -1; }
+    var movers = [];
+    snap.placed.forEach(function (p) {
+      var r = snap.rows[p.id];
+      if (!r || r.type !== 4 || r.pt !== 1 || !r.buffs.length) return;
+      var info = copyInfo(snap, p.id, settings);
+      if (info.tier < 3) movers.push({ id: p.id, uuid: p.uuid, x: p.x, y: p.y, zone: zoneAt(p.x, p.y), level: r.level, info: info, row: r });
+    });
+    cands.filter(function (c) { return c.row.type !== 5 && c.row.pt !== 0; }).concat(movers).sort(function (a, b) {
+      return b.info.cells - a.info.cells || (a.uuid ? 1 : 0) - (b.uuid ? 1 : 0) || (a.zone === 0 ? 0 : 1) - (b.zone === 0 ? 0 : 1) ||
+        a.info.tier - b.info.tier || b.info.points - a.info.points || b.level - a.level;
+    }).forEach(function (c) {
+      var spot = packShowcase(free, c.row.w, c.row.h);
+      if (!spot) return;
+      mark5(free[spot.labelId], spot.x, spot.y, c.row.w, c.row.h, false);
+      if (c.uuid) { setCells(m, 'occ', c.x, c.y, c.row.w, c.row.h, false); moved[c.uuid] = 1; moves.push({ uuid: c.uuid, id: c.id, to: spot }); }
+      else { c.done = true; place.push({ id: c.id, to: spot }); }
+    });
+    evictable = evictable.filter(function (v) { return !(v.e.where === 'base' && moved[v.e.ref]); });
     function landSpot(w, h) {
       var s = packShowcase(free, w, h);
       if (s) return s;
@@ -405,7 +428,7 @@
       if (e.where === 'showcase') mark5(free[e.ref.labelId], v.x, v.y, v.r.w, v.r.h, on);
       else setCells(m, 'occ', v.x, v.y, v.r.w, v.r.h, !on);
     }
-    cands.forEach(function (c) {
+    cands.filter(function (c) { return !c.done; }).forEach(function (c) {
       var w = c.row.w, h = c.row.h, spot = null;
       if (c.row.type === 5) {
         for (var i = 0; i < floorOrder.length && !spot; i++) if (fitsFloor(m, floorOrder[i][0], floorOrder[i][1], w, h)) spot = { x: floorOrder[i][0], y: floorOrder[i][1] };
@@ -434,7 +457,16 @@
       }
       if (spot) place.push({ id: c.id, to: spot }); else leave(c.id, 'no room');
     });
-    return { place: place, evict: evict, left: left };
+    movers.forEach(function (c) {
+      if (c.zone !== 0 || moved[c.uuid]) return;
+      for (var i = 0; i < land.length; i++) if (fitsDecor(m, land[i][0], land[i][1], c.row.w, c.row.h, 1)) {
+        setCells(m, 'occ', land[i][0], land[i][1], c.row.w, c.row.h, true);
+        setCells(m, 'occ', c.x, c.y, c.row.w, c.row.h, false);
+        moves.push({ uuid: c.uuid, id: c.id, to: { x: land[i][0], y: land[i][1] } });
+        return;
+      }
+    });
+    return { place: place, evict: evict, left: left, moves: moves };
   }
   function overlap5(ax, ay, aw, ah, bx, by, bw, bh) { return ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah; }
   function overlapMap(ax, ay, aw, ah, bx, by, bw, bh) {
@@ -443,8 +475,9 @@
   }
   // Sea decor to the far corners (Tex: all of it, not only new pieces). Pack every sea piece farthest first: the d of
   // the last spot used is the line; a piece in the south water at or beyond it stays, the rest move out to the farthest
-  // free spots. Land decor in the troop area moves to the showcase or the south land when there's room.
-  function tidyPlan(snap) {
+  // free spots. Land decor in the troop area that nobody wants moves to the south land (wanted decor there goes through
+  // placePlan, showcase first; Tex: gold and unit-off decor don't go in the showcase).
+  function tidyPlan(snap, settings) {
     var c = centroid(snap), sea = seaCells(snap), out = [];
     function dist(x, y) { return Math.sqrt(Math.pow(x - c[0], 2) + Math.pow((y - c[1]) / 2, 2)); }
     var m = model(snap), zone = function (x, y) { var k = m.cell[x * 1000 + y]; return k ? k[2] : -1; };
@@ -469,12 +502,11 @@
         }
       }
     });
-    var free = showcaseFree(snap), land = landCells(snap);
+    var land = landCells(snap);
     snap.placed.forEach(function (p) {
       var r = snap.rows[p.id];
       if (!r || r.type !== 4 || r.pt !== 1 || !r.buffs.length || zone(p.x, p.y) !== 0) return;
-      var s = packShowcase(free, r.w, r.h);
-      if (s) { mark5(free[s.labelId], s.x, s.y, r.w, r.h, false); out.push({ uuid: p.uuid, to: s }); return; }
+      if (copyInfo(snap, p.id, settings).tier < 3) return;
       for (var i = 0; i < land.length; i++) if (fitsDecor(m, land[i][0], land[i][1], r.w, r.h, 1)) {
         setCells(m, 'occ', land[i][0], land[i][1], r.w, r.h, true);
         setCells(m, 'occ', p.x, p.y, r.w, r.h, false);
@@ -520,6 +552,10 @@
         }
         bag(id, 1);
       },
+      move: function (uuid, x, y) {                        // a base piece to another base cell
+        var p = s.placed.filter(function (q) { return q.uuid === uuid; })[0];
+        mark(p.id, p.x, p.y, false); p.x = x; p.y = y; mark(p.id, x, y, true);
+      },
       put: function (where, to, id) {                      // a bag piece to the base, a showcase tab or a collab slot
         bag(id, -1);
         if (where === 'base') { s.placed.push({ uuid: 'new' + (++seq), id: id, x: to.x, y: to.y }); mark(id, to.x, to.y, true); }
@@ -531,17 +567,17 @@
   function plan(snap, settings) {
     var S = sim(snap), s = S.s, ph = {};
     phaseOrder.forEach(function (p) { ph[p] = []; });
-    function toBag(list, where, ref, id) { list.push({ kind: 'toBag', where: where, ref: ref, id: id }); S.take(where, ref, id); }
+    function toBag(list, where, ref, id, reason) { list.push({ kind: 'toBag', where: where, ref: ref, id: id, reason: reason }); S.take(where, ref, id); }
     collabPlan(s).forEach(function (c) {
       var slot = s.collab.filter(function (k) { return k.slot === c.slot; })[0];
-      if (slot.id && c.from !== 'bag') { toBag(ph.collab, c.from, c.ref, c.id); c = { slot: c.slot, from: 'bag', id: c.id, ref: null }; }   // replace from the bag, as the game does
+      if (slot.id && c.from !== 'bag') { toBag(ph.collab, c.from, c.ref, c.id, 'collab'); c = { slot: c.slot, from: 'bag', id: c.id, ref: null }; }   // replace from the bag, as the game does
       ph.collab.push({ kind: 'collabIn', slot: c.slot, from: c.from, id: c.id, ref: c.ref });
       if (c.from !== 'bag') S.take(c.from, c.ref, c.id);
       S.put('collab', { slot: c.slot }, c.id);
     });
-    pickupPlan(s, settings, targets(s, settings)).forEach(function (e) { toBag(ph.pickup, e.where, e.ref, e.id); });
+    pickupPlan(s, settings, targets(s, settings)).forEach(function (e) { toBag(ph.pickup, e.where, e.ref, e.id, 'waste'); });
     mergePlan(s, settings).forEach(function (g) {
-      var spots = g.pulls.map(function (e) { var to = S.spot(e.where, e.ref); toBag(ph.merge, e.where, e.ref, e.id); return to; });
+      var spots = g.pulls.map(function (e) { var to = S.spot(e.where, e.ref); toBag(ph.merge, e.where, e.ref, e.id, 'merge'); return to; });
       g.merges.forEach(function (m) {
         var r = s.rows[m.id];
         ph.merge.push({ kind: 'merge', id: m.id, num: m.num });
@@ -557,16 +593,20 @@
       }
     });
     var pp = placePlan(s, settings, finalTargets(s, settings));
-    pp.evict.forEach(function (e) { toBag(ph.place, e.where, e.ref, e.id); });
+    pp.moves.forEach(function (mv) {                       // base decor into the showcase first, then out of the troop area
+      if (mv.to.labelId != null) {
+        toBag(ph.place, 'base', mv.uuid, mv.id, 'showcase');
+        ph.place.push({ kind: 'showcaseIn', id: mv.id, labelId: mv.to.labelId, x: mv.to.x, y: mv.to.y }); S.put('showcase', mv.to, mv.id);
+      } else { ph.place.push({ kind: 'move', uuid: mv.uuid, x: mv.to.x, y: mv.to.y }); S.move(mv.uuid, mv.to.x, mv.to.y); }
+    });
+    pp.evict.forEach(function (e) { toBag(ph.place, e.where, e.ref, e.id, 'room'); });
     pp.place.forEach(function (x) {
       if (x.to.labelId != null) { ph.place.push({ kind: 'showcaseIn', id: x.id, labelId: x.to.labelId, x: x.to.x, y: x.to.y }); S.put('showcase', x.to, x.id); }
       else { ph.place.push({ kind: 'place', id: x.id, x: x.to.x, y: x.to.y }); S.put('base', x.to, x.id); }
     });
-    tidyPlan(s).forEach(function (m) {
+    tidyPlan(s, settings).forEach(function (m) {
       if (/^new/.test(m.uuid)) return;                     // placed this run: the tidy phase re-plans with its real id
-      var p = s.placed.filter(function (q) { return q.uuid === m.uuid; })[0];
-      if (Array.isArray(m.to)) ph.tidy.push({ kind: 'move', uuid: m.uuid, x: m.to[0], y: m.to[1] });
-      else { ph.tidy.push({ kind: 'toBag', where: 'base', ref: m.uuid, id: p.id }); ph.tidy.push({ kind: 'showcaseIn', id: p.id, labelId: m.to.labelId, x: m.to.x, y: m.to.y }); }
+      ph.tidy.push({ kind: 'move', uuid: m.uuid, x: m.to[0], y: m.to[1] });
     });
     return { phases: ph, summary: summary(snap, s, ph, pp.left) };
   }
@@ -587,9 +627,12 @@
     var names = {};
     (left || []).forEach(function (l) { var n = before.rows[l.id].name, k = n + '|' + l.why; if (!names[k]) { names[k] = 1; out.push({ name: n, why: l.why }); } });
     function count(list, kinds) { return list.filter(function (x) { return kinds.indexOf(x.kind) >= 0; }).length; }
+    function bagged(list, reason) { return list.filter(function (x) { return x.kind === 'toBag' && x.reason === reason; }).length; }
+    var showcased = bagged(ph.place, 'showcase');
     return {
-      counts: { collab: count(ph.collab, ['collabIn']), toBag: count(ph.pickup, ['toBag']), evicted: count(ph.place, ['toBag']), merges: count(ph.merge, ['merge']),
-        upgrades: ph.upgrade.length, opens: count(ph.upgrade, ['open']), placed: count(ph.place, ['place', 'showcaseIn']), tidied: count(ph.tidy, ['move', 'showcaseIn']) },
+      counts: { collab: count(ph.collab, ['collabIn']), toBag: count(ph.pickup, ['toBag']), evicted: bagged(ph.place, 'room'), showcased: showcased,
+        merges: count(ph.merge, ['merge']), upgrades: ph.upgrade.length, opens: count(ph.upgrade, ['open']),
+        placed: count(ph.place, ['place', 'showcaseIn']) - showcased, tidied: count(ph.tidy, ['move']) + count(ph.place, ['move']) },
       gains: gains, losses: losses, left: out
     };
   }

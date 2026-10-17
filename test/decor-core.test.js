@@ -338,7 +338,8 @@ test('plan on Rеx is complete and safe', () => {
   C.phaseOrder.forEach((ph) => p.phases[ph].forEach((a) => {
     assert.ok(KINDS.includes(a.kind), a.kind);
     if (a.kind === 'move') assert.ok(uuids.has(a.uuid), 'moves only placed decor');
-    if (a.kind === 'toBag' && a.where === 'base') assert.ok(uuids.has(a.ref), 'picks up only placed decor');
+    // a piece a merge puts back this run has no real id yet ('new...'); the run re-plans each phase with the real ones
+    if (a.kind === 'toBag' && a.where === 'base') assert.ok(uuids.has(a.ref) || (a.reason === 'showcase' && /^new/.test(a.ref)), 'picks up only placed decor');
     if (a.kind === 'merge') assert.ok(![4000, 4030, 4040, 4070].includes(REX.rows[a.id].group), 'no gold merges');
     if (a.kind === 'place' || a.kind === 'move') {
       const id = a.kind === 'place' ? a.id : REX.placed.find((x) => x.uuid === a.uuid).id, r = REX.rows[id];
@@ -354,7 +355,7 @@ test('nothing to do is empty', () => {
   s.grid.cells = [[2, 2, 1, 1, 1, 1, 0], [4, 4, 1, 1, 1, 0, 0]];
   const p = C.plan(s, ALL);
   C.phaseOrder.forEach((ph) => assert.deepEqual(p.phases[ph], [], ph));
-  assert.deepEqual(p.summary.counts, { collab: 0, toBag: 0, evicted: 0, merges: 0, upgrades: 0, opens: 0, placed: 0, tidied: 0 });
+  assert.deepEqual(p.summary.counts, { collab: 0, toBag: 0, evicted: 0, showcased: 0, merges: 0, upgrades: 0, opens: 0, placed: 0, tidied: 0 });
   assert.deepEqual(p.summary.gains, []); assert.deepEqual(p.summary.losses, []);
 });
 
@@ -413,4 +414,80 @@ test('review I4: a collab variant that would lose to its placed partner stays ou
   const s2 = snap({ rows: [[57201, 5720, 1, 1, [[1001001, 250]], { me: [5557] }], [55571, 5557, 3, 1, [[1001001, 750]], { me: [5720] }]],
     placed: [{ uuid: 'sg', id: 57201, x: 4, y: 4 }], bag: [{ id: 55571, n: 1 }], collab: [{ slot: 20, group: 5557, id: null }] });
   assert.deepEqual(C.collabPlan(s2).map((c) => c.slot), [20], 'a higher collab variant still goes in');
+});
+
+// ---------------------------------------------------------------- showcase first for decor already in the base (Tex 2026-10-17)
+// Tex: biggest pieces first, only wanted decor (gold and unit-off stay), fill the showcase completely, floors stay in the
+// base, sea decor stays in the water, never unlock tabs.
+const fullBut = (labelId, freeCells, id) => ({ labelId, items: Array.from({ length: 25 }, (_, i) => [Math.floor(i / 5), i % 5])
+  .filter(([x, y]) => !freeCells.some(([a, b]) => a === x && b === y)).map(([x, y], i) => ({ uuid: 'f' + labelId + '_' + i, id, x, y })) });
+const landCells = (list) => list.map(([x, y]) => [x, y, 1, 1, 1, 1, 0]);
+const placeKinds = (p) => p.phases.place.map((a) => a.kind + ':' + (a.kind === 'toBag' ? a.ref + '/' + a.reason : a.id));
+
+test('showcase first: decor already in the base moves into free showcase cells, biggest first', () => {
+  const rows = [[1, 10, 1, 1, [[930000, 200]]], [2, 11, 1, 1, [[930100, 200]]], [3, 12, 1, 1, [[930000, 100]], { w: 2, h: 2 }]];
+  const s = snap({ rows, placed: [{ uuid: 'a1', id: 1, x: 2, y: 2 }, { uuid: 'b1', id: 2, x: 4, y: 2 }, { uuid: 'big', id: 3, x: 8, y: 8 }],
+    showcase: [fullBut(1, [[3, 3], [3, 4], [4, 3], [4, 4]], 9)] });
+  s.grid.cells = landCells([[2, 2], [4, 2]].concat(C.footprint(8, 8, 2, 2)));
+  const p = C.plan(s, ALL);
+  assert.deepEqual(placeKinds(p), ['toBag:big/showcase', 'showcaseIn:3'], 'the 2x2 takes the only 2x2 hole; the 1x1s stay');
+  assert.deepEqual(p.phases.place[1], { kind: 'showcaseIn', id: 3, labelId: 1, x: 3, y: 3 });
+  assert.equal(p.summary.counts.showcased, 1);
+  assert.equal(p.summary.counts.evicted, 0);
+});
+
+test('showcase first fills the showcase completely', () => {
+  const rows = [[1, 10, 1, 1, [[930000, 200]]], [2, 11, 1, 1, [[930100, 200]]], [4, 13, 1, 1, [[910300, 200]]]];
+  const s = snap({ rows, placed: [{ uuid: 'a', id: 1, x: 2, y: 2 }, { uuid: 'b', id: 2, x: 4, y: 2 }, { uuid: 'c', id: 4, x: 6, y: 2 }], showcase: [{ labelId: 1, items: [] }] });
+  s.grid.cells = landCells([[2, 2], [4, 2], [6, 2]]);
+  const p = C.plan(s, ALL);
+  assert.equal(p.summary.counts.showcased, 3);
+  assert.equal(p.phases.place.filter((a) => a.kind === 'showcaseIn').length, 3);
+});
+
+test('showcase first moves only wanted decor: gold, unit-off, floor tiles and sea decor stay in the base', () => {
+  const rows = [[1, 10, 1, 5, [[920900, 140]]], [2, 11, 1, 1, [[930101, 300]]], [3, 12, 1, 100, [[920800, 50]], { type: 5 }], [4, 13, 1, 1, [[930000, 200]], { pt: 0 }]];
+  const s = snap({ rows, placed: [{ uuid: 'gold', id: 1, x: 2, y: 2 }, { uuid: 'army', id: 2, x: 4, y: 2 }, { uuid: 'tile', id: 3, x: 6, y: 2 }, { uuid: 'sea', id: 4, x: 20, y: 20 }],
+    showcase: [{ labelId: 1, items: [] }] });
+  s.grid.cells = landCells([[2, 2], [4, 2], [6, 2]]).concat([[20, 20, 1, 0, 1, 1, 0]]);
+  const p = C.plan(s, { army: false, navy: true, air: true });
+  assert.deepEqual(p.phases.place, []);
+  assert.equal(p.summary.counts.showcased, 0);
+});
+
+test('showcase first leaves nothing to do once it is done (no churn)', () => {
+  const rows = [[1, 10, 1, 1, [[930000, 200]]]];
+  const s = snap({ rows, placed: [{ uuid: 'a', id: 1, x: 2, y: 2 }], showcase: [fullBut(1, [], 9)] });
+  s.grid.cells = landCells([[2, 2]]);
+  const p = C.plan(s, ALL);
+  C.phaseOrder.forEach((ph) => assert.deepEqual(p.phases[ph], [], ph));
+});
+
+test('troop area: wanted decor goes to the showcase first, decor nobody wants only to the south land', () => {
+  const rows = [[1, 10, 1, 1, [[930000, 200]]], [2, 11, 1, 5, [[920900, 140]]]];
+  const s = snap({ rows, placed: [{ uuid: 'want', id: 1, x: 2, y: 2 }, { uuid: 'gold', id: 2, x: 4, y: 2 }], showcase: [fullBut(1, [[0, 0]], 9)] });
+  s.grid.cells = [[2, 2, 0, 1, 1, 1, 0], [4, 2, 0, 1, 1, 1, 0], [6, 20, 1, 1, 1, 0, 0]];
+  const p = C.plan(s, ALL);
+  assert.deepEqual(placeKinds(p), ['toBag:want/showcase', 'showcaseIn:1']);
+  assert.deepEqual(p.phases.tidy, [{ kind: 'move', uuid: 'gold', x: 6, y: 20 }]);
+});
+
+test('showcase first on Rеx: base decor fills the free showcase cells and never overlaps', () => {
+  const p = C.plan(REX, AIR);
+  assert.ok(p.summary.counts.showcased > 0, JSON.stringify(p.summary.counts));
+  // the showcase as the place phase finds it: earlier phases took some pieces out and put raised ones back
+  const out = new Set(), back = [];
+  C.phaseOrder.slice(0, 4).forEach((ph) => p.phases[ph].forEach((a) => {
+    if (a.kind === 'toBag' && a.where === 'showcase') out.add(a.ref.uuid);
+    if (a.kind === 'putBack' && a.where === 'showcase') back.push({ id: a.id, x: a.to.x, y: a.to.y, labelId: a.to.labelId });
+  }));
+  const shown = JSON.parse(JSON.stringify(REX));
+  shown.showcase.forEach((l) => { l.items = l.items.filter((e) => !out.has(e.uuid)); back.filter((b) => b.labelId === l.labelId).forEach((b) => l.items.push({ uuid: 'b', id: b.id, x: b.x, y: b.y })); });
+  const free = C.showcaseFree(shown), sz = (id) => [REX.rows[id].w, REX.rows[id].h];
+  p.phases.place.filter((a) => a.kind === 'showcaseIn').forEach((a) => {
+    const [w, h] = sz(a.id);
+    for (let n = 0; n < w; n++) for (let k = 0; k < h; k++) { assert.ok(free[a.labelId][5 * (a.x + n) + a.y + k], 'cell taken twice'); free[a.labelId][5 * (a.x + n) + a.y + k] = false; }
+  });
+  const sizes = p.phases.place.filter((a) => a.kind === 'toBag' && a.reason === 'showcase').map((a) => REX.rows[a.id].w * REX.rows[a.id].h);
+  for (let i = 1; i < sizes.length; i++) assert.ok(sizes[i - 1] >= sizes[i], 'biggest first');
 });

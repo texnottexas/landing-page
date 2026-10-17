@@ -9,7 +9,7 @@
   var C = window.DecorCore, G = window.DecorGame;
   if (!C || !G) { try { alert('Decor Optimizer did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-17';
+  var VERSION = '2026-10-17.2';
   var WORKER = window.__DPO_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__DPO_FAST;
   var GAP_MS = window.__DPO_GAP_MS || 1500, JITTER_MS = FAST ? 0 : 300;     // 1.5 to 1.8 s after the last Ops request
@@ -194,6 +194,7 @@
     box.appendChild(el('div', 'dpo-h', 'The plan'));
     line(c.collab, 'Collab box: ' + c.collab + ' in');
     line(c.toBag, 'To the bag: ' + c.toBag + ' that don\'t count');
+    line(c.showcased, 'Base decor into the showcase: ' + c.showcased + ' (biggest first)');
     line(c.evicted, 'To make room: ' + c.evicted + ' moved to the bag (lower ranked)');
     line(c.merges, 'Level up spare copies: ' + c.merges + ' merges');
     line(c.upgrades, 'Advanced Upgrade: ' + c.upgrades + (c.upgrades === 1 ? ' step' : ' steps') +
