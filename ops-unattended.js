@@ -9,7 +9,7 @@
   var C = window.OpsUnattendedCore;
   if (!C) { try { alert('Unattended mode did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16';
+  var VERSION = '2026-10-16.2';
   var WORKER = window.__OPSU_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var BASE = window.__OPSU_BASE || 'https://2864tw.com/';
   var SYNC_MS = window.__OPSU_SYNC_MS || 15000, READY_MS = window.__OPSU_READY_MS || 180000, CARD_MS = window.__OPSU_CARD_MS || 20000, STOP_MS = 60000;

@@ -176,7 +176,7 @@ test('Refugee Camps tile: for members, game ready, its own overlay and tent icon
   assert.match(read('pages/map-collector.html'), /'refugee-camps': \['camp', 'camps'\]/);
 });
 
-// HT Gift Boxes (Tex, 2026-10-13): every member sees the tile; the card asks for the password.
+// HT Gift Boxes (Tex, 2026-10-13): every member sees the tile; no password since 2026-10-16 (Tex).
 test('HT Gift Boxes tile: for members, game ready, its own overlay and chest icon, scripts deployed, rules in the deploy gate', () => {
   const t = list.tools.find((x) => x.id === 'ht-gifts');
   assert.ok(t, 'listed');
@@ -186,8 +186,8 @@ test('HT Gift Boxes tile: for members, game ready, its own overlay and chest ico
   assert.equal(t.overlay, '#htg-root');
   assert.equal(t.icon, 'chest');
   assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-stack.js', 'ht-gifts-core.js', 'ht-gifts.js']);
-  assert.match(t.desc, /password/);
-  assert.ok(!/—/.test(t.desc) && !/bananas/i.test(t.desc + t.keywords), 'no em dash; the password is not printed');
+  assert.ok(!/password/i.test(t.desc), 'no password to ask for');
+  assert.ok(!/—/.test(t.desc) && !/bananas/i.test(t.desc + t.keywords), 'no em dash; no password word');
   const ver = (read('ht-gifts.js').match(/var VERSION = '([^']+)'/) || [])[1];
   assert.equal(t.version, ver, 'registry version = script version');
   assert.ok(/test\/ht-gifts-core\.test\.js/.test(read('.github/workflows/pages.yml')), 'rules run before every deploy');

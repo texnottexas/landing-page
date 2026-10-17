@@ -7,14 +7,12 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
 const OWN = ['mask-boxes.js', 'mask-boxes-core.js', 'enigma-veins.js', 'enigma-veins-core.js', 'ht-gifts.js', 'ht-gifts-core.js',
   'ops-stack.js', 'ops-drag.js', 'ops-tools.json', 'odin-gather.js', 'odin-gather-core.js'];
-const PW = crypto.createHash('sha256').update('bananas').digest('hex');
 const T = 260617001;                                     // a Mask box's item is T + its type
 
 let server, base, browser, feed;
@@ -47,16 +45,15 @@ async function open(viewport, before) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { throw e; });
   await page.goto(base);
-  await page.evaluate(([b, pw, t]) => {
+  await page.evaluate(([b, t]) => {
     const w = b.replace(/\/$/, ''), now = Date.now(), s = Math.floor(now / 1000);
     window.__MBX_WORKER = w; window.__VEIN_WORKER = w; window.__HTG_WORKER = w; window.__OPS_BASE = b;
     window.__MBX_FAST = true; window.__MBX_FEED_MS = 1000; window.__VEIN_FAST = true;
-    localStorage.setItem('htg_pw_v1', pw);
     __fake.cities['619:404:612'] = { pid: '222', itemId: t + 1, instanceId: 'i2' };
     __fake.vein.event = { id: 83000157, type: 279, showUiType: 'domainTreasure', begintime: s - 60, endtime: s + 7200, para6: '6' };
     __fake.vein.veins = [{ x: 500, y: 300, expireMs: now + 3600000, status: 0 }, { x: 501, y: 301, expireMs: now + 3000000, status: 0 }];
     __fake.htg.gifts = [{ x: 10, y: 10, k: 2864, m: { receiveBagUidList: [], endSecsTime: s + 1200, floatParadeId: 4, luckyBagNum: 10, marchIdStr: 'M1' } }];
-  }, [base, PW, T]);
+  }, [base, T]);
   if (before) await page.evaluate(before);
   for (const f of ['ops-drag.js', 'ops-stack.js', 'mask-boxes-core.js', 'enigma-veins-core.js', 'ht-gifts-core.js', 'mask-boxes.js', 'enigma-veins.js', 'ht-gifts.js']) await page.addScriptTag({ url: base + f });
   await page.waitForSelector('#mbx-root .mbx-card');
@@ -182,11 +179,3 @@ test('TOG-8 (minor): a tool that stops with a message marks its card stopped (th
   await ctx.close();
 });
 
-test('TOG-9 (minor): HT Gift Boxes asking for its password keeps its card clear of the cards opened before it', async () => {
-  const view = { width: 1280, height: 800 };
-  const { ctx, page } = await open(view, () => localStorage.removeItem('htg_pw_v1'));
-  await page.waitForSelector('#htg-pw');
-  await page.waitForTimeout(2500);
-  assertApart(await cards(page), view);
-  await ctx.close();
-});

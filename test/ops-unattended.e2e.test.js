@@ -183,15 +183,14 @@ test('OPSU-5: Reconnect reloads only the frame; the tab and its card carry on', 
   await ctx.close();
 });
 
-test('OPSU-6: HT Gift Boxes starts only with its password saved on this computer', async () => {
+test('OPSU-6 (Tex 2026-10-16): HT Gift Boxes starts with no password saved on this computer', async () => {
   const { ctx, page } = await open();
   await turnOn(page);
+  assert.equal(await page.evaluate(() => localStorage.getItem('htg_pw_v1')), null);
   const a = await send('start', 'ht-gifts');
-  assert.equal(await ack(a.nonce), 'needs its password on that computer');
-  assert.equal(await count(page, '#htg-root'), 0);
-  await page.evaluate((h) => localStorage.setItem('htg_pw_v1', h), crypto.createHash('sha256').update('bananas').digest('hex'));
-  const b = await send('start', 'ht-gifts');
-  assert.equal(await ack(b.nonce), 'Started');
+  assert.equal(await ack(a.nonce), 'Started');
+  await page.waitForFunction(() => window.__HTG && window.__HTG.state().running === true, null, { timeout: 5000 });
+  assert.equal(await count(page, '#htg-pw'), 0);
   await ctx.close();
 });
 
@@ -336,7 +335,6 @@ test('MCSF-3: Map Collector stopped with a message is marked stopped; the tab re
 // Final review fixes (2026-10-16).
 test('OPSU-15 (C2): HT Gift Boxes stopped remotely starts again remotely', async () => {
   const { ctx, page } = await open();
-  await page.evaluate((h) => localStorage.setItem('htg_pw_v1', h), crypto.createHash('sha256').update('bananas').digest('hex'));
   await turnOn(page);
   assert.equal(await ack((await send('start', 'ht-gifts')).nonce), 'Started');
   assert.match(await ack((await send('stop', 'ht-gifts')).nonce), /^Stopped/);
@@ -348,7 +346,6 @@ test('OPSU-15 (C2): HT Gift Boxes stopped remotely starts again remotely', async
 test('OPSU-16 (I3): Stop while commands wait (a tool slow to stop): none of them runs after "Unattended mode is off"', async () => {
   const { ctx, page } = await open();
   await turnOn(page);
-  await page.evaluate((h) => localStorage.setItem('htg_pw_v1', h), crypto.createHash('sha256').update('bananas').digest('hex'));
   assert.equal(await ack((await send('start', 'mask-boxes')).nonce), 'Started');
   await page.evaluate(() => { const real = window.__MBX.stop; window.__MBX.stop = function () { setTimeout(real, 3000); }; });   // stands in for the Gatherer's skin switch-back
   await send('reconnect', ''); await send('start', 'ht-gifts');

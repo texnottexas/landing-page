@@ -6,14 +6,12 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const crypto = require('node:crypto');
 const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'mapc');
 const OWN = ['ht-gifts.js', 'ht-gifts-core.js', 'ops-tools.json', 'ops-stack.js', 'ops-drag.js'];
 const UID = 'test-owner-uid';
-const PW = crypto.createHash('sha256').update('bananas').digest('hex');
 
 let server, base, browser, usageLog;
 test.before(async () => {
@@ -43,19 +41,18 @@ test.before(async () => {
 test.after(async () => { await browser.close(); server.close(); });
 test.beforeEach(() => { usageLog = []; });
 
-// The fake game with these gift boxes ([x, y, options]), the password already known unless told otherwise.
+// The fake game with these gift boxes ([x, y, options]).
 async function open(gifts, setup, o) {
   o = o || {};
   const ctx = await browser.newContext({ viewport: { width: 375, height: 740 } });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => { throw e; });
   await page.goto(base);
-  await page.evaluate(([b, real, pw]) => {
+  await page.evaluate(([b, real]) => {
     window.__HTG_WORKER = b.replace(/\/$/, '');
     if (!real) window.__HTG_GAP_MS = 60;
     window.__HTG_TIMEOUT_MS = 800; window.__HTG_POLL_MS = 100; window.__HTG_BUSY_MS = 300; window.__HTG_IDLE_MS = 600;
-    if (pw) localStorage.setItem('htg_pw_v1', pw);
-  }, [base, !!o.realPace, o.noPassword ? '' : PW]);
+  }, [base, !!o.realPace]);
   await page.evaluate((list) => {
     const now = Math.floor(Date.now() / 1000);
     __fake.htg.gifts = list.map(([x, y, m]) => ({ x, y, k: 2864, m: Object.assign({ receiveBagUidList: [], endSecsTime: now + 1200, floatParadeId: 4, luckyBagNum: x, marchIdStr: 'M1' }, m || {}) }));
@@ -69,34 +66,15 @@ const sent = (page) => page.evaluate(() => __fake.sent.filter((x) => [8852, 901,
 const claims = async (page) => (await sent(page)).filter((x) => x.rid === 902).map((x) => x.p.x + ',' + x.p.y);
 const waitText = (page, sel, re, timeout) => page.waitForFunction(([s, r]) => { const e = document.querySelector(s); return !!e && new RegExp(r).test(e.textContent); }, [sel, re.source], { timeout: timeout || 10000 });
 
-test('HTG-1: the password gate: wrong is refused, "bananas" opens it, and the browser remembers it', async () => {
-  const { ctx, page } = await open([[10, 10]], null, { noPassword: true });
-  await launch(page);
-  await page.waitForSelector('#htg-pw');
-  assert.equal(await page.getAttribute('#htg-pw', 'type'), 'password');
-  await page.fill('#htg-pw', 'apples'); await page.click('#htg-unlock');
-  await waitText(page, '#htg-root .htg-msg', /That's not the password\./);
-  assert.equal((await sent(page)).length, 0, 'nothing sent while locked');
-  await page.fill('#htg-pw', '  Bananas '); await page.click('#htg-unlock');
-  await page.waitForFunction(() => window.__HTG.state().view === 'run');
-  assert.equal(await page.evaluate(() => localStorage.getItem('htg_pw_v1')), PW, 'remembered as the hash, never the word');
-  await page.click('#htg-stop');
-  await page.click('#htg-close');
+test('HTG-1 (Tex 2026-10-16): no password: the card runs straight away, and a password saved before is forgotten', async () => {
+  const { ctx, page } = await open([[10, 10]], () => localStorage.setItem('htg_pw_v1', 'e4ba5cbd251c98e6cd1c23f126a3b81d8d8328abc95387229850952b3ef9f904'));
   await launch(page);
   await page.waitForFunction(() => window.__HTG && window.__HTG.state().view === 'run', null, { timeout: 5000 });
-  await ctx.close();
-});
-
-test('HTG-PW-NOTE (Tex 2026-10-15): the password prompt says who to ask, and still says it after a wrong password', async () => {
-  const { ctx, page } = await open([[10, 10]], null, { noPassword: true });
-  await launch(page);
-  await page.waitForSelector('#htg-pw');
-  const note = () => page.$$eval('#htg-root .htg-hint', (els) => els.map((e) => e.textContent));
-  assert.deepEqual(await note(), ['Contact [DOG] MONKEY\u{1F412} for the password.']);
-  await page.fill('#htg-pw', 'apples'); await page.click('#htg-unlock');
-  await waitText(page, '#htg-root .htg-msg', /That's not the password\./);
-  assert.deepEqual(await note(), ['Contact [DOG] MONKEY\u{1F412} for the password.']);
-  assert.ok(!/\u2014/.test(await page.textContent('#htg-root')), 'no em dash');
+  assert.equal(await page.$$eval('#htg-pw', (e) => e.length), 0, 'no password field');
+  assert.equal(await page.evaluate(() => localStorage.getItem('htg_pw_v1')), null, 'the old saved password is cleared');
+  await page.waitForFunction(() => __fake.sent.some((x) => x.rid === 902), null, { timeout: 5000 });
+  assert.deepEqual(await claims(page), ['10,10']);
+  assert.ok(!/password/i.test(await page.textContent('#htg-root')), 'the card never mentions a password');
   await ctx.close();
 });
 

@@ -6,7 +6,7 @@
   'use strict';
   var TOOLS = { 'mask-boxes': '__MBX', 'enigma-veins': '__VEIN', 'ht-gifts': '__HTG', 'angels': '__ANG', 'odin-gather': '__ODIN', 'map-collector': '__MAPC' };
   var ORDER = ['mask-boxes', 'enigma-veins', 'ht-gifts', 'angels', 'odin-gather', 'map-collector'];
-  var NEEDS_PW = { 'map-collector': 'mapc_pw_v1', 'ht-gifts': 'htg_pw_v1' };   // started only when saved on that computer
+  var NEEDS_PW = { 'map-collector': 'mapc_pw_v1' };   // started only when saved on that computer (HT Gift Boxes has no password since 2026-10-16)
   var KINDS = ['start', 'stop', 'stopall', 'reconnect'];
   var TTL_MS = 120000, SEEN_MS = 600000, ITER = 210000, BAD_SIG_MAX = 3, SILENT_MS = 300000, OLD_LOGIN_MS = 20 * 3600000;
   var NONCE = /^[0-9a-f]{32}$/, HEX64 = /^[0-9a-f]{64}$/;

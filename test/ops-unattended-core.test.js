@@ -62,10 +62,10 @@ test('seen numbers are kept 10 minutes', () => {
   assert.equal(U.BAD_SIG_MAX, 3);
 });
 
-test('the six tools, their globals and the two that need a saved password', () => {
+test('the six tools, their globals and the one that needs a saved password (HT Gift Boxes has none since 2026-10-16)', () => {
   assert.deepEqual(U.ORDER, ['mask-boxes', 'enigma-veins', 'ht-gifts', 'angels', 'odin-gather', 'map-collector']);
   assert.deepEqual(U.TOOLS, { 'mask-boxes': '__MBX', 'enigma-veins': '__VEIN', 'ht-gifts': '__HTG', angels: '__ANG', 'odin-gather': '__ODIN', 'map-collector': '__MAPC' });
-  assert.deepEqual(U.NEEDS_PW, { 'map-collector': 'mapc_pw_v1', 'ht-gifts': 'htg_pw_v1' });
+  assert.deepEqual(U.NEEDS_PW, { 'map-collector': 'mapc_pw_v1' });
 });
 
 test('dashboard words: header, login link age, a tool row', () => {

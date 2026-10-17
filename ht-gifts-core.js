@@ -1,9 +1,8 @@
-// ht-gifts-core.js — HT Gift Boxes pure rules: the password, which Chip Blessing gift boxes to claim, our gift
-// marches out, the daily cap, the sent list, the game's answers. No DOM, no game access.
+// ht-gifts-core.js — HT Gift Boxes pure rules: which Chip Blessing gift boxes to claim, our gift marches out,
+// the daily cap, the sent list, the game's answers. No DOM, no game access.
 // window.HtGiftsCore in the browser, module.exports for node tests.
 (function (root) {
   'use strict';
-  var PW_HASH = 'e4ba5cbd251c98e6cd1c23f126a3b81d8d8328abc95387229850952b3ef9f904';   // sha256("bananas")
   var MAX_OUT = 5;                                      // Tex: at most 5 gift marches out at once
   var BAG_DEFAULT = 20, MIN_LEFT_SEC = 90, XY_TTL_MS = 35 * 60000;
   var GAP_MS = 1500, MAX_PER_MIN = 10, TYPE = 259, DROP = 256, CLAIM = 257, CAP_CFG = 250908001, CAP_DEFAULT = 10;
@@ -18,7 +17,6 @@
   function gameDay(ms) { var p = etParts(ms); return new Date(Date.UTC(p.y, p.mo - 1, p.d - (p.h < 12 ? 1 : 0))).toISOString().slice(0, 10); }
   function int(v, d) { var n = Math.floor(Number(v)); return isFinite(n) ? n : d; }
 
-  function checkPassword(hex) { return typeof hex === 'string' && hex === PW_HASH; }
   function capFrom(cfg) { var n = int(cfg, 0); return n > 0 ? n : CAP_DEFAULT; }
   // One gift box = one lucky bag of one blessing's drop march; a bare tile when the game gives no ids.
   function giftKey(m, x, y) { return m && m.marchIdStr != null && m.luckyBagNum != null ? String(m.marchIdStr) + ':' + m.luckyBagNum : '@' + x + ',' + y; }
@@ -97,9 +95,9 @@
   }
 
   var HtGiftsCore = {
-    PW_HASH: PW_HASH, MAX_OUT: MAX_OUT, BAG_DEFAULT: BAG_DEFAULT, MIN_LEFT_SEC: MIN_LEFT_SEC, XY_TTL_MS: XY_TTL_MS, GAP_MS: GAP_MS, MAX_PER_MIN: MAX_PER_MIN,
+    MAX_OUT: MAX_OUT, BAG_DEFAULT: BAG_DEFAULT, MIN_LEFT_SEC: MIN_LEFT_SEC, XY_TTL_MS: XY_TTL_MS, GAP_MS: GAP_MS, MAX_PER_MIN: MAX_PER_MIN,
     TYPE: TYPE, DROP: DROP, CLAIM: CLAIM, CAP_CFG: CAP_CFG, CAP_DEFAULT: CAP_DEFAULT,
-    gameDay: gameDay, checkPassword: checkPassword, capFrom: capFrom, giftKey: giftKey, pickGifts: pickGifts, ownFromAnswer: ownFromAnswer,
+    gameDay: gameDay, capFrom: capFrom, giftKey: giftKey, pickGifts: pickGifts, ownFromAnswer: ownFromAnswer,
     outCount: outCount, inFlight: inFlight, room: room, sentFor: sentFor, classify: classify, classifyQuery: classifyQuery, classifyView: classifyView, gate: gate
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = HtGiftsCore;

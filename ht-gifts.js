@@ -1,7 +1,7 @@
 // ht-gifts.js — HT Gift Boxes: during Chip Blessing, claims the HT Treasure gift boxes that players' blessings drop on
 // the map, with the game's own requests: the next claimable gift (8852), the map view around it (901), the box's Claim
-// (902, a march with no troops). At most 5 gift marches out, up to the game's daily cap. Behind the password
-// "bananas" (Tex). Rules live in ht-gifts-core.js (window.HtGiftsCore). One request at a time, each at least 1.5 s
+// (902, a march with no troops). At most 5 gift marches out, up to the game's daily cap. No password since
+// 2026-10-16 (Tex). Rules live in ht-gifts-core.js (window.HtGiftsCore). One request at a time, each at least 1.5 s
 // after the last one any Ops tool sent.
 (function () {
   'use strict';
@@ -9,12 +9,12 @@
   var C = window.HtGiftsCore;
   if (!C) { try { alert('HT Gift Boxes did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.3';
+  var VERSION = '2026-10-16.4';
   var WORKER = window.__HTG_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var GAP_MS = window.__HTG_GAP_MS || C.GAP_MS, TIMEOUT_MS = window.__HTG_TIMEOUT_MS || 10000, POLL_MS = window.__HTG_POLL_MS || 1000;
   var BUSY_MS = window.__HTG_BUSY_MS || 10000, IDLE_MS = window.__HTG_IDLE_MS || 30000;
   var STUCK_MS = window.__HTG_STUCK_MS || 180000;         // a map view with no answer this long: the connection is gone
-  var LS_PW = 'htg_pw_v1', LS_SENT = 'htg_sent_v1_', LS_OWN = 'htg_own_v1_', LS_COUNT = 'htg_count_v1_', LS_MIN = 'htg_min_v1';
+  var LS_OLD_PW = 'htg_pw_v1', LS_SENT = 'htg_sent_v1_', LS_OWN = 'htg_own_v1_', LS_COUNT = 'htg_count_v1_', LS_MIN = 'htg_min_v1';
   var TARGET = {};
 
   // ---------------------------------------------------------------- game
@@ -218,9 +218,8 @@
     '#htg-root .htg-card.min{width:auto;padding:0 4px 0 12px}#htg-root .min .htg-body{display:none}#htg-root .min .htg-head{cursor:pointer}',
     '#htg-root .htg-stat{font-variant-numeric:tabular-nums;font-weight:600}#htg-root .htg-sub{color:#8b949e;font-size:12px;font-variant-numeric:tabular-nums}',
     '#htg-root .htg-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}#htg-root .htg-last{color:#79c0ff;font-size:12px;margin-top:2px}#htg-root .htg-last:empty{display:none}',
-    '#htg-root .htg-hint{color:#8b949e;font-size:12px;margin-top:6px}#htg-root .htg-msg{margin:4px 0 2px}#htg-root .htg-btns{display:flex;gap:6px;margin-top:8px}',
-    '#htg-root .htg-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#htg-root .htg-btns button:hover{border-color:#79c0ff}',
-    '#htg-root input#htg-pw{width:100%;height:44px;box-sizing:border-box;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;padding:0 10px;font-family:inherit;font-size:16px}'
+    '#htg-root .htg-msg{margin:4px 0 2px}#htg-root .htg-btns{display:flex;gap:6px;margin-top:8px}',
+    '#htg-root .htg-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#htg-root .htg-btns button:hover{border-color:#79c0ff}'
   ].join('\n');
   var root = null, card = null, body = null;
   function el(tag, cls, txt) { var e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
@@ -274,26 +273,6 @@
     if (root.style.left !== L.left) root.style.left = L.left;
     if (root.style.right !== L.right) root.style.right = L.right;
   }
-  function showPassword(bad) {
-    ensureRoot(); body.textContent = ''; setView('password'); card.className = 'htg-card' + (bad ? ' warn' : '');
-    root.removeAttribute('data-ops-stopped');
-    var lab = el('label', 'htg-sub', 'Password'); lab.htmlFor = 'htg-pw'; body.appendChild(lab);
-    var inp = el('input'); inp.id = 'htg-pw'; inp.type = 'password'; inp.autocomplete = 'off'; inp.setAttribute('autocapitalize', 'off'); inp.spellcheck = false;
-    body.appendChild(inp);
-    body.appendChild(el('div', 'htg-hint', 'Contact [DOG] MONKEY\uD83D\uDC12 for the password.'));   // who hands it out (Tex 2026-10-15)
-    if (bad) body.appendChild(el('div', 'htg-msg', "That's not the password."));
-    var go = function () {
-      sha256Hex(String(inp.value || '').trim().toLowerCase()).then(function (h) {
-        if (C.checkPassword(h)) { lsSet(LS_PW, h); begin(); } else showPassword(true);
-      });
-    };
-    inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
-    var btns = el('div', 'htg-btns');
-    btns.appendChild(button('htg-unlock', 'Unlock', go)); btns.appendChild(button('htg-close', 'Close', removeRoot));
-    body.appendChild(btns);
-    paint();                                              // kept clear of the cards opened before it (review minor)
-    try { inp.focus(); } catch (e) {}
-  }
   function showRun() {
     ensureRoot(); body.textContent = ''; setView('run');
     root.removeAttribute('data-ops-stopped');
@@ -314,7 +293,7 @@
   function put(id, text) { var e = document.getElementById(id); if (e && e.textContent !== text) { e.textContent = text; e.title = text; } }
   function paint() {
     if (!card) return;
-    if (S.view !== 'run') { place(where()); return; }    // the password and message cards keep clear of the others too (review minor)
+    if (S.view !== 'run') { place(where()); return; }    // the message card keeps clear of the others too (review minor)
     put('htg-stat', 'Claimed today ' + S.today + '/' + S.cap);
     put('htg-sub', 'Out ' + S.out + '/' + C.MAX_OUT);
     put('htg-foot', S.foot); put('htg-last', S.last); put('htg-mini', S.today + '/' + S.cap);
@@ -338,6 +317,7 @@
     S.siteKey = h.slice(0, 16);
     S.count = lsJSON(LS_COUNT + S.siteKey);
     syncSent(); loadOwn();
-    if (C.checkPassword(lsGet(LS_PW))) begin(); else showPassword(false);
+    lsSet(LS_OLD_PW, null);                              // the password is gone (Tex 2026-10-16): forget a saved one
+    begin();
   });
 })();

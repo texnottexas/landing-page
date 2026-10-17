@@ -1,21 +1,17 @@
 'use strict';
-// HT Gift Boxes rules (Tex, 2026-10-13): the password, which gift boxes to claim, marches out, the daily cap, answers.
+// HT Gift Boxes rules (Tex, 2026-10-13): which gift boxes to claim, marches out, the daily cap, answers.
 // Run: node --test test/ht-gifts-core.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const G = require('../ht-gifts-core.js');
 
 const NOW = 1791946000, NOW_MS = NOW * 1000;
 const gift = (x, y, o) => ({ v: 1, x, y, k: 2864, id: x * 1000 + y, pointType: 259, m: Object.assign({ receiveBagUidList: [], endSecsTime: NOW + 1200, floatParadeId: 4, luckyBagNum: x, marchIdStr: 'M1' }, o) });
 const O = (o) => Object.assign({ me: 'me', sent: {}, bagCap: () => 20, now: NOW, k: 2864, anchor: null, nowMs: NOW_MS }, o);
 
-test('password: "bananas", trimmed and lowercased, by its SHA-256', () => {
-  const h = (s) => crypto.createHash('sha256').update(s).digest('hex');
-  assert.equal(G.PW_HASH, h('bananas'));
-  assert.equal(G.checkPassword(h('bananas')), true);
-  assert.equal(G.checkPassword(h('apples')), false);
-  assert.equal(G.checkPassword(''), false);
+test('no password (Tex 2026-10-16): the rules carry no password or its hash', () => {
+  assert.equal(G.PW_HASH, undefined);
+  assert.equal(G.checkPassword, undefined);
 });
 
 test('pickGifts: claimable gift boxes only (not mine, not sent, not full, not ending, on my map), fewest claims left first', () => {
