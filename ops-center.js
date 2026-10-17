@@ -312,9 +312,10 @@
       var t = toolById(id), tl = S.tiles[id], st = statusOf(t, ck), badge = C().badgeFor(t, S.seen);
       tl.pills.textContent = '';
       tl.pills.appendChild(K().pill(PILL[st.state][0], PILL[st.state][1]));
+      if (t.beta) tl.pills.appendChild(K().pill('Beta', 'warn'));   // a few players are trying it out (Tex 2026-10-17)
       if (badge) tl.pills.appendChild(K().pill(badge === 'new' ? 'New' : 'Updated', 'info'));
       tl.btn.classList.toggle('dim', st.state === 'locked' || st.state === 'blocked' || st.state === 'off' || st.state === 'wait');
-      tl.btn.setAttribute('aria-label', t.title + ', ' + PILL[st.state][0] + (badge ? ', ' + (badge === 'new' ? 'New' : 'Updated') : ''));
+      tl.btn.setAttribute('aria-label', t.title + ', ' + PILL[st.state][0] + (t.beta ? ', Beta' : '') + (badge ? ', ' + (badge === 'new' ? 'New' : 'Updated') : ''));
     });
     if (S.sub) S.sub.textContent = subText();
   }
@@ -355,6 +356,7 @@
     }
     var badge = C().badgeFor(t, S.seen);
     if (badge) b.appendChild(K().el('div', 'ops-meta', (badge === 'new' ? 'New' : 'Updated') + ' ' + t.version));
+    if (t.beta) b.appendChild(K().el('div', 'ops-meta', 'Beta: still being tried out.'));
     var waitNote = K().el('div', 'ops-note'); b.appendChild(waitNote);   // tools that run together are open (Tex 2026-10-16)
     var go = K().button('Launch', 'primary', function () { launch(t); });
     b.appendChild(go);

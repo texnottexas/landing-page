@@ -56,7 +56,7 @@ async function open(viewport, before, o, arg) {
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
   if (o && o.potatoMissing) await ctx.route('**/ops-potato.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
-  if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside || o.registered || o.group)) await ctx.route('**/ops-tools.json*', async (rt) => {
+  if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside || o.registered || o.group || o.beta)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
     j.tools.forEach((t) => {
       if (o.dragFirst && t.id === 'alpha') t.scripts.unshift('ops-drag.js');   // a tool that lists the drag helper first
@@ -64,6 +64,7 @@ async function open(viewport, before, o, arg) {
       if (o.events && o.events[t.id]) t.event = o.events[t.id];                 // a tool tied to an event
       if (o.tucked && o.tucked.includes(t.id)) t.tucked = true;                 // a tool that always sits under "Not running now"
       if (o.registered && o.registered.includes(t.id)) t.registered = 'mapcollector';   // shown only to players in the Map Collector registry
+      if (o.beta && o.beta.includes(t.id)) t.beta = true;                         // a tool a few players are trying out
     });
     if (o.group) j.tools.push(
       { id: 'grpa', title: 'Group A', icon: 'gift', gate: 'member', ready: ['game'], scripts: ['fake-group-a.js'], version: '1', overlay: '#fake-ga', together: true, desc: 'Runs with B.', keywords: '' },
@@ -233,6 +234,19 @@ test('badges: Updated after a version change, New for a newly listed tool', asyn
   assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Ready', 'Updated']);
   assert.deepEqual(await tileStatus(page, 'Delta Tool'), ['Ready', 'New']);
   assert.deepEqual(await tileStatus(page, 'Gamma Tool'), ['Not ready']);
+  await ctx.close();
+});
+
+test('OPS-BETA (Tex 2026-10-17): a beta tool says so on its tile, beside New, and on its page', async () => {
+  const { ctx, page } = await open(PHONE, () => { localStorage.setItem('ops_seen_v1', JSON.stringify({ alpha: '1', beta: '1', gamma: '1' })); }, { beta: ['alpha', 'delta'] });
+  await page.waitForSelector('.ops-tile');
+  assert.deepEqual(await tileStatus(page, 'Alpha Tool'), ['Ready', 'Beta']);
+  assert.deepEqual(await tileStatus(page, 'Delta Tool'), ['Ready', 'Beta', 'New']);
+  assert.ok(!(await tileStatus(page, 'Beta Tool')).includes('Beta'), 'no tag on the others (the one named Beta Tool included)');
+  assert.match(await page.$eval('.ops-tile:has(.ops-tname:text-is("Alpha Tool"))', (e) => e.getAttribute('aria-label')), /Beta/);
+  await clickTile(page, 'Alpha Tool');
+  await page.waitForSelector('.ops-meta');
+  assert.match(await page.$eval('.ops-card', (e) => e.textContent), /Beta: still being tried out\./);
   await ctx.close();
 });
 

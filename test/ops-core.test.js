@@ -410,3 +410,10 @@ test('the remote icon and the opsremote registry are known (Unattended mode, Tex
   const t = OC.validateTools({ tools: [{ id: 'u', title: 'U', icon: 'remote', gate: 'member', ready: ['game'], scripts: ['u.js'], version: '1', overlay: '#u', registered: 'opsremote', desc: 'd', keywords: '' }] });
   assert.equal(t.tools[0].registered, 'opsremote');
 });
+
+test('beta (Tex 2026-10-17): a tool can be marked beta; only a real true counts', () => {
+  const one = (extra) => OC.validateTools({ tools: [Object.assign({ id: 'b', title: 'B', icon: 'decor', gate: 'member', ready: ['game'], scripts: ['b.js'], version: '1', overlay: '#b', desc: 'd', keywords: '' }, extra)] }).tools[0];
+  assert.equal(one({ beta: true }).beta, true);
+  assert.equal(one({}).beta, false);
+  assert.equal(one({ beta: 'yes' }).beta, false);
+});

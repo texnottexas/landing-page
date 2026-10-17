@@ -352,3 +352,7 @@ test('Decor Optimizer tile (Tex 2026-10-17): members, game + base ready (it goes
   assert.ok(/node --test [^\n]*test\/decor-core\.test\.js/.test(yml) && /node --test [^\n]*test\/decor-game\.test\.js/.test(yml), 'gated');
   assert.match(read('pages/map-collector.html'), /'decor-optimizer': \['move', 'moves'\]/, 'its count reads "N moves" in the Tool usage panel');
 });
+
+test('beta (Tex 2026-10-17): only Decor Optimizer is marked beta while a few players try it out', () => {
+  assert.deepEqual(list.tools.filter((t) => t.beta).map((t) => t.id), ['decor-optimizer']);
+});

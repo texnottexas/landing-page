@@ -58,6 +58,7 @@
         tucked: t.tucked === true,                     // always under "Not running now" (Tex 2026-10-14: TC Squad Sync, Class Talent Reset (EL))
         alongside: t.alongside === true,               // runs alongside the others, never holding the Ops Center (Tex 2026-10-14: Rickroll)
         together: t.together === true,                 // runs together with the other "together" tools (Tex 2026-10-16)
+        beta: t.beta === true,                         // a few players are trying it out: a Beta tag on its tile (Tex 2026-10-17)
         // shown only to players the named registry holds; a key that isn't a known registry hides the tool from everyone
         registered: t.registered === undefined ? null : (REGISTRIES.indexOf(t.registered) >= 0 ? t.registered : ''),
         ownerOnly: t.owners !== undefined          // fail closed: an owners key that isn't a good list hides the tool
