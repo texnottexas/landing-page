@@ -12,7 +12,7 @@
   var C = window.LooterCore;
   if (!C) { try { alert('Looter Locator did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-17';
+  var VERSION = '2026-10-17.2';
   var WORKER = window.__LOOT_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = window.__LOOT_GAP_MS != null, GAP_MS = window.__LOOT_GAP_MS || 1500;   // Tex: every 1.5 s is fine
   var LIST_MS = window.__LOOT_LIST_MS || C.LIST_MS, RECHECK_MS = window.__LOOT_RECHECK_MS || C.RECHECK_MS, PUSH_MS = window.__LOOT_PUSH_MS || C.PUSH_DELAY_MS;
@@ -21,7 +21,8 @@
   var SHARE_GAP_MS = window.__LOOT_SHARE_GAP_MS || C.SHARE_GAP_MS, RENEW_MS = window.__LOOT_RENEW_MS || 60000, LOST_MS = 150000, STUCK_MS = window.__LOOT_STUCK_MS || 180000;
   var EVENT = 'UPDATE_CS_HUNT_ASSEMBLY_TIPS';             // the game's event for the cross-in push (21380 {sid})
   var VIEW = 901, LIST = 7575, INFO = 7571;               // what the game used on 2026-10-16; read live when it names them
-  var LS_SHARE = 'loot_share_v1', LS_MIN = 'loot_min_v1', LS_COUNT = 'loot_count_v1_';
+  var LS_SHARE = 'loot_share_v1', LS_MIN = 'loot_min_v1', LS_COUNT = 'loot_count_v1_', LS_DELAY = 'loot_delay_v1';
+  var MINUTE_MS = window.__LOOT_MINUTE_MS != null ? window.__LOOT_MINUTE_MS : 60000;   // the share delay's minute (tests shorten it)
   var TARGET = {};
 
   // ---------------------------------------------------------------- game
@@ -71,7 +72,7 @@
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
   function lsJSON(k) { try { return JSON.parse(lsGet(k)); } catch (e) { return null; } }
-  var S = { running: false, stopped: false, view: '', siteKey: '', name: '', share: lsGet(LS_SHARE) !== '0', min: lsGet(LS_MIN) === '1',
+  var S = { running: false, stopped: false, view: '', siteKey: '', name: '', share: lsGet(LS_SHARE) !== '0', min: lsGet(LS_MIN) === '1', delay: C.delayMinutes(lsGet(LS_DELAY)),
     list: [], listAt: 0, wantList: true, pushAt: 0, tracked: {}, holds: {}, log: [], fails: 0, pausedUntil: 0, pauseWhy: '', busySince: 0,
     passOn: false, passAt: 0, late: false, lateChecked: false, lastShareAt: 0, lastAllyAt: 0, world: false, worldHolder: '', infoAsked: {}, leaseOkAt: 0, renewAt: 0, count: null, foot: 'Starting...', tone: 'ok', bus: null };
   function today() { return C.gameDay(Date.now()); }
@@ -183,10 +184,13 @@
     pts.forEach(function (p) {
       var t = S.tracked[p.marchId];
       if (!t) {
-        S.tracked[p.marchId] = { marchId: p.marchId, x: p.x, y: p.y, k: p.k || mapK(), fSid: p.fSid, name: listName(p.fSid), hideEndMs: p.hideEndMs, attack: p.attack, spId: p.spId, lastCheck: now, postedWorld: null, postedAlly: null, allyAt: 0, leader: '' };
+        S.tracked[p.marchId] = { marchId: p.marchId, x: p.x, y: p.y, k: p.k || mapK(), fSid: p.fSid, name: listName(p.fSid), hideEndMs: p.hideEndMs, attack: p.attack, spId: p.spId, lastCheck: now, postedWorld: null, postedAlly: null, allyAt: 0, leader: '', since: now };
         delete S.holds[p.fSid]; bump(); reportUsage();
         return;
       }
+      // the share delay restarts when a looter we already shared moves; a move before its first share doesn't
+      // restart it (one that keeps moving would never be shared)
+      if ((p.x !== t.x || p.y !== t.y) && (t.postedWorld || t.postedAlly)) t.since = now;
       t.x = p.x; t.y = p.y; t.hideEndMs = p.hideEndMs; t.attack = p.attack; t.lastCheck = now;
     });
     paint();
@@ -267,10 +271,14 @@
     paint();
     return true;
   }
+  // Tex 2026-10-17: each looter waits the sharer's delay (2 minutes by default) before it goes to chat, so players
+  // don't all attack the moment it's found.
+  function waitMs(t) { return C.shareAt(t, S.delay, MINUTE_MS) - Date.now(); }
+  function unshared(t) { return !at(t.postedAlly, t) || (S.world && !at(t.postedWorld, t)); }
   // World chat poster: world first, then the alliance 2 s later. Everyone else: their alliance chat only.
   async function shareDue() {
     if (!S.share) return;
-    var due = values().filter(function (t) { return !at(t.postedAlly, t) || (S.world && !at(t.postedWorld, t)); });
+    var due = values().filter(function (t) { return unshared(t) && waitMs(t) <= 0; });
     for (var i = 0; i < due.length && S.running; i++) {
       var t = due[i];
       if (S.world && !at(t.postedWorld, t)) {
@@ -402,7 +410,9 @@
     '#loot-root .loot-note{color:#8b949e;font-size:11px;margin-top:6px}#loot-root .loot-role{color:#8b949e;font-size:12px;margin-top:2px}',
     '#loot-root .loot-msg{margin:4px 0 2px}#loot-root .loot-btns{display:flex;gap:6px;margin-top:8px}',
     '#loot-root .loot-btns button{flex:1;min-height:44px;border:1px solid #30363d;border-radius:8px;background:#1c2128}#loot-root .loot-btns button:hover{border-color:#79c0ff}',
-    '#loot-root button#loot-share[aria-pressed="true"]{border-color:#3fb950;color:#3fb950}'
+    '#loot-root button#loot-share[aria-pressed="true"]{border-color:#3fb950;color:#3fb950}',
+    '#loot-root .loot-delay{display:flex;align-items:center;gap:8px;margin-top:8px;color:#8b949e;font-size:12px}',
+    '#loot-root select#loot-delay{flex:1;min-height:36px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;font:inherit;padding:0 8px}'
   ].join('\n');
   var NOTE = 'Only one person per alliance needs to run Looter Locator.';
   var root = null, card = null, body = null;
@@ -459,6 +469,12 @@
     var rows = el('div', 'loot-rows'); rows.id = 'loot-rows'; body.appendChild(rows);
     var last = el('div', 'loot-last'); last.id = 'loot-last'; body.appendChild(last);
     body.appendChild(el('div', 'loot-note', NOTE));
+    var dl = el('label', 'loot-delay'); dl.appendChild(document.createTextNode('Share after '));
+    var sel = el('select'); sel.id = 'loot-delay'; sel.title = 'How long a looter waits before it goes to chat';
+    for (var m = C.DELAY_MIN; m <= C.DELAY_MAX; m++) { var o = el('option', null, m + ' min'); o.value = String(m); sel.appendChild(o); }
+    sel.value = String(S.delay);
+    sel.addEventListener('change', function () { S.delay = C.delayMinutes(sel.value); lsSet(LS_DELAY, String(S.delay)); S.rowsKey = ''; paint(); });
+    dl.appendChild(sel); body.appendChild(dl);
     var btns = el('div', 'loot-btns');
     var sh = button('loot-share', shareLabel(), function () {
       S.share = !S.share; lsSet(LS_SHARE, S.share ? '1' : '0'); sh.textContent = shareLabel(); sh.setAttribute('aria-pressed', String(S.share));
@@ -485,13 +501,14 @@
     var box = document.getElementById('loot-rows');
     if (!box) return;
     var list = values().sort(function (a, b) { return a.fSid - b.fSid || a.x - b.x; }), now = serverMs();
-    var key = list.map(function (t) { return t.marchId + '@' + t.x + ',' + t.y + ':' + (t.name || '') + ':' + C.looks(t, now); }).join('|');
+    function wait(t) { var w = S.share && unshared(t) ? waitMs(t) : 0; return w > 0 ? ' · Shares in ' + C.clock(w) : ''; }
+    var key = list.map(function (t) { return t.marchId + '@' + t.x + ',' + t.y + ':' + (t.name || '') + ':' + C.looks(t, now) + wait(t); }).join('|');
     if (key === S.rowsKey) return;
     S.rowsKey = key; box.textContent = '';
     list.forEach(function (t) {
       var row = el('div', 'loot-row'), who = el('div', 'loot-who');
       who.appendChild(el('div', 'loot-name', (t.name || 'Looter') + ' · S' + t.fSid));
-      var w = el('div', 'loot-where'), b = el('b', null, t.x + ', ' + t.y); w.appendChild(b); w.appendChild(document.createTextNode(' · ' + C.looks(t, now)));
+      var w = el('div', 'loot-where'), b = el('b', null, t.x + ', ' + t.y); w.appendChild(b); w.appendChild(document.createTextNode(' · ' + C.looks(t, now) + wait(t)));
       who.appendChild(w); row.appendChild(who);
       var go = button(null, 'Go', function () { jump(t); }); go.className = 'loot-go'; go.title = 'Show ' + t.x + ', ' + t.y + ' on the map';
       row.appendChild(go); box.appendChild(row);

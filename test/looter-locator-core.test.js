@@ -151,3 +151,22 @@ test('how a looter shows: invisible with time left, attacking, or visible', () =
   assert.equal(L.looks({ hideEndMs: NOW - 1, attack: 1 }, NOW), 'Attacking');
   assert.equal(L.looks({ hideEndMs: 0, attack: 0 }, NOW), 'Visible');
 });
+
+// Tex 2026-10-17: "before sharing to world chat and alliance chat, let us add a 2 minute delay ... configurable from
+// the sharer's menu, default 2 minutes, up to 5".
+test('share delay: 1 to 5 whole minutes, 2 by default; anything else falls back or is clamped', () => {
+  assert.equal(L.DELAY_DEFAULT, 2); assert.equal(L.DELAY_MIN, 1); assert.equal(L.DELAY_MAX, 5);
+  assert.equal(L.delayMinutes(null), 2);
+  assert.equal(L.delayMinutes('x'), 2);
+  assert.equal(L.delayMinutes('3'), 3);
+  assert.equal(L.delayMinutes(5), 5);
+  assert.equal(L.delayMinutes('0'), 1);
+  assert.equal(L.delayMinutes('9'), 5);
+  assert.equal(L.delayMinutes('2.5'), 2);
+});
+
+test('share delay: a looter may be shared once its delay has run from when the clock started', () => {
+  assert.equal(L.shareAt({ since: NOW }, 2, 60000), NOW + 120000);
+  assert.equal(L.shareAt({ since: NOW }, 5, 60000), NOW + 300000);
+  assert.equal(L.shareAt({}, 2, 60000), 120000, 'no start time: counts from 0, never NaN');
+});

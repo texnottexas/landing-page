@@ -62,10 +62,11 @@ async function open(o) {
     window.__LOOT_GAP_MS = o.gapMs || 10; window.__LOOT_STUCK_MS = o.stuckMs || 180000; window.__LOOT_LIST_MS = o.listMs || 60000; window.__LOOT_RECHECK_MS = o.recheckMs || 60000;
     window.__LOOT_PUSH_MS = 50; window.__LOOT_BOUNCE_MS = o.bounceMs || 1500; window.__LOOT_TIMEOUT_MS = 600; window.__LOOT_PAUSE_MS = o.pauseMs || 60000;
     window.__LOOT_SHARE_GAP_MS = o.shareGapMs || 50; window.__LOOT_RENEW_MS = o.renewMs || 60000;
+    window.__LOOT_MINUTE_MS = o.minuteMs || 0;           // the share delay's minute: 0 = share at once (the older tests), LOOT-DELAY sets it
     if (!o.realCaps) { window.__LOOT_MAX_PER_MIN = 1000; window.__LOOT_MAX_PER_10 = 1000; }   // fast passes; LOOT-9 keeps the real caps
     __fake.loot.list = o.list || []; __fake.loot.points = o.points || []; __fake.loot.infos = o.infos || {};
     __fake.chat.push({ _msgId: 'a0', _time: Math.floor(Date.now() / 1000) - 60, _worldId: '2864', _msgType: 0, _msg: 'hello alliance' });   // like after login: alliance chat holds history
-  }, [base, { listMs: o.listMs, recheckMs: o.recheckMs, bounceMs: o.bounceMs, pauseMs: o.pauseMs, shareGapMs: o.shareGapMs, renewMs: o.renewMs, list: o.list, points: o.points, infos: o.infos, realCaps: o.realCaps, gapMs: o.gapMs, stuckMs: o.stuckMs }]);
+  }, [base, { listMs: o.listMs, recheckMs: o.recheckMs, bounceMs: o.bounceMs, pauseMs: o.pauseMs, shareGapMs: o.shareGapMs, renewMs: o.renewMs, list: o.list, points: o.points, infos: o.infos, realCaps: o.realCaps, gapMs: o.gapMs, stuckMs: o.stuckMs, minuteMs: o.minuteMs }]);
   if (o.setup) await page.evaluate(o.setup);
   await page.addScriptTag({ url: base + 'looter-locator-core.js' });
   return { ctx, page };
@@ -429,3 +430,57 @@ test('LOOT-28: outside Loot Quest, a refused looter list ends it there (never a 
   assert.equal((await views(page)).length, 0);
   await ctx.close();
 });
+
+// Tex 2026-10-17: "before sharing to world chat and alliance chat, let us add a 2 minute delay, we are now finding them
+// too fast ... configurable from the sharer's menu, default 2 minutes, up to 5". A minute is 300 ms here.
+test('LOOT-DELAY-1 (Tex): a found looter is shared 2 minutes after it was found (world, then alliance 2 s later); the card counts down', async () => {
+  const { ctx, page } = await open({ list: [AAKASH], points: [P1], minuteMs: 300, infos: { [P1.marchId]: { leader: 'Aakash', sid: 4419 } } });
+  await launch(page);
+  await page.waitForFunction(() => window.__LOOT.state().tracked === 1, null, { timeout: 15000 });
+  const found = await page.evaluate(() => Date.now());
+  assert.equal(await page.$eval('#loot-delay', (e) => e.value), '2');
+  assert.deepEqual(await page.$$eval('#loot-delay option', (os) => os.map((o) => o.value + '=' + o.textContent)), ['1=1 min', '2=2 min', '3=3 min', '4=4 min', '5=5 min']);
+  await waitText(page, /Shares in \d+:\d\d/);
+  assert.equal((await shares(page)).length, 0, 'nothing yet');
+  await page.waitForFunction(() => __fake.shares.length === 1, null, { timeout: 8000 });
+  const w = await page.evaluate(() => __fake.shares[0].at);
+  assert.ok(w - found >= 550, 'world chat waited the 2 minutes: ' + (w - found));
+  await page.waitForFunction(() => __fake.loot.allyShares.length === 1, null, { timeout: 5000 });
+  const a = (await ally(page))[0];
+  assert.ok(a.at - w >= 1900, 'alliance chat still 2 s after the world post');
+  await ctx.close();
+});
+
+test('LOOT-DELAY-2 (Tex): the sharer picks 1 to 5 minutes on the card; it is remembered and used', async () => {
+  const { ctx, page } = await open({ list: [AAKASH], points: [P1], minuteMs: 300, setup: () => localStorage.setItem('loot_delay_v1', '4') });
+  await launch(page);
+  await page.waitForFunction(() => window.__LOOT.state().tracked === 1, null, { timeout: 15000 });
+  const found = await page.evaluate(() => Date.now());
+  assert.equal(await page.$eval('#loot-delay', (e) => e.value), '4', 'remembered');
+  await page.waitForTimeout(800);
+  assert.equal((await shares(page)).length, 0, 'not at 2 minutes: the sharer chose 4');
+  await page.selectOption('#loot-delay', '1');
+  assert.equal(await page.evaluate(() => localStorage.getItem('loot_delay_v1')), '1');
+  await page.waitForFunction(() => __fake.shares.length === 1, null, { timeout: 5000 });
+  const w = await page.evaluate(() => __fake.shares[0].at);
+  assert.ok(w - found >= 250, 'a change applies to looters already waiting');
+  await ctx.close();
+});
+
+test('LOOT-DELAY-3 (Tex): a looter that moves after it was shared is shared again only after the delay from the move', async () => {
+  const { ctx, page } = await open({ list: [AAKASH], points: [Object.assign({}, P1)], minuteMs: 300, recheckMs: 200 });
+  await launch(page);
+  await page.waitForFunction(() => __fake.shares.length === 1, null, { timeout: 15000 });
+  const moved = await page.evaluate(() => { __fake.loot.points[0].x = 500; __fake.loot.points[0].y = 790; return Date.now(); });
+  await page.waitForFunction(() => __fake.shares.length === 2, null, { timeout: 8000 });
+  const second = await page.evaluate(() => __fake.shares[1]);
+  assert.deepEqual(second.link.p, { x: 500, y: 790, z: 2864 });
+  assert.ok(second.at - moved >= 550, 'waited the 2 minutes after the move: ' + (second.at - moved));
+  await ctx.close();
+});
+
+test('LOOT-DELAY-4: the delay minute is real time by default (only the test shortens it)', async () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'looter-locator.js'), 'utf8');
+  assert.match(src, /MINUTE_MS = window\.__LOOT_MINUTE_MS != null \? window\.__LOOT_MINUTE_MS : 60000/);
+});
+

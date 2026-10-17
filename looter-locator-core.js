@@ -10,6 +10,7 @@
   var MAX_PER_MIN = 40, MAX_PER_10 = 300, FAILS_MAX = 2, PAUSE_MS = 300000;   // Tex: a lookup every 1.5 s is fine
   var SHARE_WINDOW_MS = 300000, NEAR = 3, SHARE_GAP_MS = 10000, ALLY_DELAY_MS = 2000, BOUNCE_MS = 10000;
   var POSITION_T = 0, BOSS_ST = 1;                     // ChatShareLinkType.POSITION, ChatShareLinkSubType.BOSS
+  var DELAY_DEFAULT = 2, DELAY_MIN = 1, DELAY_MAX = 5;  // Tex 2026-10-17: wait before sharing (minutes), the sharer picks
 
   function num(v) { var n = Number(v != null && typeof v === 'object' && v.toString ? v.toString() : v); return isFinite(n) ? n : NaN; }
   function whole(v, lo, hi) { return typeof v === 'number' && v % 1 === 0 && v >= lo && v <= hi; }
@@ -142,6 +143,14 @@
     var o = {}; ET_FMT.formatToParts(new Date(ms)).forEach(function (p) { o[p.type] = p.value; });
     return new Date(Date.UTC(+o.year, +o.month - 1, +o.day - ((+o.hour % 24) < 12 ? 1 : 0))).toISOString().slice(0, 10);
   }
+  // The share delay the sharer picked (stored text or a number): whole minutes 1-5, else the default.
+  function delayMinutes(v) {
+    var n = Number(v);
+    if (v == null || v === '' || !isFinite(n)) return DELAY_DEFAULT;
+    return Math.min(DELAY_MAX, Math.max(DELAY_MIN, Math.floor(n)));
+  }
+  // When a tracked looter may be shared: its delay counted from `since` (found, or moved after it was shared).
+  function shareAt(t, minutes, minuteMs) { return (Number(t && t.since) || 0) + minutes * minuteMs; }
   function clock(ms) { var s = Math.max(0, Math.ceil(ms / 1000)); return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
   function looks(p, now) {
     if (p.hideEndMs > now) return 'Invisible ' + clock(p.hideEndMs - now);
@@ -152,6 +161,7 @@
     COLS: COLS, ROWS: ROWS, TYPE: TYPE, LIST_MS: LIST_MS, RECHECK_MS: RECHECK_MS, PUSH_DELAY_MS: PUSH_DELAY_MS, HOLD_MS: HOLD_MS,
     MAX_PER_MIN: MAX_PER_MIN, MAX_PER_10: MAX_PER_10, FAILS_MAX: FAILS_MAX, PAUSE_MS: PAUSE_MS,
     SHARE_WINDOW_MS: SHARE_WINDOW_MS, NEAR: NEAR, SHARE_GAP_MS: SHARE_GAP_MS, ALLY_DELAY_MS: ALLY_DELAY_MS, BOUNCE_MS: BOUNCE_MS,
+    DELAY_DEFAULT: DELAY_DEFAULT, DELAY_MIN: DELAY_MIN, DELAY_MAX: DELAY_MAX, delayMinutes: delayMinutes, shareAt: shareAt,
     passCells: passCells, inWindow: inWindow, ringCells: ringCells, points: points, crossIn: crossIn,
     lootQuestLive: lootQuestLive, nextWindow: nextWindow, missing: missing, allFound: allFound, recheck: recheck,
     textSpots: textSpots, chatSpots: chatSpots, shareCheck: shareCheck, card: card, gate: gate, gameDay: gameDay, clock: clock, looks: looks
