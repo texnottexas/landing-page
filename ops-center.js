@@ -67,6 +67,7 @@
       if (!I || !Array.isArray(I._activityList)) return null;
       var acts = I._activityList.slice();
       if (I._activityMap && typeof I._activityMap === 'object') Object.keys(I._activityMap).forEach(function (k) { acts.push(I._activityMap[k]); });
+      try { var h = req('CSHuntController'), cs = h && h.CSHuntController && h.CSHuntController.getInstance(); acts = acts.concat(C().lootQuestActs(cs)); } catch (e) {}   // Loot Quest windows (Tex 2026-10-16)
       var d = req('DataCenter'), now = Number(d && d.DATA && d.DATA.ServerTime);
       return { acts: acts, now: now > 0 ? now : Math.floor(Date.now() / 1000) };
     } catch (e) { return null; }

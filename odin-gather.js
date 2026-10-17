@@ -11,7 +11,7 @@
   var C = window.OdinGatherCore;
   if (!C) { try { alert('Odinium Gatherer did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.3';
+  var VERSION = '2026-10-16.5';
   var WORKER = window.__ODIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__ODIN_FAST, TIMEOUT_MS = window.__ODIN_TIMEOUT_MS || 10000;
   var WAIT_MS = window.__ODIN_WAIT_MS || 30000;            // no free march, or nothing to send to: look again after this

@@ -243,6 +243,22 @@ test('event: kept as positive whole activity types, anything else dropped; the t
   assert.deepEqual(r.map((t) => [t.id, t.event]), [['e1', [279]], ['e2', [292, 26]], ['e3', []], ['e4', []]]);
 });
 
+test('event: the name "lootquest" is kept beside activity types (Loot Quest has no activity type); other names are dropped', () => {
+  const r = OC.validateTools({ tools: [tool({ id: 'lq', event: ['lootquest', 'LOOTQUEST', 'nope', 279] })] }).tools;
+  assert.deepEqual(r[0].event, ['lootquest', 279]);
+});
+
+test('Loot Quest windows as activities: one per open window, in seconds, only while the hunt is open; a match on the name', () => {
+  const cs = { open: 1, timeInfo: { openTime: [{ beginMill: '1792177200000', endMill: '1792184400000' }, { beginMill: 1792206000000, endMill: '1792213200000' }, { beginMill: 'x', endMill: 1 }] } };
+  const acts = OC.lootQuestActs(cs);
+  assert.deepEqual(acts, [{ type: 'lootquest', begintime: 1792177200, endtime: 1792184400 }, { type: 'lootquest', begintime: 1792206000, endtime: 1792213200 }]);
+  assert.deepEqual(OC.lootQuestActs({ open: 0, timeInfo: cs.timeInfo }), []);
+  assert.deepEqual(OC.lootQuestActs(null), []);
+  assert.equal(OC.eventLive(['lootquest'], acts, 1792207452), true);
+  assert.equal(OC.eventLive(['lootquest'], acts, 1792213200), false, 'between windows');
+  assert.equal(OC.eventLive([279], acts, 1792207452), false, 'a type never matches the name');
+});
+
 test('eventLive: any activity of the tool\'s types between its begin and end; no types means always', () => {
   const s = 1792000000, acts = [{ type: 292, begintime: s - 10, endtime: s + 10 }, { type: 279, begintime: s + 100, endtime: s + 200 }, null];
   assert.equal(OC.eventLive([292], acts, s), true);
@@ -253,6 +269,7 @@ test('eventLive: any activity of the tool\'s types between its begin and end; no
   assert.equal(OC.eventLive([], acts, s), true);
   assert.equal(OC.eventLive([279], [{ type: 279, endtime: s + 5 }], s), true, 'no begintime counts as begun');
   assert.equal(OC.eventLive([279], null, s), false);
+  assert.equal(OC.eventLive([292], [{ type: '292', begintime: s - 10, endtime: s + 10 }], s), true, 'a type the game sends as text still counts (review)');
 });
 
 test('tileStatus: a member\'s tool whose event is off shows Not running and Launch anyway; blocked and locked still win', () => {
@@ -387,6 +404,7 @@ test('a group session: a group tool whose card shows its stop message says Stopp
 
 test('the remote icon and the opsremote registry are known (Unattended mode, Tex 2026-10-16)', () => {
   assert.ok(OC.ICONS.includes('remote'));
+  assert.ok(OC.ICONS.includes('radar'), 'Looter Locator (2026-10-16)');
   assert.ok(OC.REGISTRIES.includes('opsremote'));
   const t = OC.validateTools({ tools: [{ id: 'u', title: 'U', icon: 'remote', gate: 'member', ready: ['game'], scripts: ['u.js'], version: '1', overlay: '#u', registered: 'opsremote', desc: 'd', keywords: '' }] });
   assert.equal(t.tools[0].registered, 'opsremote');

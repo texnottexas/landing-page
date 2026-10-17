@@ -15,7 +15,7 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Odinium Gatherer', 'Unattended mode', 'Rickroll'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Odinium Gatherer', 'Looter Locator', 'Unattended mode', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
@@ -228,9 +228,9 @@ test('movable cards: each floating tool lists ops-drag.js first, at version 2026
 });
 
 // Event tiles (Tex, 2026-10-14): Angel Attacks, Enigma Veins and Alliance Defense are tied to their events; HT Gift Boxes is not.
-test('event tools: Angel Attacks 292, Enigma Veins 279, Alliance Defense 26; no other tool has an event', () => {
+test('event tools: Angel Attacks 292, Enigma Veins 279, Alliance Defense 26, Looter Locator Loot Quest; no other tool has an event', () => {
   const ev = Object.fromEntries(list.tools.filter((t) => t.event.length).map((t) => [t.id, t.event]));
-  assert.deepEqual(ev, { 'alliance-defense': [26], angels: [292], 'enigma-veins': [279] });
+  assert.deepEqual(ev, { 'alliance-defense': [26], angels: [292], 'enigma-veins': [279], 'looter-locator': ['lootquest'] });
 });
 
 // Tex, 2026-10-14: TC Squad Sync and Class Talent Reset (EL) always sit under "Not running now"; whoever needs them finds them there.
@@ -254,8 +254,8 @@ test('Mask Boxes knows the Angel event types the registry names (Tex 2026-10-16)
   assert.deepEqual(MB.ANGEL_EVENT, raw.tools.find((t) => t.id === 'angels').event);
 });
 
-test('together (Tex 2026-10-16): exactly the five collectors run together, list ops-stack.js among their helpers before their own scripts, and the helper deploys and gates', () => {
-  assert.deepEqual(list.tools.filter((t) => t.together).map((t) => t.id).sort(), ['angels', 'enigma-veins', 'ht-gifts', 'mask-boxes', 'odin-gather']);
+test('together (Tex 2026-10-16): exactly the six collectors run together (Looter Locator joined the same day), list ops-stack.js among their helpers before their own scripts, and the helper deploys and gates', () => {
+  assert.deepEqual(list.tools.filter((t) => t.together).map((t) => t.id).sort(), ['angels', 'enigma-veins', 'ht-gifts', 'looter-locator', 'mask-boxes', 'odin-gather']);
   list.tools.filter((t) => t.together).forEach((t) => {
     const i = t.scripts.indexOf('ops-stack.js');
     assert.ok(i > 0, t.id);
@@ -282,6 +282,33 @@ test('Odinium Gatherer tile (Tex 2026-10-16): for members, game ready, its own o
   assert.ok(/cp [^\n]*\bodin-gather-core\.js\b/.test(yml) && /cp [^\n]*\bodin-gather\.js\b/.test(yml), 'deployed');
   assert.ok(/node --test [^\n]*test\/odin-gather-core\.test\.js/.test(yml), 'gated');
   assert.match(read('pages/map-collector.html'), /'odin-gather': \['march', 'marches'\]/, 'its count reads "N marches" in the Tool usage panel');
+});
+
+test('Looter Locator tile (Tex 2026-10-16): members, game ready, radar icon, runs together, tucked between Loot Quest windows; says one runner per alliance is enough; deployed and gated', () => {
+  const t = list.tools.find((x) => x.id === 'looter-locator');
+  assert.ok(t, 'listed');
+  assert.equal(t.title, 'Looter Locator');
+  assert.equal(t.gate, 'member'); assert.deepEqual(t.ready, ['game']); assert.equal(t.overlay, '#loot-root'); assert.equal(t.icon, 'radar');
+  assert.equal(t.together, true);
+  assert.deepEqual(t.event, ['lootquest']);
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-stack.js', 'looter-locator-core.js', 'looter-locator.js']);
+  assert.match(t.desc, /posts them to world and alliance chat\. Only one person per alliance needs to run it\./);
+  assert.ok(!/—/.test(t.desc + t.title), 'no em dash');
+  const ver = (read('looter-locator.js').match(/var VERSION = '([^']+)'/) || [])[1];
+  assert.equal(t.version, ver, 'registry version = script version');
+  const yml = read('.github/workflows/pages.yml');
+  assert.ok(/cp [^\n]*\blooter-locator-core\.js\b/.test(yml) && /cp [^\n]*\blooter-locator\.js\b/.test(yml), 'deployed');
+  assert.ok(/node --test [^\n]*test\/looter-locator-core\.test\.js/.test(yml), 'gated');
+  assert.match(read('pages/map-collector.html'), /'looter-locator': \['looter', 'looters'\]/, 'its count reads "N looters" in the Tool usage panel');
+  assert.match(read('ops-stack.js'), /'loot-root'/, 'its card keeps clear of the other group cards');
+});
+
+test('ops-stack.js knows the Looter Locator card: every group tool that loads it moved to a new version (its ?v= cache key)', () => {
+  for (const id of ['mask-boxes', 'angels', 'ht-gifts', 'enigma-veins', 'odin-gather']) {
+    const t = list.tools.find((x) => x.id === id);
+    assert.ok(t.scripts.includes('ops-stack.js'), id);
+    assert.ok(t.version >= '2026-10-16.5', id + ' ' + t.version);
+  }
 });
 
 test('Unattended mode tile (Tex 2026-10-16): only allowed accounts (worker /opsremote/visible), its own overlay and remote icon; deployed and gated', () => {

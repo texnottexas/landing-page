@@ -521,6 +521,19 @@ test('OPS-EV-4: a tucked tool\'s page says the event isn\'t running and still la
   await ctx.close();
 });
 
+test('OPS-EV-LQ (Tex 2026-10-16): a Loot Quest tool is tucked between Loot Quest windows and comes back when one opens', async () => {
+  const { ctx, page } = await open(PHONE, () => {
+    const now = Date.now();
+    __fake.activities = [];
+    __fake.cshunt = { open: 1, timeInfo: { openTime: [{ beginMill: String(now - 7200000), endMill: String(now - 3600000) }, { beginMill: String(now + 3600000), endMill: String(now + 7200000) }] } };
+  }, { events: { alpha: ['lootquest'] } });
+  await page.waitForSelector('.ops-tuck');
+  assert.ok(!(await mainNames(page)).includes('Alpha Tool'), 'between windows: tucked');
+  await page.evaluate(() => { const now = Date.now(); __fake.cshunt.timeInfo.openTime.push({ beginMill: String(now - 1000), endMill: String(now + 7200000) }); });
+  await page.waitForFunction(() => [...document.querySelectorAll('.ops-grid:not(.ops-tucked) .ops-tname')].some((e) => e.textContent === 'Alpha Tool'), null, { timeout: 3000 });
+  await ctx.close();
+});
+
 test('OPS-EV-5: when the game\'s activities can\'t be read, every tool stays in the menu (a broken read never hides a tool)', async () => {
   const { ctx, page } = await open(PHONE, null, { events: { alpha: [279] } });   // no ActivityController in the fake game
   await page.waitForSelector('.ops-tile');

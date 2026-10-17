@@ -3,8 +3,9 @@
 // node tests and as window.OpsCore in the browser.
 (function (root) {
   'use strict';
+  var EVENT_NAMES = ['lootquest'];                     // events named in ops-tools.json that have no activity type
 
-  var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid', 'map', 'gift', 'smile', 'disco', 'target', 'tent', 'chest', 'gem', 'ore', 'remote'];
+  var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid', 'map', 'gift', 'smile', 'disco', 'target', 'tent', 'chest', 'gem', 'ore', 'remote', 'radar'];
   var READY_IDS = ['game', 'base', 'defender', 'r4'];
   var GATES = ['member', 'code'];
   // registries a tool can be limited to: the worker answers whether a siteKey is in it (Tex 2026-10-14: Map Collector)
@@ -51,8 +52,9 @@
         overlay: /^#[A-Za-z0-9_-]+$/.test(t.overlay || '') ? t.overlay : null,
         auto: (Array.isArray(t.auto) ? t.auto : []).filter(function (r) { return t.ready.indexOf(r) >= 0; }),
         owners: (Array.isArray(t.owners) ? t.owners : []).filter(function (k) { return typeof k === 'string' && /^[0-9a-f]{16}$/.test(k); }),
-        // a tool tied to events lists the game's activity types (whole numbers above 0); the rest is dropped
-        event: (Array.isArray(t.event) ? t.event : []).filter(function (n) { return typeof n === 'number' && n > 0 && n % 1 === 0; }),
+        // a tool tied to events lists the game's activity types (whole numbers above 0) or an event name without one
+        // ('lootquest': Loot Quest runs on its own controller, not the activity list); the rest is dropped
+        event: (Array.isArray(t.event) ? t.event : []).filter(function (n) { return (typeof n === 'number' && n > 0 && n % 1 === 0) || EVENT_NAMES.indexOf(n) >= 0; }),
         tucked: t.tucked === true,                     // always under "Not running now" (Tex 2026-10-14: TC Squad Sync, Class Talent Reset (EL))
         alongside: t.alongside === true,               // runs alongside the others, never holding the Ops Center (Tex 2026-10-14: Rickroll)
         together: t.together === true,                 // runs together with the other "together" tools (Tex 2026-10-16)
@@ -126,8 +128,17 @@
   function eventLive(types, acts, nowSec) {
     if (!Array.isArray(types) || !types.length) return true;
     return (Array.isArray(acts) ? acts : []).some(function (a) {
-      return !!a && typeof a === 'object' && types.indexOf(Number(a.type)) >= 0 && (Number(a.begintime) || 0) <= nowSec && nowSec < (Number(a.endtime) || 0);
+      return !!a && typeof a === 'object' && (types.indexOf(a.type) >= 0 || types.indexOf(Number(a.type)) >= 0) && (Number(a.begintime) || 0) <= nowSec && nowSec < (Number(a.endtime) || 0);
     });
+  }
+  // Loot Quest's open windows (CSHuntController: open, timeInfo.openTime [{beginMill, endMill}] as strings or numbers)
+  // as activities named 'lootquest', in seconds, so a Loot Quest tool tucks away between windows (Tex 2026-10-16).
+  function lootQuestActs(cs) {
+    if (!cs || !cs.open || !cs.timeInfo || !Array.isArray(cs.timeInfo.openTime)) return [];
+    var ms = function (v) { var n = Number(v != null && typeof v === 'object' && v.toString ? v.toString() : v); return isFinite(n) ? n : 0; };
+    return cs.timeInfo.openTime.map(function (w) { return { b: ms(w && w.beginMill), e: ms(w && w.endMill) }; })
+      .filter(function (w) { return w.b > 0 && w.e > w.b; })
+      .map(function (w) { return { type: 'lootquest', begintime: Math.floor(w.b / 1000), endtime: Math.floor(w.e / 1000) }; });
   }
 
   // info: { ops, matchesOverlay, position, zIndex } of an element added to the page after launch
@@ -199,7 +210,7 @@
     ICONS: ICONS, READY_IDS: READY_IDS, READY_TEXT: READY_TEXT,
     validateTools: validateTools, visibleTools: visibleTools, filterTools: filterTools, orderTools: orderTools, pushRecent: pushRecent,
     initSeen: initSeen, badgeFor: badgeFor, tileStatus: tileStatus, isToolNode: isToolNode, isAutoFor: isAutoFor, AUTO_TEXT: AUTO_TEXT,
-    eventLive: eventLive, EVENT_TEXT: EVENT_TEXT, REGISTRIES: REGISTRIES,
+    eventLive: eventLive, lootQuestActs: lootQuestActs, EVENT_NAMES: EVENT_NAMES, EVENT_TEXT: EVENT_TEXT, REGISTRIES: REGISTRIES,
     trackerInit: trackerInit, trackerReduce: trackerReduce, trackerWatching: trackerWatching
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = OpsCore;

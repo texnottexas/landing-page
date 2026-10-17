@@ -31,8 +31,8 @@
 
   var DEFAULT = { top: '', left: '', right: '', fold: false };
   // The group cards: whichever of these sits earlier in the page opened first, helper or not.
-  var IDS = ['mbx-root', 'vein-root', 'htg-root', 'ang-root', 'odin-root'];
-  var KEYS = { 'mbx-root': 'mask-boxes', 'vein-root': 'enigma-veins', 'htg-root': 'ht-gifts', 'ang-root': 'angels', 'odin-root': 'odin-gather' };
+  var IDS = ['mbx-root', 'vein-root', 'htg-root', 'ang-root', 'odin-root', 'loot-root'];
+  var KEYS = { 'mbx-root': 'mask-boxes', 'vein-root': 'enigma-veins', 'htg-root': 'ht-gifts', 'ang-root': 'angels', 'odin-root': 'odin-gather', 'loot-root': 'looter-locator' };
   // A card the player dragged never moves, so it's taken whatever opened first (review).
   function dragged(id) { return !!(root.OpsDrag && root.OpsDrag.placed && root.OpsDrag.placed(KEYS[id])); }
   // Shared by every copy of this file the tools load: the cards to repaint, their last sizes, one repaint timer.

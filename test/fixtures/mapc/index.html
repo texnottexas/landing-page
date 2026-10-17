@@ -14,6 +14,9 @@
 // For Angel Attacks: an Angel event (activity with extra.attackMonsterIds + groupId), the Angel list (sendPBV2 8802), carrier attacks (send 902 with isAirCraftCarrier) that land after landMs and join attackMonsterIds, and the march list (NWorldMapData).
 // For HT Gift Boxes: Chip Blessing gift tiles (type 259) in the 901 view, the next claimable gift (sendPBV2 8852) and gift claims (send 902 marchType 257) that land and come home.
 // For Enigma Veins: the Enigma Field Hunt (activity type 279), the vein list (sendPBV2 8623, otherKuangList) and vein marches (send 902 marchType 180, no troops) that arrive, mine and come home.
+// For Looter Locator: Loot Quest windows (CSHuntController), the looter list (sendPB 7575), looters on the map (type 133 in
+// the 901 view, a 120 x 80 window at viewLevel 1), their point info (sendPB 7571), the cross-in event (EventCenter.EVENT
+// UPDATE_CS_HUNT_ASSEMBLY_TIPS), alliance chat posts (sendToAllianceChannel) and the Go button's jump (WorldMapMsgs).
 // For Refugee Camps: "Help Me" Letters (815) that put a camp by the base, the camp list (1021), the VIT buy (801), VIT capsules (815), rallies (1201) that hold heroes, units and a march for rallyMs, and Quick Deploy's inputs (heroes, units, slot sizes).
 window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent: [], answers: [], chat: [], handlers: {}, myMarch: {}, activity: true,
   gems: 1000, bag: 0, vip: 15, marchSecs: 2, buyMode: 'ok', useMode: 'ok', bagLagMs: 0, drift: 0, used: [], pending: [],
@@ -40,6 +43,9 @@ window.__fake = { uid: 'test-owner-uid', name: 'Tex', left: 50, socket: 1, sent:
   odin: { aid: 500273604, records: [], towers: [], infos: {}, viewMode: 'ok', infoMode: 'ok', mode: 'ok', travelMs: 300, sent: [], marches: {},
     buffs: { pct143: 2.375, add143: 0, pct159: 1.455, add159: 0 }, heroScore: {}, heroPct: {}, heroLoad: {},
     faces: {}, using: 1719000, skins: {}, skinLog: [], skinRefuse: [], skinMs: 20, offCosMs: 0 },
+  // Looter Locator: Loot Quest is on (one window around now), the looter list, looters on the map, point infos, views
+  loot: { list: [], points: [], infos: {}, listMode: 'ok', viewMode: 'ok', infoMode: 'ok', views: [], lists: 0, allyShares: [], pickers: 0,
+    cs: { open: 1, timeInfo: { openTime: [{ beginMill: String(Date.now() - 600000), endMill: String(Date.now() + 6600000) }] } } },
   // like the real client after login: world chat already holds history
   world: [{ _msgId: 'w0', _time: Math.floor(Date.now() / 1000) - 30, _worldId: '2864', _msgType: 0, _msg: 'hello world', _chatShareLinkData: null }] };
 // a test can keep this game logged out across reloads (a reconnect that does not work)
@@ -152,6 +158,15 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         if (F.lose901 > 0) { F.lose901--; return true; }      // sent, never answered
         if (F.viewError) { setTimeout(function () { cb({ c: 901, s: 3, d: F.viewError }); }, 20); return true; }
         var pts = [];
+        F.loot.views.push({ x: p.x, y: p.y, lvl: p.viewLevel, at: Date.now() });
+        if (F.loot.viewMode === 'silent') { if (F.pending.indexOf(901) < 0) F.pending.push(901); return true; }   // never answered: it stays pending
+        if (F.loot.viewMode === 'refuse') { setTimeout(function () { cb({ c: 901, s: 3, d: 'view_too_fast' }); }, 20); return true; }
+        // looters: a 120 x 80 window at viewLevel 1 (x-60..x+59, y-40..y+39), 58 x 40 otherwise
+        var hw = p.viewLevel === 1 ? 60 : 29, hh = p.viewLevel === 1 ? 40 : 20;
+        F.loot.points.forEach(function (l, li) {
+          if (p.k === 2864 && l.x >= p.x - hw && l.x <= p.x + hw - 1 && l.y >= p.y - hh && l.y <= p.y + hh - 1)
+            pts.push({ v: 23, x: l.x, y: l.y, k: 2864, id: 411889 + li, pointType: 133, m: { hideEndTime: l.hideEndMs || 0, attack: l.attack || 0, fSid: l.fSid, viewState: 1, marchSize: 1, marchId: l.marchId, spId: 1 } });
+        });
         Object.keys(F.cities).forEach(function (key) {      // key 'server:x:y'
           var a = key.split(':').map(Number), c = F.cities[key], pp = { pid: c.pid, w: a[0], playerInfo: JSON.stringify({ username: c.host || 'Host' }) };
           if (a[0] !== p.k) return;
@@ -280,7 +295,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   };
   // ---- Alliance Defense siege: open a wave's window, march, resolve
   var MARCHING = 2147483647;
-  function nowSec() { return Math.floor(Date.now() / 1000); }
+  function nowSec() { return Math.floor(Date.now() / 1000) + (F.timeShift || 0); }   // timeShift: the server's clock differs from the device's
   F.openWindow = function () { if (!F.siege) return; F.siege.nextTime = nowSec() + F.waitSec; F.opens[F.siege.round] = Date.now(); ec.emit('ACTIVITY_STATE_UPDATE', {}); };
   F.march = function () {
     if (!F.siege || F.siege.nextTime === MARCHING) return;
@@ -297,6 +312,19 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
   setInterval(function () { if (F.siege && F.siege.nextTime < MARCHING && nowSec() >= F.siege.nextTime) F.march(); }, 100);   // the timer runs out
   NET.sendPB = function (rid, p, target, cb) {
     F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now(), target: typeof target });
+    if (rid === 7575) {                                    // the looter list (the Defense panel)
+      F.loot.lists++;
+      if (F.loot.listMode === 'silent') { if (F.pending.indexOf(7575) < 0) F.pending.push(7575); return true; }   // never answered: it stays pending
+      var la = F.loot.listMode === 'refuse' ? { header: { s: 3 } } : { header: { s: 0 }, crossTreasureGetCrossInInfos: { crossInInfos: F.loot.list.map(function (r) { return { sid: r.sid, playerInfo: JSON.stringify({ username: r.name }), power: 9e35, level: 100, grailSpecId: 0 }; }) } };
+      setTimeout(function () { cb({ pbAck: la }); }, 20);
+      return true;
+    }
+    if (rid === 7571) {                                    // one looter's point info (the game asks when you tap the tile)
+      var pi = p.crossTreasurePointInfo || {}, tid = String(pi.treasureId), inf = F.loot.infos[tid];
+      var ia = F.loot.infoMode === 'refuse' || !inf ? { header: { s: 3 } } : { header: { s: 0 }, crossTreasurePointInfo: { mainUid: 'u1', infos: [{ uid: 'u1', playerInfo: JSON.stringify({ username: inf.leader }) }], teamSid: inf.sid, pointSid: 2864, round: 1, fightNum: 0, marchSize: 1 } };
+      setTimeout(function () { cb({ pbAck: ia }); }, 20);
+      return true;
+    }
     var ok = rid === 3700 && !F.refuseSkip && F.siege && F.siege.nextTime !== MARCHING && nowSec() < F.siege.nextTime;
     if (ok) { F.siege.nextTime = nowSec(); setTimeout(F.march, 100); }
     setTimeout(function () { cb({ pbAck: { header: ok ? { s: 0 } : { s: 3, d: 'defend_quick_07' } } }); }, 20);
@@ -313,6 +341,14 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       F.shares.push({ at: Date.now(), link: copy });
       F.world.push({ _msgId: 'mine' + (++F.msgSeq), _time: Math.floor(Date.now() / 1000), _worldId: '2864', _msgType: 1, _msg: 'link', custom: { fUid: F.uid }, _chatShareLinkData: copy });
       ec.emit('newChatPush', {});
+    },
+    // like the game: "1" posts straight to alliance chat; anything else opens the chat picker
+    sendToAllianceChannel: function (link, ch) {
+      if (ch !== '1') { F.loot.pickers++; return; }
+      if (F.allyThrows) throw new Error('chat panel not ready');
+      var copy = JSON.parse(JSON.stringify(link)); copy.uts = 1;
+      F.loot.allyShares.push({ at: Date.now(), link: copy });
+      F.chat.push({ _msgId: 'ally' + (++F.msgSeq), _time: Math.floor(Date.now() / 1000), _worldId: '2864', _msgType: 1, _msg: 'link', _chatShareLinkData: copy });
     },
     sendEmotionGroup: function (ch, id, uid, name) { emojiSend('emotion', ch, id, uid, name); },
     sendGIFGroup: function (ch, id, uid, name) { emojiSend('gif', ch, id, uid, name); } };
@@ -345,7 +381,9 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
         F.rfc.units.forEach(function (g) { for (var i = g.n - (F.rfc.unitOut[g.armyID] || 0); i > 0; i--) out.push({ armyID: g.armyID, armyNum: 0, ArmyData: { type: g.type, level: g.level, power: g.power, mecha_id: g.mecha || 0, thor_group: g.thor || 0 }, battleMechaData: g.mecha ? { mechaId: g.mecha } : null }); });
         return out;
       } } };
-    if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } } };
+    if (name === 'EventCenter') return { EventCenter: { getInst: function () { return ec; } }, EVENT: ec };
+    if (name === 'CSHuntController') return { CSHuntController: { getInstance: function () { return F.loot.cs; } } };
+    if (name === 'WorldMapMsgs') return { Names: { WorldMapJumpToTileClick: 'WorldMapJumpToTileClick' }, send: function (n, d) { F.jumps.push({ n: n, x: d.x, y: d.y, z: d.z }); } };
     if (name === 'ActivityController') return { ActivityController: { Instance: { get _activityList() { if (F.activityThrows) throw new Error('no list'); return (F.activity ? [activity] : []).concat(F.angelEvent ? [F.angelEvent] : []).concat(F.vein.event ? [F.vein.event] : []); },
       get _activityMap() { return F.angelInMap ? { a292: F.angelInMap } : {}; },
       getActivityByActivitytype: function (t) { return t === 26 && F.siege ? { id: 153, alMonsterSiege: F.siege } : null; },
@@ -367,6 +405,7 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       if (t === 'resource' && String(id) === '1304') return { gather_speed: 0.012, load_factor: 40000, resource_type: 20 };
       if (t === 'map_building' && String(id) === '71003') return { gather_coefficient: 1.2, force_capacity: 2500, duration: 36000, produce_type: 20 };
       if (t === 'skin') return { equip_buff: F.odin.skins[id] || '' };
+      if (t === 'cross_treasure' && String(id) === '1') return { icon: 'cross_treasure_share', icon_world: 'cross_treasure_world', round_max: 10 };
       return t === 'item' && id === 79200004 ? { name: 'equip_box_16' } : null; } } };
     if (name === 'NRequestIdV2') return { NRequestIdV2: { PINK_MECHA_MONSTER_LIST: 8802, FLOAT_PARADE_QUERY_CAN_REWARD_BAG: 8852, ENIGMA_BEAST_TREASURE_GET_KUANG_LIST: 8623 } };
     if (name === 'RequestId') return { RequestId: { MARCH_WORLD_POINT: 902, GET_WORLD_INFO: 901, ITEM_USE: 815, BuyEnergry: 801, GetRefugee: 1021, ALLIANCE_Assembly_Create: 1201, GET_TOWERINFO: 1034, USE_CASTLE_FACE: 855 } };
@@ -393,8 +432,9 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       backup_mecha_lottery_21: 'March failed! A commander can only attack the same Heavy Mothership Angel once!',
       field_lottery_37: 'Not enough time remaining on the Vein to start a march.', field_lottery_35: 'March failed! Only one march is allowed on the same Vein at a time.',
       field_lottery_36: 'Each Vein can only be mined once!', gourmet_key17: 'Too many marches out.',
+      cs_treasure53: "{0}'s Loot Quest Team",
       alliance_records_027: 'Well done! The Lv. {4} {5} ({2},{3}) built by {0} - {1} is completed.', tower_full: 'Garrison Troop is full', tower_not_exist: 'The building is gone.', skin_013: 'Clear the tiles around your base first.' };
-    if (name === 'LocalManager') return { LOCAL: { getText: function (k) { return TEXT[k] || k; } } };
+    if (name === 'LocalManager') return { LOCAL: { getText: function (k, a) { var t = TEXT[k] || k; return a != null ? t.replace('{0}', a) : t; } } };
     return null;
   };
   // the game's "Multiple active logins" box, shown when another device logs in
@@ -413,6 +453,8 @@ try { if (localStorage.getItem('fake_down')) { window.__fake.socket = 3; window.
       _chatShareLinkData: { t: 0, st: 4, p: { x: x, y: y, z: server }, s: 'Lv.30[DOG]Someone', icon: '', pid: '1' } });
     ec.emit('newChatPush', {});
   };
+  // a looter crosses in: the game's push handler emits this event with the looter's server (Loot Quest)
+  F.crossIn = function (sid) { ec.emit('UPDATE_CS_HUNT_ASSEMBLY_TIPS', { sid: sid }); };
   F.notice = function (id, name, x, y) {
     F.chat.push({ _msgId: String(id), _mt: '523', _time: Math.floor(Date.now() / 1000), _msg: '<color=#f77a0b>' + name + "</c>'s Titan Gift Treasure Map appeared at server 2864 (" + x + ', ' + y + ').' });
     ec.emit('newChatPush', {});

@@ -8,7 +8,7 @@
   var C = window.EnigmaVeinsCore;
   if (!C) { try { alert('Enigma Veins did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.3';
+  var VERSION = '2026-10-16.5';
   var WORKER = window.__VEIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__VEIN_FAST, CHECK_MS = window.__VEIN_CHECK_MS || 120000, IDLE_MS = window.__VEIN_IDLE_MS || 600000, TIMEOUT_MS = window.__VEIN_TIMEOUT_MS || 10000;
   var UNSHOWN_MS = window.__VEIN_UNSHOWN_MS || 10000;     // how long a send counts as out before the game's march list shows it
