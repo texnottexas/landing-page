@@ -197,3 +197,41 @@ test('Advanced Upgrade on Rеx after the live checks: Hardcore Shooter has nothi
   assert.equal(steps.filter((x) => x.group === 5355).length, 0);
   assert.equal(REX.upgrades.some((u) => u.group === 5355), false);
 });
+
+// ---------------------------------------------------------------- Task 5: collab box and pick-ups
+test('collab on Rеx: Toothless and Light Fury are already in; a placed collab statue goes to its empty slot from the base', () => {
+  const plan = C.collabPlan(REX);
+  assert.equal(plan.filter((x) => x.slot === 79 || x.slot === 87).length, 0);
+  const s = snap({ rows: [[53159, 5857, 1, 1, [[930000, 200]]]], placed: [{ uuid: 't', id: 53159, x: 5, y: 5 }], collab: [{ slot: 79, group: 5857, id: null }] });
+  assert.deepEqual(C.collabPlan(s), [{ slot: 79, from: 'base', id: 53159, ref: 't' }]);
+});
+
+test('collab takes the best copy, the bag first at the same level', () => {
+  const s = snap({ rows: [[1, 50, 1, 1, [[930000, 100]]], [2, 50, 2, 1, [[930000, 200]]]],
+    placed: [{ uuid: 'p', id: 2, x: 0, y: 0 }], bag: [{ id: 2, n: 1 }], collab: [{ slot: 9, group: 50, id: 1 }] });
+  assert.deepEqual(C.collabPlan(s), [{ slot: 9, from: 'bag', id: 2, ref: null }], 'a lower copy in the slot is replaced from the bag');
+});
+
+test('a mutually exclusive variant never goes to a collab slot', () => {
+  const s = snap({ rows: [[57201, 5720, 2, 1, [[1001001, 500]], { me: [5557] }]], showcase: [{ labelId: 5, items: [{ uuid: 'sg', id: 57201, x: 0, y: 4 }] }],
+    collab: [{ slot: 20, group: 5557, id: null }] });
+  assert.deepEqual(C.collabPlan(s), []);
+});
+
+test('pick-ups on Rеx: the copies that don\'t count go to the bag; gold and no-stat decor stay', () => {
+  const t = C.targets(REX, AIR);
+  const ups = C.pickupPlan(REX, AIR, t).map((e) => e.where + ':' + REX.rows[e.id].name + ' L' + e.level);
+  // equal levels: the showcase or collab copy stays and the base one comes up (it frees base space)
+  ['base:Rocking Horse L3', 'base:Statue: 6th Angel L2', 'base:Worker Zombie L3', 'base:High-fat Cake L2', 'showcase:Flight Partners L1'].forEach((n) => assert.ok(ups.includes(n), n + ' in ' + ups.join(', ')));
+  assert.ok(!ups.includes('showcase:Rocking Horse L3') && !ups.some((n) => n.startsWith('collab:')), 'the showcase and collab copies stay');
+  ups.forEach((n) => assert.ok(!/Cedar|Lucky Fountain|Lantern/.test(n), n));
+  C.pickupPlan(REX, AIR, t).forEach((e) => assert.ok(['base', 'showcase', 'collab'].includes(e.where)));
+});
+
+test('a plain-bag higher copy makes the placed lower one a pick-up', () => {
+  const rows = [[40104, 4010, 5, 20, [[921002, 180]]], [40103, 4010, 4, 20, [[921002, 160]]], [40102, 4010, 3, 20, [[921002, 140]]]];
+  const placed = Array.from({ length: 18 }, (_, i) => ({ uuid: 'g' + i, id: 40104, x: i, y: 0 })).concat([{ uuid: 'lo1', id: 40102, x: 0, y: 2 }, { uuid: 'lo2', id: 40102, x: 1, y: 2 }]);
+  const s = snap({ rows, placed, bag: [{ id: 40103, n: 2 }] });
+  const ups = C.pickupPlan(s, ALL, C.targets(s, ALL)).map((e) => e.ref).sort();
+  assert.deepEqual(ups, ['lo1', 'lo2']);
+});

@@ -128,7 +128,8 @@
     }
     return { ok: false, use: {}, merges: {} };
   }
-  var WHERE_RANK = { base: 0, showcase: 1, collab: 2, bag: 3, setbag: 3 };
+  // At equal levels the copy that stays is the one taking no base space: collab box, then showcase, then base.
+  var WHERE_RANK = { collab: 0, showcase: 1, base: 2, bag: 3, setbag: 3 };
   // The top `cap` copies, raised evenly: while spare copies can pay, the lowest target goes up one level
   // (it plus 2 copies of its level). stopAt: the level where Advanced Upgrade takes over.
   function evenFill(copies, cap, maxLevel, stopAt) {
@@ -216,9 +217,68 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- collab box and pick-ups
+  // Every copy of a group, with where it is (plain bag copies too: they can be placed or merged).
+  function groupCopies(snap, g, entries) {
+    var copies = [], sets = (snap.sets || []).indexOf(g) >= 0;
+    (entries || pool(snap)).forEach(function (e) {
+      if (e.group !== g) return;
+      if (e.where === 'setbag') { for (var i = 0; i < e.n; i++) copies.push({ id: e.id, level: e.level, where: 'bag', ref: null }); }
+      else copies.push({ id: e.id, level: e.level, where: e.where, ref: e.ref });
+    });
+    if (!sets) snap.bag.forEach(function (b) { var r = snap.rows[b.id]; if (r && r.group === g) for (var i = 0; i < b.n; i++) copies.push({ id: b.id, level: r.level, where: 'bag', ref: null }); });
+    return copies;
+  }
+  var COLLAB_FROM = { bag: 0, base: 1, showcase: 2 };       // the game's own panel: the best copy, from the bag first
+  function collabPlan(snap) {
+    var entries = pool(snap), out = [];
+    snap.collab.forEach(function (c) {
+      var best = null;
+      groupCopies(snap, c.group, entries).forEach(function (x) {
+        if (x.where === 'collab') return;
+        if (!best || x.level > best.level || (x.level === best.level && COLLAB_FROM[x.where] < COLLAB_FROM[best.where])) best = x;
+      });
+      if (!best) return;
+      var cur = c.id && snap.rows[c.id];
+      if (cur && cur.level >= best.level) return;
+      out.push({ slot: c.slot, from: best.where, id: best.id, ref: best.ref });
+    });
+    return out;
+  }
+  // The copies that should count, per group: the even-fill targets (refs; bag targets have ref null).
+  function targets(snap, settings) {
+    var entries = pool(snap), out = {};
+    Object.keys(snap.levels).forEach(function (gk) {
+      var g = Number(gk), ids = Object.keys(snap.levels[gk]).map(function (k) { return Number(snap.levels[gk][k]); }).filter(function (id) { return snap.rows[id]; });
+      if (!ids.length) return;
+      var cap = snap.rows[ids[0]].cap;
+      if (!(cap > 0)) return;
+      out[g] = evenFill(groupCopies(snap, g, entries), cap, 0, 0).targets.map(function (t) { return t.ref; });
+    });
+    return out;
+  }
+  // Placed, showcase and collab copies that don't count once the plan is done: over the cap, the losing variant of a
+  // mutually exclusive pair, members of a completed set (their bag copies count), merge spares. Never decor without
+  // stats or decor nobody wants (those move only when their space is needed).
+  function pickupPlan(snap, settings, tg) {
+    var entries = pool(snap), ex = exclusive(snap, entries), sets = {}, out = [];
+    (snap.sets || []).forEach(function (g) { sets[g] = 1; });
+    entries.forEach(function (e) {
+      if (e.where === 'setbag') return;
+      var r = snap.rows[e.id];
+      if (!r.buffs.length || !(r.cap > 0) || copyInfo(snap, e.id, settings).tier >= 3) return;
+      var keep;
+      if (ex[e.group] && ex[e.group].exclusived) keep = false;
+      else if (sets[e.group]) keep = e.where === 'collab';
+      else keep = (tg[e.group] || []).some(function (ref) { return sameRef(ref, e.ref); });
+      if (!keep) out.push(e);
+    });
+    return out;
+  }
+
   var api = { GOLD: GOLD, REPAIR: REPAIR, MARCH: MARCH, WEIGHTS: WEIGHTS, SCOPE: SCOPE, CLASS: CLASS,
     copyInfo: copyInfo, pool: pool, counted: counted, makeCopies: makeCopies, evenFill: evenFill, mergePlan: mergePlan,
-    upgradeSteps: upgradeSteps };
+    upgradeSteps: upgradeSteps, collabPlan: collabPlan, targets: targets, pickupPlan: pickupPlan };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else window.DecorCore = api;
 })();
