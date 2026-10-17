@@ -261,7 +261,7 @@
     b.appendChild(search);
     S.grid = K().el('div', 'ops-grid'); b.appendChild(S.grid);
     renderGrid();
-    if (window.OpsPotato) { try { b.appendChild(window.OpsPotato.row()); } catch (e) {} }   // Potato mode switch (Tex 2026-10-17)
+    if (window.OpsPotato) { try { window.OpsPotato.mount(S.modal.card.querySelector('.ops-head'), b); } catch (e) {} }   // Potato mode switch, in the header (Tex 2026-10-17)
     S.timer = setInterval(updateTiles, 1000);
   }
   function addTile(grid) {

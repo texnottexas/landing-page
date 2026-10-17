@@ -957,7 +957,7 @@ test('POT-1: Potato mode is off by default; switched on it caps the frame rate a
   const { ctx, page } = await open(PHONE);
   await page.waitForSelector('#opsp-switch');
   assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'false');
-  assert.match(await page.textContent('.opsp-row'), /Potato mode/);
+  assert.match(await page.textContent('.ops-title'), /Potato/, 'on the title line (Tex: players may not scroll)');
   assert.deepEqual(await fake(page), { fps: 30, retina: true, cams: [true, true, true], low: null, on: null }, 'nothing changes while it is off');
   await page.click('#opsp-switch');
   assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'true');
@@ -965,9 +965,9 @@ test('POT-1: Potato mode is off by default; switched on it caps the frame rate a
   assert.ok(await page.evaluate(() => __fake.resizes) >= 1, 'the canvas is resized to 1x');
   await page.evaluate(() => cc.game.setFrameRate(60));               // the game opening chat
   assert.equal(await page.evaluate(() => __fake.fps), 29, 'held at 29');
-  assert.match(await page.textContent('.opsp-row'), /Reload the game to finish/);
+  assert.match(await page.textContent('.opsp-note'), /Reload the game to finish/);
   assert.equal(await page.$$eval('#opsp-reload', (e) => e.length), 1);
-  assert.ok(!/\u2014/.test(await page.textContent('.opsp-row')), 'no em dash');
+  assert.ok(!/\u2014/.test(await page.textContent('.opsp-note') + await page.textContent('.ops-title')), 'no em dash');
   await ctx.close();
 });
 
@@ -999,7 +999,7 @@ test('POT-4: remembered: the next Ops Center load applies it at once, before the
   await page.waitForFunction(() => __fake.fps === 29 && __fake.retina === false, null, { timeout: 3000 });
   await page.waitForSelector('#opsp-switch');
   assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'true');
-  assert.ok(!/Reload the game/.test(await page.textContent('.opsp-row')), 'the game already runs low quality: no reload asked');
+  assert.equal(await page.$$eval('.opsp-note', (e) => e.length), 0, 'the game already runs low quality: no reload asked');
   await ctx.close();
 });
 
@@ -1048,7 +1048,7 @@ test('POT-8 (review): with Unattended mode\'s frame up, the live game in the fra
   assert.deepEqual(await frameState(page), { fps: 29, retina: false }, 'the frame game');
   assert.deepEqual(await page.evaluate(() => ({ fps: __fake.fps, paused: __fake.paused, retina: __fake.retina })), { fps: 30, paused: true, retina: true }, 'the page game untouched');
   assert.equal(await page.$$eval('#opsp-reload', (e) => e.length), 0, 'no Reload button inside Unattended mode');
-  assert.match(await page.textContent('.opsp-row'), /Reload the game to finish/, 'the frame game runs normal quality: a reload is needed');
+  assert.match(await page.textContent('.opsp-note'), /Reload the game to finish/, 'the frame game runs normal quality: a reload is needed');
   await page.evaluate((src) => { document.getElementById('mapc-frame').srcdoc = src + ' '; }, FRAME);   // the dashboard's reconnect reloads the frame
   await page.waitForFunction(() => { const w = document.getElementById('mapc-frame').contentWindow; return w.__fg && w.__fg.fps === 29 && w.__fg.retina === false; }, null, { timeout: 5000 });
   await ctx.close();
@@ -1057,7 +1057,39 @@ test('POT-8 (review): with Unattended mode\'s frame up, the live game in the fra
 test('POT-9 (review): the menu says a reload is needed when Potato mode is on but the game started at normal quality', async () => {
   const { ctx, page } = await open(PHONE, () => { localStorage.setItem('ops_potato_v1', '1'); localStorage.setItem('topwar_LOW_EFFECT_MODE', '1'); __fake.low = false; });
   await page.waitForSelector('#opsp-switch');
-  assert.match(await page.textContent('.opsp-row'), /Reload the game to finish/);
+  assert.match(await page.textContent('.opsp-note'), /Reload the game to finish/);
   assert.equal(await page.$$eval('#opsp-reload', (e) => e.length), 1);
+  await ctx.close();
+});
+
+test('POT-10 (Tex): the Potato switch sits in the header right of "Ops Center", visible on a phone without scrolling, and tapping it never drags or closes the menu', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('#opsp-switch');
+  const box = await page.evaluate(() => {
+    const t = document.querySelector('.ops-title'), sw = document.getElementById('opsp-switch'), x = document.querySelector('.ops-head .ops-icon-btn[aria-label="Close"]');
+    const r = (e) => e.getBoundingClientRect();
+    const range = document.createRange(); range.selectNodeContents(t.firstChild); const words = range.getBoundingClientRect();
+    return { words: [words.left, words.right, words.top, words.bottom], sw: [r(sw).left, r(sw).right, r(sw).top, r(sw).bottom], x: [r(x).left], inHead: !!sw.closest('.ops-head'), vh: window.innerHeight };
+  });
+  assert.ok(box.inHead, 'in the header');
+  assert.ok(box.sw[0] >= box.words[1], 'right of the words "Ops Center"');
+  assert.ok(box.sw[1] <= box.x[0], 'left of the close button');
+  assert.ok(box.sw[2] < box.words[3] && box.sw[3] > box.words[2], 'on the same line as the title');
+  assert.ok(box.sw[3] <= box.vh, 'visible without scrolling');
+  const before = await page.$eval('.ops-card', (c) => [c.style.left, c.style.top]);
+  await page.click('#opsp-switch');
+  assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'true');
+  assert.equal(await page.$$eval('.ops-card', (e) => e.length), 1, 'the menu is still open');
+  assert.deepEqual(await page.$eval('.ops-card', (c) => [c.style.left, c.style.top]), before, 'not dragged');
+  assert.equal(await page.$$eval('.opsp-row', (e) => e.length), 0, 'no switch at the bottom any more');
+  await ctx.close();
+});
+
+test('POT-11: the Potato switch is only in the members\' menu: a tool page header has none', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('.ops-tile');
+  await clickTile(page, 'Alpha Tool');
+  await page.waitForSelector('.ops-check');
+  assert.equal(await page.$$eval('#opsp-switch', (e) => e.length), 0);
   await ctx.close();
 });
