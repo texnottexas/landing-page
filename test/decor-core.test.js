@@ -372,3 +372,12 @@ test('the preview never mentions gold as a gain', () => {
   p.summary.gains.forEach((g) => assert.ok(!C.GOLD.includes(g.buffId), g.name));
   assert.ok(p.summary.left.some((l) => l.why === 'gold'));
 });
+
+test('tidy never moves sea decor with no stats (Tex: only decor with stats matters)', () => {
+  const s = snap({ rows: [[1, 10, 1, 1, []], [2, 11, 1, 1, [[930000, 100]]]], placed: [{ uuid: 'buoy', id: 1, x: 20, y: 4 }, { uuid: 'dock', id: 2, x: 22, y: 4 }] });
+  s.rows[1].pt = 0; s.rows[2].pt = 0;
+  s.grid.w = 30; s.grid.h = 30;
+  s.grid.cells = [[20, 4, 0, 0, 1, 1, 0], [22, 4, 0, 0, 1, 1, 0], [20, 20, 1, 0, 1, 0, 0], [22, 24, 1, 0, 1, 0, 0]];
+  const t = C.tidyPlan(s);
+  assert.deepEqual(t.map((m) => m.uuid), ['dock']);
+});

@@ -443,7 +443,7 @@
     var c = centroid(snap), sea = seaCells(snap), out = [];
     function dist(x, y) { return Math.sqrt(Math.pow(x - c[0], 2) + Math.pow((y - c[1]) / 2, 2)); }
     var m = model(snap), zone = function (x, y) { var k = m.cell[x * 1000 + y]; return k ? k[2] : -1; };
-    var pieces = snap.placed.filter(function (p) { var r = snap.rows[p.id]; return r && r.type === 4 && r.pt === 0; })
+    var pieces = snap.placed.filter(function (p) { var r = snap.rows[p.id]; return r && r.type === 4 && r.pt === 0 && r.buffs.length; })
       .map(function (p) { var r = snap.rows[p.id]; return { p: p, w: r.w, h: r.h, d: dist(p.x, p.y) }; })
       .sort(function (a, b) { return b.w * b.h - a.w * a.h; });
     var m2 = model(snap), line = Infinity;
@@ -467,7 +467,7 @@
     var free = showcaseFree(snap), land = landCells(snap);
     snap.placed.forEach(function (p) {
       var r = snap.rows[p.id];
-      if (!r || r.type !== 4 || r.pt !== 1 || zone(p.x, p.y) !== 0) return;
+      if (!r || r.type !== 4 || r.pt !== 1 || !r.buffs.length || zone(p.x, p.y) !== 0) return;
       var s = packShowcase(free, r.w, r.h);
       if (s) { mark5(free[s.labelId], s.x, s.y, r.w, r.h, false); out.push({ uuid: p.uuid, to: s }); return; }
       for (var i = 0; i < land.length; i++) if (fitsDecor(m, land[i][0], land[i][1], r.w, r.h, 1)) {

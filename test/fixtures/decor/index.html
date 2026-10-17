@@ -1,0 +1,189 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fake game: decor</title></head>
+<body>
+<script>
+// A fake Top War client for the Decor Optimizer: a 30 x 30 base (troop area y < 10, the south below, the Enigma zone at
+// x >= 24; ground at x < 14, water beyond), the bag, two showcase tabs, the collab box, a completed set, one Advanced
+// Upgrade and the decor requests (JSON 104 / 129 / 130 / 131, PB 4754 / 4755 / 4757 / 4760 / 4792 / 4793) with the
+// game's pushes. Showcase answers carry the new tab but aren't applied (the game's own panel applies them), as live.
+// __fake.mode[rid]: 'ok' | 'refuse' | 'silent' (no answer) | 'nostate' (answers yes, changes nothing).
+(function () {
+  var W = 30, H = 30;
+  var F = window.__fake = { uid: 'test-owner-uid', name: 'Tex', inBase: true, homePressed: 0, sent: [], mode: {}, staleAfter: 0, seq: 0,
+    up: { state: 4, exp: 0 } };
+  function row(id, group, level, name, w, pt, cap, buff) {
+    return { id: id, group: group, level: level, max_level: 15, name: name, type: 4, width: w, height: w, point_type: pt, buff_max_num: cap, buff_id: buff || '', buff_ext: '', mutually_exclusive: '' };
+  }
+  var B = {};
+  [row(53159, 5857, 1, 'Toothless Statue', 1, 1, 1, '1001001|200'),
+   row(51292, 5704, 1, 'Saxophone Music', 1, 1, 1, '9301160|300'),
+   row(47126, 5355, 1, 'Weapon Box', 1, 1, 1, '93011601|100'), row(47127, 5355, 2, 'Weapon Box', 1, 1, 1, '93011601|200'),
+   row(47128, 5355, 3, 'Weapon Box', 1, 1, 1, '93011601|300'), row(47129, 5355, 4, 'Weapon Box', 1, 1, 1, '93011601|400'),
+   row(47130, 5355, 5, 'Weapon Box', 1, 1, 1, '93011601|500'),
+   row(40800, 4080, 1, 'Bench', 1, 1, 5, '910300|200'), row(40801, 4080, 2, 'Bench', 1, 1, 5, '910300|240'),
+   row(40802, 4080, 3, 'Bench', 1, 1, 5, '910300|280'), row(40803, 4080, 4, 'Bench', 1, 1, 5, '910300|320'),
+   row(48217, 5494, 1, 'Hardcore Shooter', 1, 1, 1, '930100|200'), row(48220, 5494, 4, 'Hardcore Shooter', 1, 1, 1, '930100|800'),
+   row(48221, 5494, 5, 'Hardcore Shooter', 1, 1, 1, '930100|1000'),
+   row(54731, 6011, 1, 'Cherished Affection', 1, 1, 1, '9301170|200'), row(54741, 6011, 2, 'Cherished Affection', 1, 1, 1, '9301170|300'),
+   row(48308, 5502, 1, 'Landing on Water', 1, 0, 1, '930100|200'), row(48309, 5502, 2, 'Landing on Water', 1, 0, 1, '930100|400'),
+   row(49923, 5552, 1, 'Communication Cable', 1, 1, 1, '930102|400'), row(49924, 5552, 2, 'Communication Cable', 1, 1, 1, '930102|500'),
+   row(47456, 5425, 1, 'Floating Dock', 1, 0, 1, '930002|150'), row(47457, 5425, 2, 'Floating Dock', 1, 0, 1, '930002|300'),
+   row(70001, 7000, 1, 'Cosmetic Buoy', 1, 0, 0, '')
+  ].forEach(function (r) { B[r.id] = r; });
+  B[4000] = { id: 4000, group: 3900, level: 1, max_level: 1, name: 'HQ', type: 8, width: 3, height: 3, point_type: 1, buff_max_num: 0, buff_id: '', buff_ext: '', mutually_exclusive: '' };
+  var EB = {
+    1001001: { id: 1001001, string: 'All units DMG Increase', type: 165, value_type: 10000, battle_type: 1 },
+    9301160: { id: 9301160, string: 'All Units Attack', type: 323, value_type: 10000, battle_type: 1 },
+    93011601: { id: 93011601, string: 'All Units Attack', type: 323, value_type: 10000, battle_type: 1 },
+    910300: { id: 910300, string: 'Marching Speed', type: 103, value_type: 10000, battle_type: 0 },
+    930100: { id: 930100, string: 'All Units Attack', type: 112, value_type: 10000, battle_type: 1 },
+    9301170: { id: 9301170, string: 'All Units HP', type: 324, value_type: 10000, battle_type: 1 },
+    930102: { id: 930102, string: 'Navy ATK', type: 112, value_type: 10000, battle_type: 1, paraType1: 'ArmyType', para1: '201' },
+    930002: { id: 930002, string: 'Navy HP Boost', type: 111, value_type: 10000, battle_type: 1, paraType1: 'ArmyType', para1: '201' },
+    123014: { id: 123014, string: 'Set in the bag', type: 406, value_type: 1, battle_type: 0 }
+  };
+  var TABLES = { building: B, effect_buff: EB,
+    decoration_contents: { 1216: { id: 1216, name: 'Metal Music Fans', buff_isopen: 1, buff: '123014|1', content: '51292' } },
+    museum_linkage_box: { 79: { ID: 79, groupID: 5857, sheet: 7 } } };
+  var TABLE = { _tableMap: TABLES, getTableGroup: function (n) { return TABLES[n]; }, getTableDataById: function (n, id) { return (TABLES[n] || {})[String(id)] || null; } };
+
+  // ---- the base grid
+  var BT = {}, FREE = {};
+  for (var y = 0; y < H; y++) for (var x = 0; x < W; x++) if ((x + y) % 2 === 0) { var p = 1000 * x + y; BT[p] = x >= 24 && y >= 10 ? 2 : y < 10 ? 0 : 1; FREE[p] = true; }
+  function ground(x) { return x < 14; }
+  function fp(x, y, w, h) { var out = []; for (var r = 0; r < h; r++) for (var s = 0; s < w; s++) out.push(1000 * (x - r + s) + (y + r + s)); return out; }
+  var U = { StrUid: F.uid, Name: F.name, Level: 100, Buildings: [], BuildBoxs: [], _museumData: [], collabDecorateBox: {}, DecorationSuits: [{ _suitId: 1216 }],
+    HomeFreePoints: FREE, HomeItemPoints: {}, GroundPoints: {} };
+  function occupy(b, on) { var d = b.Data; fp(Math.floor(b.Pos / 1000), b.Pos % 1000, d.width, d.height).forEach(function (q) { if (on) U.HomeItemPoints[q] = { itemType: 1, ownerPos: b.Pos }; else delete U.HomeItemPoints[q]; }); }
+  function addBuilding(uuid, id, x, y) { var b = { Id: uuid, Pos: 1000 * x + y, Data: B[id] }; U.Buildings.push(b); occupy(b, true); return b; }
+  function building(uuid) { return U.Buildings.filter(function (b) { return b.Id === String(uuid); })[0]; }
+  function bag(id, n) {
+    var b = U.BuildBoxs.filter(function (x) { return x._itemId === id; })[0];
+    if (!b) { b = { _itemId: id, _GroupId: B[id].group, _level: B[id].level, _amount: 0, _data: B[id] }; U.BuildBoxs.push(b); }
+    b._amount += n;
+  }
+  function count(id) { var b = U.BuildBoxs.filter(function (x) { return x._itemId === id; })[0]; return b ? b._amount : 0; }
+  F.count = count; F.building = building;
+  F.setup = function () {
+    U.Buildings = []; U.BuildBoxs = []; U.HomeItemPoints = {}; U.collabDecorateBox = {};
+    addBuilding('hq', 4000, 6, 4);
+    addBuilding('toothless', 53159, 4, 12);
+    addBuilding('sax', 51292, 6, 12);
+    addBuilding('wb4', 47129, 8, 12);
+    [[2, 16], [4, 16], [6, 16], [8, 16], [10, 16]].forEach(function (c, i) { addBuilding('bench' + i, 40801, c[0], c[1]); });
+    addBuilding('dock', 47456, 20, 4);                      // sea decor in the troop area's water
+    addBuilding('buoy', 70001, 22, 4);                      // cosmetic sea decor (no stats): never moved
+    bag(40800, 6); bag(48217, 2); bag(54731, 1); bag(48308, 1); bag(49923, 1);
+    U._museumData = [{ labelId: 1, labelName: 'Tab 1', labelStoreData: [{ uuid: 's1', decorationId: 48220, x: 0, y: 0 }, { uuid: 's2', decorationId: 47128, x: 1, y: 0 }] },
+      { labelId: 2, labelName: 'Tab 2', labelStoreData: [] }];
+    F.up = { state: 4, exp: 0 };
+  };
+  U.DeleteBuilding = function (x) { var b = building(x.id); if (b) { occupy(b, false); U.Buildings = U.Buildings.filter(function (q) { return q !== b; }); } };
+  U.updateMuseumOneData = function (ack) { U._museumData = U._museumData.map(function (l) { return l.labelId === ack.labelId ? ack : l; }); };
+  U.DecorationExpandData = { get _dataMap() { var o = {}; o[5494] = { buildId: 48220, sublime_exp: F.up.exp }; return o; },
+    getStateList: function () { return [{ state: F.up.state, buildCfg: B[48220], buildCfgLv1: B[48217], sublimationCfg: { building_number: 54, per_number: 1 }, exp: F.up.exp }]; } };
+
+  // ---- the home map
+  var HM = { _BuildingComplete: true, removed: [],
+    checkNearByPos: function (pos, a, b, c, w, h, pt, mp) {
+      return fp(pos.x, pos.y, w, h).every(function (q) {
+        var x0 = Math.floor(q / 1000);
+        if (BT[q] == null || BT[q] === 2 || !FREE[q]) return false;
+        if (mp === 5) return ground(x0) && !U.GroundPoints[q];
+        return (ground(x0) ? 1 : 0) === pt && !U.HomeItemPoints[q];
+      }) ? 1 : -1;
+    },
+    removeBuildingFromMap: function (id) { HM.removed.push(id); },
+    MoveBuildingCallBack: function (r) { var d = JSON.parse(r.d), b = building(d.building.id); if (!b) return; occupy(b, false); b.Pos = 1000 * d.building.x + d.building.y; occupy(b, true); }
+  };
+
+  // ---- the network
+  function tabOf(id) { return U._museumData.filter(function (l) { return l.labelId === id; })[0]; }
+  function json(rid, p) {
+    var mode = F.mode[rid] || 'ok';
+    if (mode === 'refuse') return { s: 3, d: '"refused_' + rid + '"' };
+    if (mode !== 'nostate') {
+      if (rid === 131) { if (building(p.id)) bag(building(p.id).Data.id, 1); }
+      else if (rid === 129) { bag(p.buildId, -1); addBuilding('n' + (++F.seq), p.buildId, p.x, p.y); }
+      else if (rid === 130) { var r = B[p.buildId], nx = Object.keys(B).map(Number).filter(function (k) { return B[k].group === r.group && B[k].level === r.level + 1; })[0]; bag(p.buildId, -3 * p.num); bag(nx, p.num); }
+    }
+    if (rid === 104) { var b = building(p.id); return { s: 0, d: JSON.stringify({ x: Math.floor(b.Pos / 1000), y: b.Pos % 1000, building: { id: p.id, x: mode === 'nostate' ? Math.floor(b.Pos / 1000) : p.x, y: mode === 'nostate' ? b.Pos % 1000 : p.y } }) }; }
+    return { s: 0, d: rid === 131 ? '{"ret":0}' : '{}' };
+  }
+  function pb(rid, p) {
+    var mode = F.mode[rid] || 'ok';
+    if (mode === 'refuse') return { s: 2 };
+    var ack = {};
+    if (rid === 4760) {
+      if (mode !== 'nostate') {
+        var id;
+        if (p.type === 1) { var b = building(p.buildingUuid); id = b.Data.id; occupy(b, false); U.Buildings = U.Buildings.filter(function (q) { return q !== b; }); }
+        else if (p.type === 2) { var l = tabOf(p.labelId), e = l.labelStoreData.filter(function (q) { return q.uuid === p.museumStoreUuid; })[0]; id = e.decorationId; l.labelStoreData = l.labelStoreData.filter(function (q) { return q !== e; }); }
+        else { id = p.boxBuildingId; bag(id, -1); }
+        if (U.collabDecorateBox[p.specId]) bag(U.collabDecorateBox[p.specId].decorationId, 1);
+        U.collabDecorateBox[p.specId] = { decorationId: id };
+      }
+    } else if (rid === 4754) {
+      if (mode !== 'nostate') { bag(U.collabDecorateBox[p.specId].decorationId, 1); delete U.collabDecorateBox[p.specId]; }
+    } else if (rid === 4755) {
+      var t = tabOf(p.labelId);
+      ack = { labelId: t.labelId, labelName: t.labelName, labelStoreData: t.labelStoreData.concat(mode === 'nostate' ? [] : [{ uuid: 'm' + (++F.seq), decorationId: p.decorationId, x: p.x, y: p.y }]) };
+      if (mode !== 'nostate') bag(p.decorationId, -1);
+    } else if (rid === 4757) {
+      var t2 = tabOf(p.labelId), gone = t2.labelStoreData.filter(function (q) { return q.uuid === p.uuid; })[0];
+      ack = { labelId: t2.labelId, labelName: t2.labelName, labelStoreData: t2.labelStoreData.filter(function (q) { return mode === 'nostate' || q !== gone; }) };
+      if (mode !== 'nostate' && gone) bag(gone.decorationId, 1);
+    } else if (rid === 4792) { if (mode !== 'nostate') F.up.state = 3; }
+    else if (rid === 4793) { if (mode !== 'nostate') { bag(48217, -p.num); F.up.exp += p.num; F.up.state = count(48217) > 0 ? 4 : 3; } }
+    return { s: 0, ack: ack };
+  }
+  function later(fn) { setTimeout(fn, 10); }
+  var NET = { _socket: { _webSocket: { readyState: 1 } },
+    send: function (rid, p, t, cb) {
+      F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(p)), at: Date.now() });
+      if (rid === 0 || F.mode[rid] === 'silent') return true;
+      var a = json(rid, p);
+      later(function () {
+        cb(Object.assign({ c: rid }, a));
+        if (F.staleAfter === rid) { F.staleAfter = 0; var l = tabOf(1); l.labelStoreData = l.labelStoreData.filter(function (q) { return q.uuid !== 's2'; }); }
+      });
+      return true;
+    },
+    sendPB: function (rid, body, t, cb) {
+      var key = Object.keys(body).filter(function (k) { return k !== 'header'; })[0];
+      F.sent.push({ rid: rid, p: JSON.parse(JSON.stringify(body[key])), at: Date.now() });
+      if (F.mode[rid] === 'silent') return true;
+      var a = pb(rid, body[key]);
+      later(function () { var ack = { header: { s: a.s } }; ack[key] = a.ack; cb({ pbAck: ack }); });
+      return true;
+    } };
+
+  var mods = {
+    DataCenter: { DATA: { UserData: U, ServerTime: 1800000000 } },
+    TableManager: { TABLE: TABLE },
+    HomeMapCommon: { HomeMapCommon: { WidthCount: W, HeightCount: H }, HomeMapTileBlockTypeTable: BT },
+    NHomeMapTmx: { default: { getTilePos: function (x, y) { return { x: x, y: y }; }, getTileValue: function (x) { return ground(x) ? 15 : 0; }, isBlocked: function () { return false; } } },
+    GameTools: { default: { getDataConfigData: function (k) { return k === 79010 ? '4' : ''; } } },
+    GameDefine: { BuffType: { DecorationActiveInBag: 406 } },
+    LocalManager: { LOCAL: { getText: function (k) { return k; }, getNetMsgText: function (d) { return 'Refused: ' + d; } } },
+    NetMgr: { NET: NET },
+    RequestId: { RequestId: { BUILD_MOVE: 104, Build_ByBox: 129, Build_Box_MERGE: 130, Build_In_Box: 131 } },
+    NRequestId: { NRequestId: { PUT_LINKAGE_BOX: 4760, MOVE_OUT_LINKAGE_BOX: 4754, MUSEUM_MOVE_IN_DECORATION: 4755, MUSEUM_MOVE_AND_OUT_DECORATION: 4757,
+      OPEN_DECORATION_SUBLIME: 4792, DECORATION_SUBLIME: 4793, DECORATION_SUBLIME_SPLIT: 4798, DECORATION_SUBLIME_UP_LEVEL: 4800 } }
+  };
+  window.__require = function (n) { if (!mods[n]) throw new Error('no module ' + n); return mods[n]; };
+  var HOME = 'UICanvas/WorldMapUIWrapper/NWorldMapUI/bottomNode/btn_Home';
+  window.cc = {
+    Button: function () {},
+    v2: function (x, y) { return { x: x, y: y }; },
+    find: function (path) {
+      if (path === 'Canvas/HomeMap') return F.inBase ? { getComponent: function () { return HM; } } : null;
+      if (path === HOME && !F.inBase) return { activeInHierarchy: true, getComponent: function () { return { interactable: true, clickEvents: [{ emit: function () { F.homePressed++; setTimeout(function () { F.inBase = true; }, 300); } }] }; } };
+      return null;
+    }
+  };
+  F.HM = HM;
+  F.setup();
+})();
+</script>
+</body></html>
