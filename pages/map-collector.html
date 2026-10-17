@@ -190,6 +190,15 @@
   #dash-gate-msg { color: var(--red); font-size: 14px; margin: 10px 0 0; min-height: 1em; }
   [hidden] { display: none !important; }
   @media (prefers-reduced-motion: reduce) { .sweep, .live .beacon::before, .icon-btn.spin svg { animation: none; } }
+  .remote-acc{border-top:1px solid var(--line, #30363d);padding:10px 0}.remote-acc:first-child{border-top:0;padding-top:0}
+  .remote-head{display:flex;justify-content:space-between;gap:8px;align-items:baseline}.remote-name{font-weight:600}
+  .remote-state.ok{color:#3fb950}.remote-state.warn{color:#d29922}.remote-state.bad{color:#f85149}.remote-state.mute{color:#8b949e}
+  .remote-btns{display:flex;gap:6px;margin:8px 0}.remote-btns button,.remote-tool button{min-height:36px;padding:0 12px;border-radius:8px;border:1px solid #30363d;background:#1c2128;color:#e6edf3;font:inherit;cursor:pointer}
+  .remote-tool{display:grid;grid-template-columns:1fr auto;gap:2px 8px;align-items:center;padding:6px 0}
+  .remote-tool .remote-tstate{grid-column:1;grid-row:2;color:#8b949e;font-size:12px;overflow-wrap:anywhere}.remote-tool .remote-tstate.running{color:#3fb950}
+  .remote-tool button{grid-column:2;grid-row:1 / span 2}.remote-tool .remote-title{grid-column:1;grid-row:1}
+  .remote-result{margin:6px 0 0;color:#8b949e;font-size:12px;overflow-wrap:anywhere}
+  #dash-remote .meta .warn{color:#d29922}
 </style>
 </head>
 <body>
@@ -229,6 +238,11 @@
             <button id="dash-reconnect" type="button">Reconnect home game</button>
             <p id="dash-reconnect-msg" role="status"></p>
           </div>
+        </section>
+        <section class="panel" id="dash-remote" hidden>
+          <h2 class="label">Unattended</h2>
+          <div id="dash-remote-list"></div>
+          <p class="note" id="dash-remote-note" role="status"></p>
         </section>
         <section class="panel" id="dash-speed-panel">
           <div class="speed-head">
@@ -270,6 +284,7 @@
     </section>
   </main>
 </div>
+<script src="ops-unattended-core.js"></script>
 <script>
 (function () {
   'use strict';
@@ -336,6 +351,7 @@
         setText($('dash-note'), '');
         showMain(); render();
         if (j.usage === true) loadUsage(pw); else $('dash-usage').hidden = true;
+        if (j.remote === true) loadRemote(pw); else $('dash-remote').hidden = true;
       }, function (e) { setText($('dash-note'), e && e.message && !/fetch|network/i.test(e.message) ? e.message : 'Can\'t reach the server right now. Retrying.'); })
       .then(function () { busy = false; if (again) { again = false; load(false); } });
   }
@@ -412,6 +428,80 @@
       });
       li.appendChild(head); li.appendChild(chips); list.appendChild(li);
     });
+  }
+  // Ops Center Unattended mode (Tex 2026-10-16): the tab on the computer, its six collectors, Reconnect and Stop all.
+  // Each command is signed here with a key made from this password and the account; the tab checks the signature.
+  var U = window.OpsUnattendedCore, remote = null, rskew = 0, remoteBusy = false, remoteTimer = null, remoteKeys = {};
+  function toolTitle(id) { return (toolTitles && toolTitles[id]) || id; }
+  function loadRemote(pw) {
+    if (remoteBusy || !U) return;
+    remoteBusy = true;
+    Promise.all([fetch(WORKER + '/opsremote/state', { headers: { 'X-Map-Collector-Password': pw }, cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }), loadToolTitles().catch(function () { return null; })])
+      .then(function (a) {
+        remoteBusy = false;
+        var j = a[0];
+        if (!j || !j.ok || !Array.isArray(j.accounts)) { $('dash-remote').hidden = true; return; }
+        remote = j; rskew = j.now - Date.now();
+        renderRemote();
+      }, function () { remoteBusy = false; setText($('dash-remote-note'), 'Can\'t reach the server right now.'); });
+  }
+  function rbutton(acc, kind, tool, label) {
+    var b = el('button', null, label); b.type = 'button';
+    b.setAttribute('data-kind', kind); b.setAttribute('data-tool', tool); b.setAttribute('data-sk', acc.siteKey);
+    b.addEventListener('click', function () { sendRemote(acc, kind, tool, label); });
+    return b;
+  }
+  function what(kind, tool) { return kind === 'start' ? 'Start ' + toolTitle(tool) : kind === 'stop' ? 'Stop ' + toolTitle(tool) : kind === 'stopall' ? 'Stop all' : 'Reconnect'; }
+  function renderRemote() {
+    var box = $('dash-remote'), list = $('dash-remote-list');
+    if (!remote || !U) { box.hidden = true; return; }
+    box.hidden = false; list.textContent = '';
+    var now = Date.now() + rskew, waiting = false;
+    remote.accounts.forEach(function (acc) {
+      var blk = el('div', 'remote-acc'), h = U.header(acc, now), age = U.loginAge(acc, now);
+      var top = el('div', 'remote-head');
+      top.appendChild(el('span', 'remote-name', acc.name)); top.appendChild(el('span', 'remote-state ' + h.tone, h.text));
+      blk.appendChild(top);
+      var meta = el('div', 'meta');
+      if (acc.on && acc.seenAt) meta.appendChild(el('span', null, 'checked in ' + ago(now - acc.seenAt)));
+      if (acc.on && age.text) meta.appendChild(el('span', age.warn ? 'warn' : null, age.text));
+      blk.appendChild(meta);
+      if (acc.on) {
+        var btns = el('div', 'remote-btns');
+        btns.appendChild(rbutton(acc, 'reconnect', '', 'Reconnect')); btns.appendChild(rbutton(acc, 'stopall', '', 'Stop all'));
+        blk.appendChild(btns);
+        U.ORDER.forEach(function (id) {
+          var row = U.toolRow(acc, id), r = el('div', 'remote-tool');
+          r.appendChild(el('span', 'remote-title', toolTitle(id)));
+          r.appendChild(el('span', 'remote-tstate ' + row.state, row.label));
+          r.appendChild(rbutton(acc, row.action, id, row.action === 'stop' ? 'Stop' : 'Start'));
+          blk.appendChild(r);
+        });
+      }
+      var res = (acc.results || [])[0];
+      if (res) {
+        var txt = res.result === 'not picked up' ? 'Not picked up' : res.result || (now - res.queuedAt > 120000 ? 'Not picked up' : 'Sent...');
+        if (!res.result && now - res.queuedAt <= 150000) waiting = true;
+        blk.appendChild(el('p', 'remote-result', what(res.kind, res.tool) + ': ' + txt));
+      }
+      list.appendChild(blk);
+    });
+    clearTimeout(remoteTimer);
+    if (waiting) remoteTimer = setTimeout(function () { var pw = lsGet(LS_PW); if (pw) loadRemote(pw); }, 5000);   // until the tab answers
+  }
+  function keyFor(sk, pw) { if (!remoteKeys[sk]) remoteKeys[sk] = U.deriveKey(pw, sk); return remoteKeys[sk]; }
+  function sendRemote(acc, kind, tool, label) {
+    var pw = lsGet(LS_PW);
+    if (!pw || !U) return;
+    var cmd = U.makeCommand(acc.siteKey, kind, tool, Date.now() + rskew), w = what(kind, tool);
+    setText($('dash-remote-note'), w + ': Sent...');
+    keyFor(acc.siteKey, pw).then(function (k) { return U.sign(k, cmd); }).then(function (sig) {
+      return fetch(WORKER + '/opsremote/command', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Map-Collector-Password': pw },
+        body: JSON.stringify({ siteKey: acc.siteKey, cmd: cmd, sig: sig }) });
+    }).then(function (r) {
+      if (!r.ok) { setText($('dash-remote-note'), w + ': the server refused it (' + r.status + ').'); return; }
+      setTimeout(function () { loadRemote(pw); }, 1500);
+    }, function () { setText($('dash-remote-note'), 'Can\'t reach the server right now.'); });
   }
   function schedule() { clearInterval(timer); timer = setInterval(function () { if (document.visibilityState === 'visible') load(false); }, REFRESH_MS); }
 

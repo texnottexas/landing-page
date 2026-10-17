@@ -7,10 +7,12 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const U = require('../ops-unattended-core.js');
 
 const PAGE = path.join(__dirname, '..', 'pages', 'map-collector.html');
 const TEX = 'd847a198622a518d', REX = 'c3c6f3200a4ec1fb';
 let server, base, browser, state, asked, commands, posted, seenHours, usageAsked;
+let remoteAsked, remoteCmds;
 const NOW = Date.now();
 const S = () => ({ ok: true, now: NOW, window: { hours: 24, since: NOW - 864e5 },
   players: [{ siteKey: TEX, name: 'Tex' }, { siteKey: REX, name: 'Rеx' }], player: TEX,
@@ -23,6 +25,7 @@ const S = () => ({ ok: true, now: NOW, window: { hours: 24, since: NOW - 864e5 }
     { id: '3', noticed_at: NOW - 40000, spawner: 'A', x: 3, y: 4, state: 'missed', reward: '', reason: '', arrive_at: 0 },
     { id: '4', noticed_at: NOW - 30000, spawner: 'B', x: 5, y: 6, state: 'gone', reward: '', reason: 'Location error', arrive_at: 0 }
   ],
+  remote: false,
   settings: { speedOn: false, gemReserve: 10000, gemCap: 1500, updatedAt: 0 }, today: { speedups: 3, gems: 37 }, speedTotals: { speedups: 3, gems: 37 }, truncated: false });
 
 const USAGE_TODAY = '2026-10-08';
@@ -67,6 +70,22 @@ test.before(async () => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(fs.readFileSync(path.join(__dirname, '..', 'ops-tools.json'))); return;
     }
+    if (req.url.startsWith('/ops-unattended-core.js')) {
+      res.writeHead(200, { 'content-type': 'text/javascript' });
+      res.end(fs.readFileSync(path.join(__dirname, '..', 'ops-unattended-core.js'))); return;
+    }
+    if (req.url.startsWith('/opsremote/state')) {
+      remoteAsked.push(req.headers['x-map-collector-password']);
+      res.writeHead(state.remote ? 200 : 403, Object.assign({ 'content-type': 'application/json' }, cors));
+      res.end(JSON.stringify(state.remote ? { ok: true, now: NOW, accounts: state.remoteAccounts } : { ok: false, error: 'not_allowed' })); return;
+    }
+    if (req.url.startsWith('/opsremote/command') && req.method === 'POST') {
+      let b = ''; req.on('data', (c) => { b += c; }); req.on('end', () => {
+        remoteCmds.push({ pw: req.headers['x-map-collector-password'], body: JSON.parse(b) });
+        res.writeHead(200, Object.assign({ 'content-type': 'application/json' }, cors)); res.end('{"ok":true}');
+      });
+      return;
+    }
     if (req.url.startsWith('/mapcollector/state')) {
       const pw = req.headers['x-map-collector-password'];
       seenHours.push(new URL(req.url, 'http://x').searchParams.get('hours'));
@@ -86,7 +105,7 @@ test.before(async () => {
   browser = await chromium.launch({ channel: 'chrome' });
 });
 test.after(async () => { await browser.close(); server.close(); });
-test.beforeEach(() => { state = S(); asked = []; commands = []; posted = []; seenHours = []; usageAsked = []; });
+test.beforeEach(() => { state = S(); asked = []; commands = []; posted = []; seenHours = []; usageAsked = []; remoteAsked = []; remoteCmds = []; });
 
 async function open(pw, extra) {
   const ctx = await browser.newContext({ viewport: { width: 375, height: 740 } });
@@ -426,5 +445,75 @@ test('USAGE-5: players turned away show their home server, as Not from 2864 (ric
   assert.equal(await page.$$eval('#dash-usage-list .usage-player .usage-server', (els) => els.length), 2, 'only rows that carry a server show one');
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 375), 'no sideways scroll');
   state.usageExtra = null;
+  await ctx.close();
+});
+
+// Ops Center Unattended mode panel (Tex 2026-10-16).
+const ACCOUNTS = () => [
+  { siteKey: TEX, name: 'Tex', on: true, seenAt: NOW - 8000, downSince: 0,
+    status: { connected: true, loadedAt: NOW - 3 * 3600e3, tools: { 'odin-gather': { state: 'running' }, angels: { state: 'stopped', why: '<img src=x onerror=window.__pwned=1>' } } },
+    results: [{ nonce: 'a'.repeat(32), kind: 'start', tool: 'odin-gather', queuedAt: NOW - 20000, result: 'Started' }] },
+  { siteKey: REX, name: 'Rеx', on: false, status: null, seenAt: 0, downSince: 0, results: [] }];
+
+test('UNATT-1: a password without an allowed account: no panel, not even asked', async () => {
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('li.map');
+  await page.waitForTimeout(400);
+  assert.equal(await page.isHidden('#dash-remote'), true);
+  assert.equal(remoteAsked.length, 0);
+  await ctx.close();
+});
+
+test('UNATT-2: the panel: Tex on and connected with its six collectors; Rеx off with no buttons; names and reasons are text', async () => {
+  state.remote = true; state.remoteAccounts = ACCOUNTS();
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-remote .remote-acc');
+  const blocks = await page.$$eval('#dash-remote .remote-acc', (b) => b.map((x) => x.textContent));
+  assert.match(blocks[0], /Tex/); assert.match(blocks[0], /On, connected/); assert.match(blocks[0], /login link 3h old/);
+  assert.match(blocks[0], /Odinium Gatherer\s*Running\s*Stop/);
+  assert.match(blocks[0], /Stopped: <img src=x onerror=window.__pwned=1>/);
+  assert.match(blocks[0], /Start Odinium Gatherer: Started/);
+  assert.match(blocks[1], /Rеx/); assert.match(blocks[1], /Off/);
+  assert.equal(await page.$$eval('#dash-remote .remote-acc:nth-child(2) button', (b) => b.length), 0);
+  assert.equal(await page.$$eval('#dash-remote .remote-acc:nth-child(1) .remote-tool', (r) => r.length), 6);
+  assert.equal(await page.evaluate(() => window.__pwned), undefined);
+  await ctx.close();
+});
+
+test('UNATT-3: Start signs the command with the key from the saved password; the worker gets exactly that', async () => {
+  state.remote = true; state.remoteAccounts = ACCOUNTS();
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-remote .remote-acc');
+  await page.click('#dash-remote button[data-kind="start"][data-tool="mask-boxes"][data-sk="' + TEX + '"]');
+  await page.waitForFunction(() => /Sent/.test(document.getElementById('dash-remote-note').textContent));
+  for (let i = 0; i < 50 && !remoteCmds.length; i++) await new Promise((r) => setTimeout(r, 100));
+  assert.equal(remoteCmds.length, 1);
+  const { pw, body } = remoteCmds[0];
+  assert.equal(pw, 'good pass');
+  assert.equal(body.siteKey, TEX);
+  assert.deepEqual(Object.keys(body.cmd).sort(), ['at', 'kind', 'nonce', 'sk', 'tool', 'v']);
+  assert.deepEqual([body.cmd.v, body.cmd.sk, body.cmd.kind, body.cmd.tool], [1, TEX, 'start', 'mask-boxes']);
+  assert.ok(Math.abs(body.cmd.at - NOW) < 60000, 'stamped in the worker\'s clock');
+  const key = await U.deriveKey('good pass', TEX);
+  assert.equal(body.sig, await U.sign(key, body.cmd));
+  await ctx.close();
+});
+
+test('UNATT-4: Reconnect and Stop all go out signed; a running tool offers Stop', async () => {
+  state.remote = true; state.remoteAccounts = ACCOUNTS();
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-remote .remote-acc');
+  await page.click('#dash-remote button[data-kind="reconnect"][data-sk="' + TEX + '"]');
+  await page.click('#dash-remote button[data-kind="stop"][data-tool="odin-gather"][data-sk="' + TEX + '"]');
+  for (let i = 0; i < 50 && remoteCmds.length < 2; i++) await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(remoteCmds.map((c) => c.body.cmd.kind + ':' + c.body.cmd.tool).sort(), ['reconnect:', 'stop:odin-gather']);
+  await ctx.close();
+});
+
+test('UNATT-5: 375 px: the panel fits, no sideways scroll', async () => {
+  state.remote = true; state.remoteAccounts = ACCOUNTS();
+  const { ctx, page } = await open('good pass');
+  await page.waitForSelector('#dash-remote .remote-acc');
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
   await ctx.close();
 });
