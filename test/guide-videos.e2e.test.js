@@ -182,6 +182,14 @@ test('sign-in guide: under the Ops Center card, screenshots load, step 7 film, C
     };
   });
   assert.deepEqual(lay, { afterCards: true, steps: 7, loaded: [true, true, true, true, true, true], overflow: 0, stores: ['_blank noopener', '_blank noopener'] });
+  // The bright jump link near the top lands on the guide; Mobile setup starts folded (Tex).
+  const top = await page.evaluate(() => {
+    const j = document.querySelector('#g-tools a.jump'), st = document.querySelector('#g-tools details.steps');
+    return { href: j && j.getAttribute('href'), beforeSteps: !!(j && st && (j.compareDocumentPosition(st) & Node.DOCUMENT_POSITION_FOLLOWING)), folded: !!st && !st.open };
+  });
+  assert.deepEqual(top, { href: '#signin-guide', beforeSteps: true, folded: true });
+  await page.click('#g-tools a.jump');
+  await page.waitForFunction(() => Math.abs(document.getElementById('signin-guide').getBoundingClientRect().top) < 40, null, { timeout: 3000 });
   assert.equal(await page.$$eval('#sgVideo .guide-videos iframe', (n) => n.length), 0, 'no YouTube until opened');
   await page.click('#sgVideo details.guide-videos summary');
   await page.waitForSelector('#sgVideo .guide-videos iframe');
