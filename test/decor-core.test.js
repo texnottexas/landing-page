@@ -354,8 +354,8 @@ test('nothing to do is empty', () => {
   s.grid.cells = [[2, 2, 1, 1, 1, 1, 0], [4, 4, 1, 1, 1, 0, 0]];
   const p = C.plan(s, ALL);
   C.phaseOrder.forEach((ph) => assert.deepEqual(p.phases[ph], [], ph));
-  assert.deepEqual(p.summary.counts, { collab: 0, toBag: 0, merges: 0, upgrades: 0, placed: 0, tidied: 0 });
-  assert.deepEqual(p.summary.gains, []);
+  assert.deepEqual(p.summary.counts, { collab: 0, toBag: 0, evicted: 0, merges: 0, upgrades: 0, opens: 0, placed: 0, tidied: 0 });
+  assert.deepEqual(p.summary.gains, []); assert.deepEqual(p.summary.losses, []);
 });
 
 test('gains are the counting difference', () => {
@@ -380,4 +380,37 @@ test('tidy never moves sea decor with no stats (Tex: only decor with stats matte
   s.grid.cells = [[20, 4, 0, 0, 1, 1, 0], [22, 4, 0, 0, 1, 1, 0], [20, 20, 1, 0, 1, 0, 0], [22, 24, 1, 0, 1, 0, 0]];
   const t = C.tidyPlan(s);
   assert.deepEqual(t.map((m) => m.uuid), ['dock']);
+});
+
+// ---------------------------------------------------------------- final review fixes
+test('review C1: no split while the group\'s copy to place sits in the bag (a split could take it)', () => {
+  const rows = [[1, 10, 1, 1, [[930000, 100]]], [4, 10, 4, 1, [[930000, 400]]], [5, 10, 5, 1, [[930000, 500]]]];
+  const s = snap({ rows, placed: [{ uuid: 'p4', id: 4, x: 4, y: 4 }], bag: [{ id: 5, n: 1 }],
+    upgrades: [{ group: 10, state: 5, buildId: 4, exp: 0, need: 54, perNumber: 1 }] });
+  s.grid.cells = [[4, 4, 1, 1, 1, 1, 0], [6, 6, 1, 1, 1, 0, 0]];
+  const p = C.plan(s, ALL);
+  assert.deepEqual(p.phases.upgrade, [], 'no split');
+  assert.deepEqual(p.phases.place.map((a) => a.id), [5], 'the Lv5 is placed');
+  assert.deepEqual(C.upgradeSteps(s, {}, ALL), [], 'upgradeSteps alone: the plain-bag Lv5 is a target');
+});
+
+test('review I3: the preview counts room-making evictions on their own line and lists losses apart from gains', () => {
+  const rows = [[40700, 4070, 3, 5, [[920900, 140]], { w: 2, h: 2 }], [7, 20, 1, 1, [[930000, 300]], { w: 2, h: 2 }], [8, 21, 1, 1, [[921002, 160]], { w: 2, h: 2 }]];
+  const fp = C.footprint(4, 4, 2, 2);
+  const s = snap({ rows, placed: [{ uuid: 'gat', id: 8, x: 4, y: 4 }], bag: [{ id: 7, n: 1 }] });
+  s.grid.cells = fp.map(([x, y]) => [x, y, 1, 1, 1, 1, 0]);
+  const p = C.plan(s, ALL);
+  assert.equal(p.summary.counts.toBag, 0, 'nothing that "doesn\'t count"');
+  assert.equal(p.summary.counts.evicted, 1, 'one moved out to make room');
+  assert.deepEqual(p.summary.gains.map((g) => g.buffId), [930000]);
+  assert.deepEqual(p.summary.losses.map((g) => g.buffId + ' ' + g.text), ['921002 -1.60%']);
+});
+
+test('review I4: a collab variant that would lose to its placed partner stays out of the collab box', () => {
+  const rows = [[57201, 5720, 3, 1, [[1001001, 750]], { me: [5557] }], [55571, 5557, 1, 1, [[1001001, 250]], { me: [5720] }]];
+  const s = snap({ rows, placed: [{ uuid: 'sg', id: 57201, x: 4, y: 4 }], bag: [{ id: 55571, n: 1 }], collab: [{ slot: 20, group: 5557, id: null }] });
+  assert.deepEqual(C.collabPlan(s), []);
+  const s2 = snap({ rows: [[57201, 5720, 1, 1, [[1001001, 250]], { me: [5557] }], [55571, 5557, 3, 1, [[1001001, 750]], { me: [5720] }]],
+    placed: [{ uuid: 'sg', id: 57201, x: 4, y: 4 }], bag: [{ id: 55571, n: 1 }], collab: [{ slot: 20, group: 5557, id: null }] });
+  assert.deepEqual(C.collabPlan(s2).map((c) => c.slot), [20], 'a higher collab variant still goes in');
 });

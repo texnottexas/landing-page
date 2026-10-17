@@ -132,7 +132,7 @@
     '#dpo-root .dpo-units button{flex:1;min-height:36px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#8b949e}',
     '#dpo-root .dpo-units button[aria-pressed="true"]{border-color:#3fb950;color:#e6edf3;background:#1c2128}',
     '#dpo-root #dpo-preview{max-height:min(46vh,340px);overflow:auto;padding-right:2px}',
-    '#dpo-root .dpo-h{color:#8b949e;font-size:12px;margin:8px 0 2px}#dpo-root .dpo-line{margin:1px 0}#dpo-root .dpo-gain{color:#3fb950;font-variant-numeric:tabular-nums}',
+    '#dpo-root .dpo-h{color:#8b949e;font-size:12px;margin:8px 0 2px}#dpo-root .dpo-line{margin:1px 0}#dpo-root .dpo-gain{color:#3fb950;font-variant-numeric:tabular-nums}#dpo-root .dpo-loss{color:#f85149;font-variant-numeric:tabular-nums}',
     '#dpo-root .dpo-left{color:#8b949e;font-size:12px}',
     '#dpo-root .dpo-foot{color:#8b949e;font-size:12px;margin-top:6px;min-height:16px}',
     '#dpo-root .dpo-msg{margin:4px 0 2px}#dpo-root .dpo-btns{display:flex;gap:6px;margin-top:8px}',
@@ -194,14 +194,20 @@
     box.appendChild(el('div', 'dpo-h', 'The plan'));
     line(c.collab, 'Collab box: ' + c.collab + ' in');
     line(c.toBag, 'To the bag: ' + c.toBag + ' that don\'t count');
+    line(c.evicted, 'To make room: ' + c.evicted + ' moved to the bag (lower ranked)');
     line(c.merges, 'Level up spare copies: ' + c.merges + ' merges');
-    line(c.upgrades, 'Advanced Upgrade: ' + c.upgrades + (c.upgrades === 1 ? ' step' : ' steps'));
+    line(c.upgrades, 'Advanced Upgrade: ' + c.upgrades + (c.upgrades === 1 ? ' step' : ' steps') +
+      (c.opens ? ' (opens ' + c.opens + ': as the game warns, an opened decor\'s top copy can\'t be disassembled)' : ''));
     line(c.placed, 'Place: ' + c.placed + ' (the showcase first)');
     line(c.tidied, 'Sea decor to the far corners: ' + c.tidied);
     if (!any) box.appendChild(el('div', 'dpo-line', 'Your decor is already in order.'));
     if (p.summary.gains.length) {
       box.appendChild(el('div', 'dpo-h', 'Stats'));
       p.summary.gains.forEach(function (g) { var d = el('div', 'dpo-line'); d.appendChild(document.createTextNode(g.name + ' ')); d.appendChild(el('span', 'dpo-gain', g.text)); box.appendChild(d); });
+    }
+    if (p.summary.losses.length) {
+      box.appendChild(el('div', 'dpo-h', 'Losses'));
+      p.summary.losses.forEach(function (g) { var d = el('div', 'dpo-line'); d.appendChild(document.createTextNode(g.name + (g.gold ? ' (gold) ' : ' '))); d.appendChild(el('span', 'dpo-loss', g.text)); box.appendChild(d); });
     }
     var by = {};
     p.summary.left.forEach(function (l) { (by[l.why] = by[l.why] || []).push(l.name); });

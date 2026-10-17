@@ -197,8 +197,8 @@
   // copies into Lv1, 6 can level up. Feeds use only the Lv1 copies the merges leave (reservedLv1 {group: n}), never past
   // the bar. A split is sent only when the counted copy isn't in the bag (a split could otherwise take it). Never shards.
   var UP = { OPEN: 2, FEED: 4, SPLIT: 5, LEVEL: 6 };
-  function upgradeSteps(snap, reservedLv1) {
-    var out = [], c = null;
+  function upgradeSteps(snap, reservedLv1, settings) {
+    var out = [], c = null, ft = null;
     (snap.upgrades || []).forEach(function (u) {
       var g = u.group;
       if (u.state === UP.OPEN) out.push({ kind: 'open', group: g });
@@ -210,8 +210,11 @@
         if (num > 0) out.push({ kind: 'feed', group: g, num: num });
       } else if (u.state === UP.SPLIT) {
         c = c || counted(snap);
+        ft = ft || finalTargets(snap, settings || {});
         var inBag = (c.byGroup[g] || []).some(function (e) { return e.where === 'setbag'; });
-        if (!inBag) out.push({ kind: 'split', group: g });
+        // the split takes bag copies the server picks: never while a copy to count or place sits in the bag (review)
+        var toPlace = (ft[g] || []).some(function (t) { return t.from === 'bag' && t.level > 1; });
+        if (!inBag && !toPlace) out.push({ kind: 'split', group: g });
       }
     });
     return out;
@@ -239,6 +242,8 @@
         if (!best || x.level > best.level || (x.level === best.level && COLLAB_FROM[x.where] < COLLAB_FROM[best.where])) best = x;
       });
       if (!best) return;
+      var me = snap.rows[best.id].me, beaten = entries.some(function (e) { return me.indexOf(e.group) >= 0 && e.level > best.level; });
+      if (beaten) return;                                  // its placed partner is higher: it would count nothing (review)
       var cur = c.id && snap.rows[c.id];
       if (cur && cur.level >= best.level) return;
       out.push({ slot: c.slot, from: best.where, id: best.id, ref: best.ref });
@@ -544,7 +549,7 @@
       });
       g.putBacks.forEach(function (b, i) { ph.merge.push({ kind: 'putBack', id: b.id, where: b.where, to: spots[i] }); S.put(b.where, spots[i], b.id); });
     });
-    upgradeSteps(s, {}).forEach(function (u) {
+    upgradeSteps(s, {}, settings).forEach(function (u) {
       ph.upgrade.push(u.num != null ? { kind: u.kind, group: u.group, num: u.num } : { kind: u.kind, group: u.group });
       if (u.kind === 'feed') {
         var up = s.upgrades.filter(function (x) { return x.group === u.group; })[0];
@@ -570,21 +575,22 @@
     return (delta > 0 ? '+' : '-') + (stat && stat.vt === 10000 ? (a / 100).toFixed(2) + '%' : String(a));
   }
   function summary(before, after, ph, left) {
-    var b = counted(before).buffs, a = counted(after).buffs, gains = [], seen = {}, out = [];
+    var b = counted(before).buffs, a = counted(after).buffs, gains = [], losses = [], seen = {}, out = [];
     Object.keys(b).concat(Object.keys(a)).forEach(function (k) {
       if (seen[k]) return; seen[k] = 1;
-      var d = (a[k] || 0) - (b[k] || 0), stat = before.stats[k];
-      if (!d || GOLD.indexOf(Number(k)) >= 0) return;
-      gains.push({ buffId: Number(k), name: stat ? stat.name : String(k), before: b[k] || 0, after: a[k] || 0, text: statText(stat, d) });
+      var d = (a[k] || 0) - (b[k] || 0), stat = before.stats[k], gold = GOLD.indexOf(Number(k)) >= 0;
+      if (!d || (gold && d > 0)) return;                    // gold is never a gain (Tex: not needed); a gold loss is still shown
+      (d > 0 ? gains : losses).push({ buffId: Number(k), name: stat ? stat.name : String(k), before: b[k] || 0, after: a[k] || 0, text: statText(stat, d), gold: gold });
     });
-    gains.sort(function (x, y) { return x.name < y.name ? -1 : x.name > y.name ? 1 : x.buffId - y.buffId; });
+    function byName(x, y) { return x.name < y.name ? -1 : x.name > y.name ? 1 : x.buffId - y.buffId; }
+    gains.sort(byName); losses.sort(byName);
     var names = {};
     (left || []).forEach(function (l) { var n = before.rows[l.id].name, k = n + '|' + l.why; if (!names[k]) { names[k] = 1; out.push({ name: n, why: l.why }); } });
     function count(list, kinds) { return list.filter(function (x) { return kinds.indexOf(x.kind) >= 0; }).length; }
     return {
-      counts: { collab: count(ph.collab, ['collabIn']), toBag: count(ph.pickup, ['toBag']) + count(ph.place, ['toBag']), merges: count(ph.merge, ['merge']),
-        upgrades: ph.upgrade.length, placed: count(ph.place, ['place', 'showcaseIn']), tidied: count(ph.tidy, ['move', 'showcaseIn']) },
-      gains: gains, left: out
+      counts: { collab: count(ph.collab, ['collabIn']), toBag: count(ph.pickup, ['toBag']), evicted: count(ph.place, ['toBag']), merges: count(ph.merge, ['merge']),
+        upgrades: ph.upgrade.length, opens: count(ph.upgrade, ['open']), placed: count(ph.place, ['place', 'showcaseIn']), tidied: count(ph.tidy, ['move', 'showcaseIn']) },
+      gains: gains, losses: losses, left: out
     };
   }
 
