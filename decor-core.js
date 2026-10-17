@@ -300,7 +300,7 @@
     return out;
   }
 
-  // ---------------------------------------------------------------- homes: showcase, south land, far-corner water, floors
+  // ---------------------------------------------------------------- homes: showcase, south land, south water, floors
   // A decor's cells on the base map run diagonally (the game's getMapPosList).
   function footprint(x, y, w, h) {
     var out = [];
@@ -345,8 +345,17 @@
     return snap.grid.cells.filter(keep).map(function (k) { return [k[0], k[1], Math.sqrt(Math.pow(k[0] - c[0], 2) + Math.pow((k[1] - c[1]) / 2, 2))]; })
       .sort(function (a, b) { return b[2] - a[2] || b[1] - a[1] || a[0] - b[0]; });
   }
-  function seaCells(snap) { return byDistance(snap, function (k) { return k[2] === 1 && !k[3]; }); }
-  function landCells(snap) { return byDistance(snap, function (k) { return k[2] === 1 && k[3] === 1; }); }
+  // South first (Tex 2026-10-17: "as much towards south side as possible"; farthest-from-the-buildings sent decor up the
+  // east edge of the water): the bottom row up, and in a row the cell farthest from the buildings first, so the corners
+  // fill before the middle. The score is the order (a row is 1, the in-row part stays under 0.1).
+  function southScore(c, x, y) { return y + Math.abs(x - c[0]) / 1000; }
+  function bySouth(snap, keep) {
+    var c = centroid(snap);
+    return snap.grid.cells.filter(keep).map(function (k) { return [k[0], k[1], southScore(c, k[0], k[1])]; })
+      .sort(function (a, b) { return b[2] - a[2] || a[0] - b[0]; });
+  }
+  function seaCells(snap) { return bySouth(snap, function (k) { return k[2] === 1 && !k[3]; }); }
+  function landCells(snap) { return bySouth(snap, function (k) { return k[2] === 1 && k[3] === 1; }); }
   // The base as the plan sees it: cells by position, what's occupied and where floor tiles are.
   function model(snap) {
     var m = { cell: {}, occ: {}, floor: {} };
@@ -367,7 +376,7 @@
   // 1. Showcase first (Tex 2026-10-17): every wanted land piece, new from the bag or already in the base, biggest first,
   //    until the showcase is full ("biggest first, to free the most base space"; "fill it completely"). A base piece
   //    that gets a spot moves in. Gold, unit-off, floor tiles and sea decor stay where they are; no tab is unlocked.
-  // 2. The rest by rank: land decor to the south land, sea decor to the far corners, floor tiles under decor, then under
+  // 2. The rest by rank: land decor to the south land, sea decor to the south water (bottom row first), floor tiles under decor, then under
   //    units. A placed piece nobody wants (then a Green Apple Tree) gives way only to a piece ranked above it.
   // 3. Wanted decor still in the troop area moves to the south land.
   function placePlan(snap, settings, final) {
@@ -473,13 +482,13 @@
     var a = {}; cellsAt(footprint(ax, ay, aw, ah)).forEach(function (p) { a[p] = 1; });
     return cellsAt(footprint(bx, by, bw, bh)).some(function (p) { return a[p]; });
   }
-  // Sea decor to the far corners (Tex: all of it, not only new pieces). Pack every sea piece farthest first: the d of
-  // the last spot used is the line; a piece in the south water at or beyond it stays, the rest move out to the farthest
-  // free spots. Land decor in the troop area that nobody wants moves to the south land (wanted decor there goes through
+  // Sea decor to the south water, bottom row first (Tex: all of it, not only new pieces). Pack every sea piece south
+  // first: the score of the last spot used is the line; a piece in the south water at or below it stays, the rest move
+  // down to the southmost free spots. Land decor in the troop area that nobody wants moves to the south land (wanted decor there goes through
   // placePlan, showcase first; Tex: gold and unit-off decor don't go in the showcase).
   function tidyPlan(snap, settings) {
     var c = centroid(snap), sea = seaCells(snap), out = [];
-    function dist(x, y) { return Math.sqrt(Math.pow(x - c[0], 2) + Math.pow((y - c[1]) / 2, 2)); }
+    function dist(x, y) { return southScore(c, x, y); }
     var m = model(snap), zone = function (x, y) { var k = m.cell[x * 1000 + y]; return k ? k[2] : -1; };
     var pieces = snap.placed.filter(function (p) { var r = snap.rows[p.id]; return r && r.type === 4 && r.pt === 0 && r.buffs.length; })
       .map(function (p) { var r = snap.rows[p.id]; return { p: p, w: r.w, h: r.h, d: dist(p.x, p.y) }; })

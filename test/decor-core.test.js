@@ -265,6 +265,44 @@ test('far corners on Rеx are at the bottom of the map', () => {
   for (let i = 1; i < sea.length; i++) assert.ok(sea[i - 1][2] >= sea[i][2]);
 });
 
+// Tex 2026-10-17: decor went up the east edge of Rеx's water (x 50-55, y 50-69) while the south rows had room;
+// "preference is as much towards south side as possible". Buildings on the left, water on the east edge and the
+// south row: the east edge is farther from the buildings, the south row is farther south.
+function southShape() {
+  const s = snap({ rows: [[1, 10, 1, 1, [[930000, 100]], { pt: 0 }], [2, 11, 1, 1, [[930000, 200]], { pt: 1 }]] });
+  s.grid.w = 50; s.grid.h = 40;
+  s.buildings = [{ x: 4, y: 10, w: 2, h: 2 }, { x: 6, y: 10, w: 2, h: 2 }];
+  s.grid.cells = [[40, 12, 1, 0, 1, 0, 0], [40, 14, 1, 0, 1, 0, 0], [10, 30, 1, 0, 1, 0, 0], [20, 30, 1, 0, 1, 0, 0],
+    [30, 12, 1, 1, 1, 0, 0], [12, 26, 1, 1, 1, 0, 0], [8, 26, 1, 1, 1, 0, 0]];
+  return s;
+}
+
+test('south first: sea and land cells run from the bottom row up, the corners of a row first', () => {
+  const s = southShape();
+  assert.deepEqual(C.seaCells(s).map((k) => [k[0], k[1]]), [[20, 30], [10, 30], [40, 14], [40, 12]]);
+  assert.deepEqual(C.landCells(s).map((k) => [k[0], k[1]]), [[12, 26], [8, 26], [30, 12]]);
+  const sea = C.seaCells(REX);
+  for (let i = 1; i < sea.length; i++) assert.ok(sea[i - 1][1] >= sea[i][1], 'row order at ' + i);
+});
+
+test('south first: a new sea piece goes to the south row, not the east edge; a land piece to the bottom land', () => {
+  const s = southShape();
+  s.bag = [{ id: 1, n: 1 }, { id: 2, n: 1 }];
+  const p = C.placePlan(s, ALL, C.finalTargets(s, ALL));
+  assert.deepEqual(p.place.find((x) => x.id === 1).to, { x: 20, y: 30 });
+  assert.deepEqual(p.place.find((x) => x.id === 2).to, { x: 12, y: 26 });
+});
+
+test('south first: tidy moves sea decor up the east edge down to the free south row', () => {
+  const s = southShape();
+  s.placed = [{ uuid: 'east', id: 1, x: 40, y: 12 }];
+  s.grid.cells[0][5] = 1;
+  assert.deepEqual(C.tidyPlan(s), [{ uuid: 'east', to: [20, 30] }]);
+  s.placed = [{ uuid: 'south', id: 1, x: 20, y: 30 }];
+  s.grid.cells[0][5] = 0; s.grid.cells[3][5] = 1;
+  assert.deepEqual(C.tidyPlan(s), [], 'a piece already at the bottom stays');
+});
+
 test('the land ranking: March Size first, other stats next, Green Apple Trees last; a lower piece may use space a bigger one could not', () => {
   const rows = [[1, 10, 1, 1, [[960012, 2]]], [2, 11, 1, 1, [[930000, 200]]], [3, 12, 1, 1, [[921002, 100]]]];
   const s = snap({ rows, bag: [{ id: 3, n: 1 }, { id: 2, n: 1 }, { id: 1, n: 1 }] });

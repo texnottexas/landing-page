@@ -75,7 +75,7 @@ test('DPO-1: the preview sends nothing and shows the plan, the stats and what st
   assert.match(text, /Collab box: 1 in/);
   assert.match(text, /To the bag: 2 that don't count/);
   assert.match(text, /Advanced Upgrade: 1 step/);
-  assert.match(text, /Sea decor to the far corners: 1/);
+  assert.match(text, /Sea decor moved south: 1/);
   assert.match(text, /Base decor into the showcase: 6 \(biggest first\)/, 'Weapon Box and the 5 Benches (Tex: showcase first)');
   assert.match(text, /All Units HP \+2\.00%/);
   assert.equal((await sent(page)).length, 0);

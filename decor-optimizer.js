@@ -9,7 +9,7 @@
   var C = window.DecorCore, G = window.DecorGame;
   if (!C || !G) { try { alert('Decor Optimizer did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-17.2';
+  var VERSION = '2026-10-17.3';
   var WORKER = window.__DPO_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__DPO_FAST;
   var GAP_MS = window.__DPO_GAP_MS || 1500, JITTER_MS = FAST ? 0 : 300;     // 1.5 to 1.8 s after the last Ops request
@@ -200,7 +200,7 @@
     line(c.upgrades, 'Advanced Upgrade: ' + c.upgrades + (c.upgrades === 1 ? ' step' : ' steps') +
       (c.opens ? ' (opens ' + c.opens + ': as the game warns, an opened decor\'s top copy can\'t be disassembled)' : ''));
     line(c.placed, 'Place: ' + c.placed + ' (the showcase first)');
-    line(c.tidied, 'Sea decor to the far corners: ' + c.tidied);
+    line(c.tidied, 'Sea decor moved south: ' + c.tidied);
     if (!any) box.appendChild(el('div', 'dpo-line', 'Your decor is already in order.'));
     if (p.summary.gains.length) {
       box.appendChild(el('div', 'dpo-h', 'Stats'));
