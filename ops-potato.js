@@ -113,36 +113,33 @@
   // At every Ops Center load: a remembered switch applies at once, and keeps applying to games that start later.
   function boot() { if (isOn()) { ensure(); watchOn(); } }
 
-  // ---------------------------------------------------------------- the switch (the menu header, right of "Ops Center")
-  // Tex 2026-10-17: in the header, so players see it without scrolling. The reload note goes at the top of the menu,
-  // only when it's needed.
+  // ---------------------------------------------------------------- the switch (first in the menu)
+  // Tex 2026-10-17: "Potato Mode (phone less hot)" with the toggle right below it, first in the menu so players see it
+  // without scrolling (in the header it squeezed the player's name). The label says what it does, so no hint line.
+  // The reload note goes under it, only when it's needed.
   var CSS = [
-    '.ops-title .opsp-mini{display:inline-flex;align-items:center;gap:6px;margin-left:10px;vertical-align:middle}',
-    '.opsp-mini-label{font-size:12px;font-weight:600;color:#8b949e}',
+    '.ops-body .opsp-mini{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin:-2px 0 10px}',
+    '.opsp-mini-label{font-size:12px;line-height:15px;font-weight:600;color:#8b949e;white-space:nowrap}',
     '.opsp-mini button.opsp-switch{flex:none;position:relative;width:40px;height:24px;border-radius:12px;border:1px solid #30363d;background:#0d1117;cursor:pointer;padding:0}',
     '.opsp-mini button.opsp-switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#8b949e;transition:transform .2s}',
     '.opsp-mini button.opsp-switch[aria-checked="true"]{background:#238636;border-color:#2ea043}',
     '.opsp-mini button.opsp-switch[aria-checked="true"]::after{transform:translateX(16px);background:#e6edf3}',
-    '.opsp-hint{margin:-4px 0 10px;color:#8b949e;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.opsp-note{display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;border:1px solid #30363d;border-radius:8px;color:#d29922;font-size:12px}.opsp-note span{flex:1}',
     '.opsp-note button#opsp-reload{flex:none;min-height:36px;padding:0 12px;border:1px solid #30363d;border-radius:8px;background:#1c2128;color:#e6edf3;font:inherit;cursor:pointer}'
   ].join('\n');
   var HINT = 'Potato mode: cooler phone, fewer tab restarts. Lower frame rate and sharpness; the base pauses behind chat.';
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
-  // head: the menu's header (the switch goes on the title line); body: the menu (the reload note goes at its top).
+  // head: the menu's header (unused since the switch moved into the menu; kept so callers don't change); body: the menu.
   function mount(head, body) {
     var st = document.getElementById('opsp-style');
     if (!st) { st = el('style'); st.id = 'opsp-style'; document.head.appendChild(st); }
     if (st.textContent !== CSS) st.textContent = CSS;
-    var title = head && head.querySelector('.ops-title');
-    if (!title || !body) return;
-    var mini = el('span', 'opsp-mini');
-    mini.appendChild(el('span', 'opsp-mini-label', 'Potato'));
+    if (!body) return;
+    var mini = el('div', 'opsp-mini');
+    mini.appendChild(el('span', 'opsp-mini-label', 'Potato Mode (phone less hot)'));
     var sw = el('button', 'opsp-switch'); sw.id = 'opsp-switch'; sw.type = 'button'; sw.setAttribute('role', 'switch');
     sw.setAttribute('aria-label', HINT); sw.title = HINT;
-    mini.appendChild(sw); title.appendChild(mini);
-    var hint = el('div', 'opsp-hint', 'Potato mode: cooler phone, fewer tab restarts.');   // what "Potato" means, one line (Tex)
-    body.insertBefore(hint, body.firstChild);
+    mini.appendChild(sw); body.insertBefore(mini, body.firstChild);
     var note = null;
     function paint(reload) {
       sw.setAttribute('aria-checked', String(isOn()));
@@ -155,7 +152,7 @@
         b.addEventListener('click', function () { try { location.reload(); } catch (e) {} });
         note.appendChild(b);
       }
-      body.insertBefore(note, hint.nextSibling);           // under the hint
+      body.insertBefore(note, mini.nextSibling);
     }
     sw.addEventListener('click', function (e) { e.stopPropagation(); paint(set(!isOn())); });
     paint(needsReload());

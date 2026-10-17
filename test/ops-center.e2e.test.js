@@ -1033,7 +1033,7 @@ test('POT-1: Potato mode is off by default; switched on it caps the frame rate a
   const { ctx, page } = await open(PHONE);
   await page.waitForSelector('#opsp-switch');
   assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'false');
-  assert.match(await page.textContent('.ops-title'), /Potato/, 'on the title line (Tex: players may not scroll)');
+  assert.equal(await page.textContent('.opsp-mini-label'), 'Potato Mode (phone less hot)', 'Tex 2026-10-17: the label, first in the menu (players may not scroll)');
   assert.deepEqual(await fake(page), { fps: 30, retina: true, cams: [true, true, true], low: null, on: null }, 'nothing changes while it is off');
   await page.click('#opsp-switch');
   assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'true');
@@ -1043,7 +1043,7 @@ test('POT-1: Potato mode is off by default; switched on it caps the frame rate a
   assert.equal(await page.evaluate(() => __fake.fps), 29, 'held at 29');
   assert.match(await page.textContent('.opsp-note'), /Reload the game to finish/);
   assert.equal(await page.$$eval('#opsp-reload', (e) => e.length), 1);
-  assert.ok(!/\u2014/.test(await page.textContent('.opsp-note') + await page.textContent('.ops-title')), 'no em dash');
+  assert.ok(!/\u2014/.test(await page.textContent('.opsp-note') + await page.textContent('.opsp-mini')), 'no em dash');
   await ctx.close();
 });
 
@@ -1138,20 +1138,23 @@ test('POT-9 (review): the menu says a reload is needed when Potato mode is on bu
   await ctx.close();
 });
 
-test('POT-10 (Tex): the Potato switch sits in the header right of "Ops Center", visible on a phone without scrolling, and tapping it never drags or closes the menu', async () => {
+test('POT-10 (Tex 2026-10-17): "Potato Mode (phone less hot)" first in the menu, the toggle right below it, visible on a phone without squeezing the header; tapping it never drags or closes the menu', async () => {
   const { ctx, page } = await open(PHONE);
   await page.waitForSelector('#opsp-switch');
   const box = await page.evaluate(() => {
-    const t = document.querySelector('.ops-title'), sw = document.getElementById('opsp-switch'), x = document.querySelector('.ops-head .ops-icon-btn[aria-label="Close"]');
-    const r = (e) => e.getBoundingClientRect();
-    const range = document.createRange(); range.selectNodeContents(t.firstChild); const words = range.getBoundingClientRect();
-    return { words: [words.left, words.right, words.top, words.bottom], sw: [r(sw).left, r(sw).right, r(sw).top, r(sw).bottom], x: [r(x).left], inHead: !!sw.closest('.ops-head'), vh: window.innerHeight };
+    const sw = document.getElementById('opsp-switch'), lab = document.querySelector('.opsp-mini-label'), mini = document.querySelector('.opsp-mini'), sub = document.querySelector('.ops-sub');
+    const r = (e) => { const b = e.getBoundingClientRect(); return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+    return { sw: r(sw), lab: r(lab), first: mini.parentNode.classList.contains('ops-body') && mini.parentNode.firstElementChild === mini,
+      head: document.querySelector('.ops-head').getBoundingClientRect().bottom, vh: window.innerHeight,
+      labLines: lab.getBoundingClientRect().height / (parseFloat(getComputedStyle(lab).lineHeight) || 15), subCut: sub.scrollWidth > sub.clientWidth };
   });
-  assert.ok(box.inHead, 'in the header');
-  assert.ok(box.sw[0] >= box.words[1], 'right of the words "Ops Center"');
-  assert.ok(box.sw[1] <= box.x[0], 'left of the close button');
-  assert.ok(box.sw[2] < box.words[3] && box.sw[3] > box.words[2], 'on the same line as the title');
-  assert.ok(box.sw[3] <= box.vh, 'visible without scrolling');
+  assert.ok(box.first, 'first in the menu');
+  assert.ok(box.lab.t >= box.head - 1, 'under the header');
+  assert.ok(box.labLines < 1.6, 'the label on one line');
+  assert.ok(box.sw.t >= box.lab.b - 1 && box.sw.t - box.lab.b < 10, 'the toggle right below the label');
+  assert.ok(box.sw.l < box.lab.r && box.sw.r > box.lab.l, 'under the label, not beside it');
+  assert.ok(box.sw.b <= box.vh, 'visible without scrolling');
+  assert.ok(!box.subCut, 'the player line in the header is not cut off');
   const before = await page.$eval('.ops-card', (c) => [c.style.left, c.style.top]);
   await page.click('#opsp-switch');
   assert.equal(await page.getAttribute('#opsp-switch', 'aria-checked'), 'true');
@@ -1170,15 +1173,11 @@ test('POT-11: the Potato switch is only in the members\' menu: a tool page heade
   await ctx.close();
 });
 
-test('POT-12 (Tex): a one-line hint under the header says what Potato means, visible on a phone without scrolling', async () => {
+test('POT-12 (Tex 2026-10-17): the label says what Potato means, so there is no hint line; the reload note goes under the switch', async () => {
   const { ctx, page } = await open(PHONE);
   await page.waitForSelector('#opsp-switch');
-  assert.equal(await page.textContent('.opsp-hint'), 'Potato mode: cooler phone, fewer tab restarts.');
-  const r = await page.$eval('.opsp-hint', (e) => { const b = e.getBoundingClientRect(), lh = parseFloat(getComputedStyle(e).lineHeight) || 16; return { top: b.top, bottom: b.bottom, h: b.height, lh, vh: window.innerHeight, head: document.querySelector('.ops-head').getBoundingClientRect().bottom, first: e.parentNode.firstElementChild === e }; });
-  assert.ok(r.h < r.lh * 1.6, 'one line');
-  assert.ok(r.bottom <= r.vh, 'visible without scrolling');
-  assert.ok(r.top >= r.head - 1 && r.first, 'right under the header, first in the menu');
-  await page.click('#opsp-switch');                                  // the reload note goes under the hint, not above it
-  assert.equal(await page.$eval('.ops-body', (b) => [b.children[0].className, b.children[1].className].join(' ')), 'opsp-hint opsp-note');
+  assert.equal(await page.$$eval('.opsp-hint', (e) => e.length), 0, 'no hint line');
+  await page.click('#opsp-switch');
+  assert.equal(await page.$eval('.ops-body', (b) => [b.children[0].className, b.children[1].className].join(' ')), 'opsp-mini opsp-note', 'the reload note under the switch');
   await ctx.close();
 });
