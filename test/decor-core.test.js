@@ -164,3 +164,36 @@ test('mergePlan on Rеx: gold never merges; Bench pulls its Lv4s and puts Lv5s b
   bench.putBacks.forEach((b, i) => { assert.deepEqual(b.ref, bench.pulls[i].ref); assert.equal(REX.rows[b.id].level, 5); });
   plan.forEach((p) => p.merges.forEach((m) => assert.ok(m.num > 0 && REX.rows[m.id].group === p.group)));
 });
+
+// ---------------------------------------------------------------- Task 4: Advanced Upgrade steps
+const upSnap = (state, extra) => snap(Object.assign({ rows: [[1, 10, 1, 1, [[930000, 200]]], [4, 10, 4, 1, [[930000, 800]]]],
+  showcase: [{ labelId: 1, items: [{ uuid: 'w', id: 4, x: 0, y: 0 }] }], bag: [{ id: 1, n: 5 }],
+  upgrades: [{ group: 10, state, buildId: 4, exp: 0, need: 54, perNumber: 1 }] }, extra || {}));
+
+test('Advanced Upgrade follows the game\'s states', () => {
+  assert.deepEqual(C.upgradeSteps(upSnap(2), {}), [{ kind: 'open', group: 10 }]);
+  assert.deepEqual(C.upgradeSteps(upSnap(4), {}), [{ kind: 'feed', group: 10, num: 5 }]);
+  assert.deepEqual(C.upgradeSteps(upSnap(6), {}), [{ kind: 'level', group: 10 }]);
+  assert.deepEqual(C.upgradeSteps(upSnap(1), {}), []);
+  assert.deepEqual(C.upgradeSteps(upSnap(3), {}), []);
+});
+
+test('Advanced Upgrade feeds only the Lv1 copies the merges don\'t use', () => {
+  assert.deepEqual(C.upgradeSteps(upSnap(4), { 10: 3 }), [{ kind: 'feed', group: 10, num: 2 }]);
+  assert.deepEqual(C.upgradeSteps(upSnap(4), { 10: 5 }), [], 'nothing spare: no step');
+  const s = upSnap(4); s.upgrades[0].exp = 52;
+  assert.deepEqual(C.upgradeSteps(s, {}), [{ kind: 'feed', group: 10, num: 2 }], 'never past the bar');
+});
+
+test('Advanced Upgrade splits only when the counted copy is not in the bag', () => {
+  assert.deepEqual(C.upgradeSteps(upSnap(5), {}), [{ kind: 'split', group: 10 }], 'counted from the showcase');
+  const s = upSnap(5, { showcase: [], bag: [{ id: 4, n: 1 }, { id: 1, n: 0 }], sets: [10] });
+  assert.deepEqual(C.upgradeSteps(s, {}), [], 'counted from a completed set\'s bag copy');
+});
+
+test('Advanced Upgrade on Rеx after the live checks: Hardcore Shooter has nothing to feed; Weapon Box is not eligible', () => {
+  const steps = C.upgradeSteps(REX, {});
+  assert.equal(steps.filter((x) => x.group === 5494).length, 0);
+  assert.equal(steps.filter((x) => x.group === 5355).length, 0);
+  assert.equal(REX.upgrades.some((u) => u.group === 5355), false);
+});

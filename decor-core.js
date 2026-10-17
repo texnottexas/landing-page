@@ -191,8 +191,34 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- Advanced Upgrade (the game's own list)
+  // States from DecorationExpandData.getStateList(): 2 can open, 4 can feed (bag Lv1 copies), 5 can split higher bag
+  // copies into Lv1, 6 can level up. Feeds use only the Lv1 copies the merges leave (reservedLv1 {group: n}), never past
+  // the bar. A split is sent only when the counted copy isn't in the bag (a split could otherwise take it). Never shards.
+  var UP = { OPEN: 2, FEED: 4, SPLIT: 5, LEVEL: 6 };
+  function upgradeSteps(snap, reservedLv1) {
+    var out = [], c = null;
+    (snap.upgrades || []).forEach(function (u) {
+      var g = u.group;
+      if (u.state === UP.OPEN) out.push({ kind: 'open', group: g });
+      else if (u.state === UP.LEVEL) out.push({ kind: 'level', group: g });
+      else if (u.state === UP.FEED) {
+        var lv1 = snap.levels[g] && Number(snap.levels[g][1]), have = 0;
+        snap.bag.forEach(function (b) { if (b.id === lv1) have += b.n; });
+        var avail = have - ((reservedLv1 || {})[g] || 0), num = Math.floor(Math.min(avail, u.need - u.exp) / (u.perNumber || 1));
+        if (num > 0) out.push({ kind: 'feed', group: g, num: num });
+      } else if (u.state === UP.SPLIT) {
+        c = c || counted(snap);
+        var inBag = (c.byGroup[g] || []).some(function (e) { return e.where === 'setbag'; });
+        if (!inBag) out.push({ kind: 'split', group: g });
+      }
+    });
+    return out;
+  }
+
   var api = { GOLD: GOLD, REPAIR: REPAIR, MARCH: MARCH, WEIGHTS: WEIGHTS, SCOPE: SCOPE, CLASS: CLASS,
-    copyInfo: copyInfo, pool: pool, counted: counted, makeCopies: makeCopies, evenFill: evenFill, mergePlan: mergePlan };
+    copyInfo: copyInfo, pool: pool, counted: counted, makeCopies: makeCopies, evenFill: evenFill, mergePlan: mergePlan,
+    upgradeSteps: upgradeSteps };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else window.DecorCore = api;
 })();
