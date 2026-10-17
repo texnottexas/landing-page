@@ -178,5 +178,166 @@
     });
   }
 
-  window.DecorGame = { read: read, inBase: inBase, ready: ready, goHome: goHome, siteKey: siteKey };
+  // ---------------------------------------------------------------- one action, one request
+  // Each action is checked against the game right before it's sent (the piece still where the plan says, the spot still
+  // free by the game's own check), sent with the game's own request, given the client update the game's own panel
+  // would make, then confirmed by the game's state. Live checks 2026-10-17: showcase answers aren't followed by a push,
+  // and a base piece sent to the bag or moved needs the map updated, exactly as the game's buttons do.
+  var JSON_IDS = { move: ['BUILD_MOVE', 104], place: ['Build_ByBox', 129], merge: ['Build_Box_MERGE', 130], inBox: ['Build_In_Box', 131] };
+  var PB_IDS = { collabIn: ['PUT_LINKAGE_BOX', 4760, 'putLinkageBox'], collabOut: ['MOVE_OUT_LINKAGE_BOX', 4754, 'moveOutLinkageBox'],
+    showIn: ['MUSEUM_MOVE_IN_DECORATION', 4755, 'museumMoveInDecoration'], showOut: ['MUSEUM_MOVE_AND_OUT_DECORATION', 4757, 'museumMoveAndOutDecoration'],
+    open: ['OPEN_DECORATION_SUBLIME', 4792, 'openDecorationSublime'], feed: ['DECORATION_SUBLIME', 4793, 'decorationSublime'],
+    split: ['DECORATION_SUBLIME_SPLIT', 4798, 'decorationSublimeSplit'], level: ['DECORATION_SUBLIME_UP_LEVEL', 4800, 'decorationSublimeUpLevel'] };
+  var UP_STATE = { open: 2, feed: 4, split: 5, level: 6 };
+  function NET() { return req('NetMgr').NET; }
+  function jsonId(k) { var d = JSON_IDS[k]; try { var v = req('RequestId').RequestId[d[0]]; if (typeof v === 'number') return v; } catch (e) {} return d[1]; }
+  function pbId(k) { var d = PB_IDS[k]; try { var v = req('NRequestId').NRequestId[d[0]]; if (typeof v === 'number') return v; } catch (e) {} return d[1]; }
+  function sendJ(k, p, ms) {
+    return new Promise(function (resolve) {
+      var done = false, t = setTimeout(function () { if (!done) { done = true; resolve({ s: 'timeout' }); } }, ms);
+      try { NET().send(jsonId(k), p, {}, function (r) { if (done) return; done = true; clearTimeout(t); resolve(r || { s: -1 }); }); }
+      catch (e) { done = true; clearTimeout(t); resolve({ s: 'blocked' }); }
+    });
+  }
+  function sendP(k, p, ms) {
+    var key = PB_IDS[k][2], body = { header: {} };
+    body[key] = p;
+    return new Promise(function (resolve) {
+      var done = false, t = setTimeout(function () { if (!done) { done = true; resolve({ s: 'timeout' }); } }, ms);
+      try {
+        NET().sendPB(pbId(k), body, {}, function (e) {
+          if (done) return; done = true; clearTimeout(t);
+          var a = e && e.pbAck;
+          resolve(a ? { s: a.header ? a.header.s : -1, ack: a[key] } : { s: -1 });
+        });
+      } catch (e) { done = true; clearTimeout(t); resolve({ s: 'blocked' }); }
+    });
+  }
+  function netText(d) { try { var L = req('LocalManager'), t = (L.LOCAL || L.default).getNetMsgText(d); return t ? String(t) : ''; } catch (e) { return ''; } }
+  function refusal(r, json) {
+    if (r.s === 'timeout') return 'no answer';
+    if (r.s === 'blocked') return 'the game would not send it';
+    if (json && r.s === 3) return netText(r.d) || 'the game refused (' + r.d + ')';
+    return 'the game answered ' + r.s;
+  }
+  function bagCount(id) {
+    var n = 0;
+    (UD().BuildBoxs || []).forEach(function (b) { if (Number(pick(b, 'ItemId', '_itemId')) === Number(id)) n += Number(pick(b, 'Amount', '_amount')) || 0; });
+    return n;
+  }
+  function building(uuid) { var out = null; (UD().Buildings || []).forEach(function (b) { if (String(pick(b, 'Id', '_id')) === String(uuid)) out = b; }); return out; }
+  function buildingAt(id, x, y) { return (UD().Buildings || []).some(function (b) { var d = pick(b, 'Data', '_data'); return d && d.id === id && Number(pick(b, 'Pos', '_pos')) === 1000 * x + y; }); }
+  function tab(labelId) { return (UD()._museumData || UD().MuseumData || []).filter(function (l) { return l.labelId === labelId; })[0] || null; }
+  function inTab(labelId, test) { var l = tab(labelId); return !!l && (l.labelStoreData || []).some(test); }
+  function slotId(slot) { var b = UD().collabDecorateBox || {}; return b[slot] && b[slot].decorationId ? Number(b[slot].decorationId) : null; }
+  function upState(group) {
+    var E = UD().DecorationExpandData, s = null, rec = (E && E._dataMap && E._dataMap[group]) || {};
+    try { (E.getStateList() || []).forEach(function (x) { var c = x.buildCfg || x.buildCfgLv1; if (c && c.group === group) s = x; }); } catch (e) {}
+    return { state: s ? Number(s.state) : null, exp: Number(s && s.exp != null ? s.exp : rec.sublime_exp) || 0, buildId: rec.buildId, per: s && s.sublimationCfg ? Number(s.sublimationCfg.per_number) || 1 : 1 };
+  }
+  function nextId(id) { var r = row('building', id); var lv = r && levelIndex()[r.group]; return lv ? lv[r.level + 1] : null; }
+  // The game's own placement check, and the showcase's 5x5 grid.
+  function spotOk(id, x, y) {
+    var r = row('building', id), h = hm();
+    if (!r || !h) return false;
+    try { return h.checkNearByPos(cc.v2(x, y), 0, 0, -1, r.width, r.height, r.point_type, r.type === 5 ? 5 : 4, 1, r.id, -1, []) !== -1; } catch (e) { return false; }
+  }
+  function showcaseOk(labelId, id, x, y) {
+    var l = tab(labelId), r = row('building', id);
+    if (!l || !r || x < 0 || y < 0 || x + r.width > 5 || y + r.height > 5) return false;
+    var taken = {};
+    (l.labelStoreData || []).forEach(function (e) { var q = row('building', e.decorationId) || { width: 1, height: 1 }; for (var n = 0; n < q.width; n++) for (var s = 0; s < q.height; s++) taken[(e.x + n) + ',' + (e.y + s)] = 1; });
+    for (var n = 0; n < r.width; n++) for (var s = 0; s < r.height; s++) if (taken[(x + n) + ',' + (y + s)]) return false;
+    return true;
+  }
+  function settle(fn, ms) {
+    return new Promise(function (resolve) {
+      var end = Date.now() + ms;
+      (function poll() { var ok = false; try { ok = !!fn(); } catch (e) {} if (ok || Date.now() >= end) { resolve(ok); return; } setTimeout(poll, 100); })();
+    });
+  }
+  // What one action sends and how the game shows it worked. null: stale (the piece or the spot changed).
+  function prepare(a) {
+    var U = UD(), id = a.id;
+    function at(where, ref) {
+      if (where === 'base') return !!building(ref);
+      if (where === 'showcase') return inTab(ref.labelId, function (e) { return String(e.uuid) === String(ref.uuid); });
+      if (where === 'collab') return slotId(ref) === Number(id);
+      return bagCount(id) > 0;
+    }
+    function goneFrom(where, ref, bag0) {
+      return function () {
+        var left = where === 'base' ? !building(ref) : where === 'showcase' ? !inTab(ref.labelId, function (e) { return String(e.uuid) === String(ref.uuid); }) : !slotId(ref);
+        return left && bagCount(id) === bag0 + 1;
+      };
+    }
+    function putTo(where, to) {
+      if (where === 'base') return spotOk(id, to.x, to.y) && bagCount(id) > 0 ? {
+        k: 'place', json: true, p: { x: to.x, y: to.y, buildId: id }, ok: function () { return buildingAt(id, to.x, to.y); } } : null;
+      if (where === 'showcase') return showcaseOk(to.labelId, id, to.x, to.y) && bagCount(id) > 0 ? {
+        k: 'showIn', p: { labelId: to.labelId, decorationId: id, x: to.x, y: to.y }, museum: true,
+        ok: function () { return inTab(to.labelId, function (e) { return Number(e.decorationId) === Number(id) && e.x === to.x && e.y === to.y; }); } } : null;
+      return bagCount(id) > 0 ? { k: 'collabIn', p: { type: 3, specId: to.slot, boxBuildingId: id }, ok: function () { return slotId(to.slot) === Number(id); } } : null;
+    }
+    switch (a.kind) {
+      case 'toBag': {
+        if (!at(a.where, a.ref)) return null;
+        var b0 = bagCount(id), done = goneFrom(a.where, a.ref, b0);
+        if (a.where === 'base') return { k: 'inBox', json: true, p: { id: String(a.ref) }, after: function () { U.DeleteBuilding({ id: String(a.ref) }); var h = hm(); if (h) h.removeBuildingFromMap(String(a.ref)); }, ok: done };
+        if (a.where === 'showcase') return { k: 'showOut', p: { labelId: a.ref.labelId, uuid: a.ref.uuid }, museum: true, ok: done };
+        return { k: 'collabOut', p: { specId: a.ref }, ok: done };
+      }
+      case 'collabIn': {
+        if (!at(a.from, a.ref)) return null;
+        var p = { type: a.from === 'base' ? 1 : a.from === 'showcase' ? 2 : 3, specId: a.slot };
+        if (a.from === 'base') p.buildingUuid = String(a.ref);
+        else if (a.from === 'showcase') { p.labelId = a.ref.labelId; p.museumStoreUuid = a.ref.uuid; }
+        else p.boxBuildingId = id;
+        return { k: 'collabIn', p: p, ok: function () { return slotId(a.slot) === Number(id); } };
+      }
+      case 'merge': {
+        var nx = nextId(id), m0 = bagCount(id), n0 = nx ? bagCount(nx) : 0;
+        if (!nx || m0 < 3 * a.num) return null;
+        return { k: 'merge', json: true, p: { buildId: id, num: a.num }, ok: function () { return bagCount(id) === m0 - 3 * a.num && bagCount(nx) === n0 + a.num; } };
+      }
+      case 'putBack': return putTo(a.where, a.to);
+      case 'place': return putTo('base', { x: a.x, y: a.y });
+      case 'showcaseIn': return putTo('showcase', { labelId: a.labelId, x: a.x, y: a.y });
+      case 'move': {
+        var b = building(a.uuid), d = b && pick(b, 'Data', '_data');
+        if (!d || !spotOk(d.id, a.x, a.y)) return null;
+        return { k: 'move', json: true, p: { x: a.x, y: a.y, id: String(a.uuid) }, moved: true, ok: function () { var q = building(a.uuid); return !!q && Number(pick(q, 'Pos', '_pos')) === 1000 * a.x + a.y; } };
+      }
+      case 'open': case 'feed': case 'split': case 'level': {
+        var u0 = upState(a.group);
+        if (u0.state !== UP_STATE[a.kind]) return null;
+        var p2 = { groupId: a.group };
+        if (a.kind === 'feed') p2.num = a.num;
+        return { k: a.kind, p: p2, ok: function () {
+          var u = upState(a.group);
+          if (a.kind === 'feed') return u.exp >= u0.exp + a.num * u0.per || u.state !== u0.state;
+          return u.state !== u0.state || u.buildId !== u0.buildId;
+        } };
+      }
+    }
+    return null;
+  }
+  function exec(a, opts) {
+    opts = opts || {};
+    var settleMs = opts.settleMs || 5000, timeoutMs = opts.timeoutMs || 10000, w;
+    try { w = prepare(a); } catch (e) { w = null; }
+    if (!w) return Promise.resolve({ ok: false, why: 'stale' });
+    var send = w.json ? sendJ(w.k, w.p, timeoutMs) : sendP(w.k, w.p, timeoutMs);
+    return send.then(function (r) {
+      if (r.s !== 0) return { ok: false, why: refusal(r, w.json) };
+      try {
+        if (w.after) w.after();
+        if (w.museum && r.ack && r.ack.labelId != null) UD().updateMuseumOneData(r.ack);
+        if (w.moved) { var h = hm(); if (h) h.MoveBuildingCallBack(r); }
+      } catch (e) {}
+      return settle(w.ok, settleMs).then(function (ok) { return ok ? { ok: true } : { ok: false, why: "the game didn't confirm " + a.kind }; });
+    });
+  }
+
+  window.DecorGame = { read: read, inBase: inBase, ready: ready, goHome: goHome, siteKey: siteKey, exec: exec };
 })();

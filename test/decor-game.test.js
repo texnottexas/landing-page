@@ -78,16 +78,43 @@ function stubGame(o) {
     } },
     GameTools: { default: { getDataConfigData(k) { return k === 79010 ? '4' : ''; } } },
     GameDefine: { BuffType: { DecorationActiveInBag: 406 } },
-    LocalManager: { LOCAL: { getText(k) { return 'T:' + k; } } }
+    LocalManager: { LOCAL: { getText(k) { return 'T:' + k; }, getNetMsgText(d) { return 'NET:' + d; } } },
+    RequestId: { RequestId: { BUILD_MOVE: 104, Build_ByBox: 129, Build_Box_MERGE: 130, Build_In_Box: 131 } },
+    NRequestId: { NRequestId: { PUT_LINKAGE_BOX: 4760, MOVE_OUT_LINKAGE_BOX: 4754, MUSEUM_MOVE_IN_DECORATION: 4755, MUSEUM_MOVE_AND_OUT_DECORATION: 4757,
+      OPEN_DECORATION_SUBLIME: 4792, DECORATION_SUBLIME: 4793, DECORATION_SUBLIME_SPLIT: 4798, DECORATION_SUBLIME_UP_LEVEL: 4800 } }
   };
+  // The network: o.net[rid] = (payload, U) => answer ({s, d} for JSON, {s, ack} for PB); the answer arrives 5 ms later.
+  const sent = [];
+  const answer = (rid, p, cb, pb) => {
+    sent.push([rid, pb ? p[Object.keys(p).filter((k) => k !== 'header')[0]] : p]);
+    const h = (o.net || {})[rid];
+    setTimeout(() => {
+      if (!h) return;                                           // no handler: no answer
+      const a = h(pb ? p[Object.keys(p).filter((k) => k !== 'header')[0]] : p, U);
+      if (!a) return;
+      if (pb) { const key = Object.keys(p).filter((k) => k !== 'header')[0], ack = { header: { s: a.s } }; ack[key] = a.ack || {}; cb({ pbAck: ack }); }
+      else cb(Object.assign({ c: rid }, a));
+    }, 5);
+    return true;
+  };
+  mods.NetMgr = { NET: { _socket: { _webSocket: { readyState: 1 } },
+    send(rid, p, t, cb) { return answer(rid, p, cb, false); },
+    sendPB(rid, p, t, cb) { return answer(rid, p, cb, true); } } };
+  const hmap = Object.assign({ _BuildingComplete: true, calls: [],
+    checkNearByPos() { return 1; },
+    removeBuildingFromMap(id) { this.calls.push(['remove', id]); },
+    MoveBuildingCallBack(r) { this.calls.push(['move', r.c]); const d = JSON.parse(r.d); const b = U.Buildings.find((x) => x.Id === d.building.id); if (b) b.Pos = 1000 * d.building.x + d.building.y; } }, o.hm || {});
+  U.DeleteBuilding = U.DeleteBuilding || function (x) { hmap.calls.push(['delete', x.id]); U.Buildings = U.Buildings.filter((b) => b.Id !== x.id); };
+  U.updateMuseumOneData = U.updateMuseumOneData || function (ack) { hmap.calls.push(['museum', ack.labelId]); U._museumData = U._museumData.map((l) => (l.labelId === ack.labelId ? ack : l)); };
   return {
     __require(n) { if (!mods[n]) throw new Error('no module ' + n); return mods[n]; },
-    cc: { find: () => null }
+    cc: { find: (path) => (path === 'Canvas/HomeMap' ? { getComponent: () => hmap } : null), v2: (x, y) => ({ x, y }) },
+    sent, hmap, U
   };
 }
 
 function loadFresh(globals) {
-  Object.assign(globalThis, { window: globalThis }, globals);
+  Object.assign(globalThis, { window: globalThis, __dpoLevels: undefined }, globals);
   const file = path.join(__dirname, '..', 'decor-game.js');
   delete require.cache[require.resolve(file)];
   require(file);
@@ -138,4 +165,88 @@ test('read() gives a unit to stats tied to a unit\'s buildings (Shipyard, Garage
   assert.equal(s.stats[981061].unit, 1, 'first Garage capacity: building type 16');
   assert.equal(s.stats[920803].unit, 3, 'Air Force training speed: Air Base group 1050');
   assert.equal(s.stats[910300].unit, 0, 'march speed is every unit');
+});
+
+// ---------------------------------------------------------------- Task 8: executors
+const bagOf = (U, id) => { const b = U.BuildBoxs.find((x) => x._itemId === id); return b ? b._amount : 0; };
+const bump = (U, id, n) => { const b = U.BuildBoxs.find((x) => x._itemId === id); if (b) b._amount += n; else U.BuildBoxs.push({ _itemId: id, _amount: n }); };
+
+test('merge sends 130 once and confirms by the bag', async () => {
+  const g = stubGame({ net: { 130: (p, U) => { bump(U, p.buildId, -3 * p.num); bump(U, p.buildId + 1, p.num); return { s: 0, d: '{}' }; } } });
+  g.U.BuildBoxs.push({ _itemId: 40100, _amount: 504 }, { _itemId: 40101, _amount: 3 });
+  g.U.Buildings.push({ Id: 'gat', Pos: 3000, Data: { id: 40101, group: 4010, level: 2, type: 4, width: 1, height: 1, point_type: 1 } });
+  const t = { building: { 40100: { id: 40100, group: 4010, level: 1, type: 4, width: 1, height: 1, point_type: 1, buff_id: '921002|100' }, 40101: { id: 40101, group: 4010, level: 2, type: 4, width: 1, height: 1, point_type: 1, buff_id: '921002|120' } } };
+  const G = loadFresh(g);
+  const T = g.__require('TableManager').TABLE; Object.assign(T._tableMap.building, t.building);
+  const r = await G.exec({ kind: 'merge', id: 40100, num: 1 }, { settleMs: 500 });
+  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(g.sent, [[130, { buildId: 40100, num: 1 }]]);
+  assert.equal(bagOf(g.U, 40100), 501); assert.equal(bagOf(g.U, 40101), 4);
+});
+
+test('showcase out applies the answer\'s tab (no push comes)', async () => {
+  const ack = { labelId: 1, labelName: 'Tab 1', labelStoreData: [] };
+  const g = stubGame({ net: { 4757: (p, U) => { bump(U, 47128, 1); return { s: 0, ack }; } },
+    user: { _museumData: [{ labelId: 1, labelStoreData: [{ uuid: 'w1', decorationId: 47128, x: 4, y: 3 }] }] } });
+  const G = loadFresh(g);
+  const r = await G.exec({ kind: 'toBag', where: 'showcase', ref: { labelId: 1, uuid: 'w1', x: 4, y: 3 }, id: 47128 }, { settleMs: 500 });
+  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(g.sent, [[4757, { labelId: 1, uuid: 'w1' }]]);
+  assert.deepEqual(g.hmap.calls, [['museum', 1]]);
+});
+
+test('to bag from the base updates the map as the game\'s button does', async () => {
+  const g = stubGame({ net: { 131: (p, U) => { bump(U, 40801, 1); return { s: 0, d: '{"ret":0}' }; } } });
+  const G = loadFresh(g);
+  const r = await G.exec({ kind: 'toBag', where: 'base', ref: 'b1', id: 40801 }, { settleMs: 500 });
+  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(g.sent, [[131, { id: 'b1' }]]);
+  assert.deepEqual(g.hmap.calls, [['delete', 'b1'], ['remove', 'b1']]);
+});
+
+test('move calls MoveBuildingCallBack and confirms by the position', async () => {
+  const g = stubGame({ net: { 104: (p) => ({ s: 0, d: JSON.stringify({ x: 0, y: 0, building: { id: p.id, x: p.x, y: p.y } }) }) } });
+  const G = loadFresh(g);
+  const r = await G.exec({ kind: 'move', uuid: 'b1', x: 2, y: 2 }, { settleMs: 500 });
+  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(g.sent, [[104, { x: 2, y: 2, id: 'b1' }]]);
+  assert.deepEqual(g.hmap.calls, [['move', 104]]);
+});
+
+test('a stale piece sends nothing', async () => {
+  const g = stubGame({ net: { 131: () => ({ s: 0, d: '{}' }) } });
+  const G = loadFresh(g);
+  const r = await G.exec({ kind: 'toBag', where: 'base', ref: 'gone', id: 40801 }, { settleMs: 200 });
+  assert.deepEqual(r, { ok: false, why: 'stale' });
+  assert.equal(g.sent.length, 0);
+});
+
+test('a spot the game refuses is stale too, and nothing is sent', async () => {
+  const g = stubGame({ net: { 129: () => ({ s: 0, d: '{}' }) }, hm: { checkNearByPos() { return -1; } } });
+  const G = loadFresh(g);
+  const r = await G.exec({ kind: 'place', id: 40800, x: 1, y: 1 }, { settleMs: 200 });
+  assert.deepEqual(r, { ok: false, why: 'stale' });
+  assert.equal(g.sent.length, 0);
+});
+
+test('a silent state stops: the answer says yes but nothing changes', async () => {
+  const g = stubGame({ net: { 130: () => ({ s: 0, d: '{}' }) } });
+  g.U.BuildBoxs.push({ _itemId: 40100, _amount: 504 });
+  const G = loadFresh(g);
+  Object.assign(g.__require('TableManager').TABLE._tableMap.building, { 40100: { id: 40100, group: 4010, level: 1, type: 4, width: 1, height: 1, point_type: 1, buff_id: '921002|100' }, 40101: { id: 40101, group: 4010, level: 2, type: 4, width: 1, height: 1, point_type: 1, buff_id: '921002|120' } });
+  const r = await G.exec({ kind: 'merge', id: 40100, num: 1 }, { settleMs: 300 });
+  assert.equal(r.ok, false); assert.match(r.why, /didn't confirm/);
+});
+
+test('a refusal gives the game\'s own text; no answer gives "no answer"', async () => {
+  const g = stubGame({ net: { 129: () => ({ s: 3, d: '"build_err"' }) } });
+  g.U.BuildBoxs.push({ _itemId: 40801, _amount: 1 });
+  const G = loadFresh(g);
+  const r = await G.exec({ kind: 'place', id: 40801, x: 1, y: 1 }, { settleMs: 200 });
+  assert.deepEqual(r, { ok: false, why: 'NET:"build_err"' });
+  const g2 = stubGame({});
+  g2.U.BuildBoxs.push({ _itemId: 40801, _amount: 1 });
+  const G2 = loadFresh(g2);
+  const r2 = await G2.exec({ kind: 'place', id: 40801, x: 1, y: 1 }, { settleMs: 200, timeoutMs: 100 });
+  assert.deepEqual(r2, { ok: false, why: 'no answer' });
 });
