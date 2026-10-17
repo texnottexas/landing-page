@@ -148,6 +148,26 @@ test('DPO-4: the unit switches change the plan and are remembered per account', 
   await ctx.close();
 });
 
+test('DPO-SEA: the Move sea decor switch (on by default) leaves the water decor where it is and is remembered per account', async () => {
+  const { ctx, page } = await open();
+  await launch(page);
+  await waitText(page, '#dpo-preview', /Sea decor moved south: 1/);
+  assert.equal(await page.$eval('#dpo-sea', (e) => e.getAttribute('aria-pressed')), 'true');
+  await page.click('#dpo-sea');
+  await page.waitForFunction(() => document.querySelector('#dpo-sea').getAttribute('aria-pressed') === 'false');
+  assert.doesNotMatch(await page.$eval('#dpo-preview', (e) => e.textContent), /Sea decor moved south/);
+  assert.equal(await page.evaluate((k) => localStorage.getItem(k), 'dpo_sea_v1_' + SK), '0');
+  assert.equal(await page.evaluate((k) => localStorage.getItem(k), 'dpo_units_v1_' + SK), null, 'the unit switches are untouched');
+  await page.evaluate(() => window.__DPO.stop());
+  await launch(page);
+  await waitText(page, '#dpo-preview', /The plan/);
+  assert.equal(await page.$eval('#dpo-sea', (e) => e.getAttribute('aria-pressed')), 'false', 'remembered');
+  assert.doesNotMatch(await page.$eval('#dpo-preview', (e) => e.textContent), /Sea decor moved south/);
+  const end = await runToEnd(page);
+  assert.doesNotMatch(end, /Tidying sea decor/);
+  await ctx.close();
+});
+
 test('DPO-REFUSE: a refusal stops the run with the game\'s own text and nothing more is sent', async () => {
   const { ctx, page } = await open({ mode: { 129: 'refuse' } });
   await launch(page);

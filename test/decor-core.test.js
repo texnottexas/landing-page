@@ -303,6 +303,19 @@ test('south first: tidy moves sea decor up the east edge down to the free south 
   assert.deepEqual(C.tidyPlan(s), [], 'a piece already at the bottom stays');
 });
 
+test('sea switch off (Tex 2026-10-17: "an option NOT to move any of the water decor"): tidy moves no sea decor; troop-area land decor still moves', () => {
+  const s = southShape();
+  s.rows[3] = { group: 12, level: 1, maxLevel: 15, type: 4, w: 1, h: 1, pt: 1, cap: 1, me: [], buffs: [[920900, 100]], name: 'Gold', mp: 4 };
+  s.levels[12] = { 1: 3 };
+  s.placed = [{ uuid: 'east', id: 1, x: 40, y: 12 }, { uuid: 'gold', id: 3, x: 30, y: 4 }];
+  s.grid.cells[0][5] = 1;
+  s.grid.cells.push([30, 4, 0, 1, 1, 1, 0]);
+  assert.deepEqual(C.tidyPlan(s, Object.assign({ sea: false }, ALL)).map((m) => m.uuid), ['gold']);
+  assert.deepEqual(C.tidyPlan(s, ALL).map((m) => m.uuid).sort(), ['east', 'gold'], 'on by default');
+  const ph = C.plan(s, Object.assign({ sea: false }, ALL)).phases.tidy;
+  assert.deepEqual(ph.map((a) => a.uuid), ['gold']);
+});
+
 test('the land ranking: March Size first, other stats next, Green Apple Trees last; a lower piece may use space a bigger one could not', () => {
   const rows = [[1, 10, 1, 1, [[960012, 2]]], [2, 11, 1, 1, [[930000, 200]]], [3, 12, 1, 1, [[921002, 100]]]];
   const s = snap({ rows, bag: [{ id: 3, n: 1 }, { id: 2, n: 1 }, { id: 1, n: 1 }] });

@@ -9,14 +9,14 @@
   var C = window.DecorCore, G = window.DecorGame;
   if (!C || !G) { try { alert('Decor Optimizer did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-17.3';
+  var VERSION = '2026-10-17.4';
   var WORKER = window.__DPO_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__DPO_FAST;
   var GAP_MS = window.__DPO_GAP_MS || 1500, JITTER_MS = FAST ? 0 : 300;     // 1.5 to 1.8 s after the last Ops request
   var TIMEOUT_MS = window.__DPO_TIMEOUT_MS || 10000, SETTLE_MS = window.__DPO_SETTLE_MS || 5000;
   var RUN_CAP = window.__DPO_RUN_CAP || 600, MIN_CAP = 40, TEN_CAP = 400;
   var WAIT_MS = FAST ? 100 : 2000;
-  var LS_UNITS = 'dpo_units_v1_', LS_MIN = 'dpo_min_v1';
+  var LS_UNITS = 'dpo_units_v1_', LS_SEA = 'dpo_sea_v1_', LS_MIN = 'dpo_min_v1';
   var UNITS = [['army', 'Army'], ['navy', 'Navy'], ['air', 'Air Force']];
   var WHY = { 'no room': 'no room', off: 'unit switched off', gold: 'gold' };
   var PHASE = { collab: 'Collab box', pickup: 'Picking up', merge: 'Merging', upgrade: 'Advanced Upgrade', place: 'Placing', tidy: 'Tidying sea decor' };
@@ -228,7 +228,8 @@
     UNITS.forEach(function (u) {
       var b = button('dpo-' + u[0], u[1], function () {
         S.settings[u[0]] = !S.settings[u[0]];
-        lsSet(LS_UNITS + S.siteKey, JSON.stringify(S.settings));
+        var keep = {}; UNITS.forEach(function (x) { keep[x[0]] = S.settings[x[0]] !== false; });
+        lsSet(LS_UNITS + S.siteKey, JSON.stringify(keep));
         showPreview();
       });
       b.setAttribute('aria-pressed', String(S.settings[u[0]] !== false));
@@ -236,6 +237,16 @@
       units.appendChild(b);
     });
     body.appendChild(units);
+    var seaRow = el('div', 'dpo-units'), seaOn = S.settings.sea !== false;
+    var seaB = button('dpo-sea', 'Move sea decor', function () {
+      S.settings.sea = !seaOn;
+      lsSet(LS_SEA + S.siteKey, S.settings.sea ? '1' : '0');
+      showPreview();
+    });
+    seaB.setAttribute('aria-pressed', String(seaOn));
+    seaB.title = seaOn ? 'Moving sea decor south' : 'Leaving sea decor where it is';
+    seaRow.appendChild(seaB);
+    body.appendChild(seaRow);
     var pv = previewLines(p);
     body.appendChild(pv.box);
     var btns = el('div', 'dpo-btns');
@@ -262,6 +273,7 @@
     S.siteKey = await G.siteKey().catch(function () { return ''; });
     if (!S.siteKey) { showMessage('This browser cannot run Decor Optimizer.', true); return; }
     try { var saved = JSON.parse(lsGet(LS_UNITS + S.siteKey) || 'null'); if (saved && typeof saved === 'object') UNITS.forEach(function (u) { if (typeof saved[u[0]] === 'boolean') S.settings[u[0]] = saved[u[0]]; }); } catch (e) {}
+    if (lsGet(LS_SEA + S.siteKey) === '0') S.settings.sea = false;
     if (!G.inBase()) {
       showMessage('Going to your base...');
       if (!(await G.goHome())) { showMessage('Open your base first, then try again.', true); return; }

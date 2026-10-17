@@ -490,7 +490,8 @@
     var c = centroid(snap), sea = seaCells(snap), out = [];
     function dist(x, y) { return southScore(c, x, y); }
     var m = model(snap), zone = function (x, y) { var k = m.cell[x * 1000 + y]; return k ? k[2] : -1; };
-    var pieces = snap.placed.filter(function (p) { var r = snap.rows[p.id]; return r && r.type === 4 && r.pt === 0 && r.buffs.length; })
+    var seaOn = !settings || settings.sea !== false;      // Tex 2026-10-17: a switch to leave every water decor where it is
+    var pieces = snap.placed.filter(function (p) { var r = snap.rows[p.id]; return seaOn && r && r.type === 4 && r.pt === 0 && r.buffs.length; })
       .map(function (p) { var r = snap.rows[p.id]; return { p: p, w: r.w, h: r.h, d: dist(p.x, p.y) }; })
       .sort(function (a, b) { return b.w * b.h - a.w * a.h; });
     var m2 = model(snap), line = Infinity;
