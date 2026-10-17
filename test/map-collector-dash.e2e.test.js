@@ -540,3 +540,31 @@ test('MAPS-SCROLL: 120 maps: the list scrolls on its own; the page is shorter th
     await ctx.close();
   }
 });
+
+// Tex 2026-10-16: the By spawner list scrolls in its own (shorter) box too; its header row stays in view.
+test('SPAWN-SCROLL: 80 spawners: the table scrolls on its own, at most half the screen, header pinned; on desktop and on a phone', async () => {
+  state.bySpawner = Array.from({ length: 80 }, (_, i) => ({ spawner: 'Spawner ' + i, maps: 80 - i, collected: 70 - i, missed: i % 3 }));
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 740 }]) {
+    const ctx = await browser.newContext({ viewport });
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => { throw e; });
+    await page.goto(base);
+    await page.evaluate(() => localStorage.setItem('mapc_dash_pw_v1', 'good pass'));
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('#dash-spawners tr').length >= 80);
+    const m = await page.evaluate(() => {
+      const box = document.getElementById('dash-spawners').closest('.spawn-scroll');
+      if (!box) return { box: false };
+      const r = box.getBoundingClientRect();
+      box.scrollTop = 600;
+      const th = box.querySelector('thead th').getBoundingClientRect();
+      return { box: true, overflow: getComputedStyle(box).overflowY, own: box.scrollHeight - box.clientHeight, height: r.height, view: innerHeight, headInBox: th.top >= r.top - 1 && th.bottom <= r.bottom };
+    });
+    assert.equal(m.box, true, 'a scroll box around the table ' + JSON.stringify(viewport));
+    assert.equal(m.overflow, 'auto');
+    assert.ok(m.own > 100, 'the table scrolls inside its box ' + JSON.stringify(m));
+    assert.ok(m.height <= m.view * 0.5, 'at most half the screen ' + JSON.stringify(m));
+    assert.ok(m.headInBox, 'the header row stays in view while it scrolls ' + JSON.stringify(m));
+    await ctx.close();
+  }
+});
