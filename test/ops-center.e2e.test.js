@@ -10,7 +10,7 @@ const { chromium } = require('playwright');
 
 const ROOT = path.join(__dirname, '..');
 const FIX = path.join(__dirname, 'fixtures', 'ops');
-const OWN = ['ops-center.js', 'ops-kit.js', 'ops-core.js', 'ops-drag.js', 'ops-potato.js'];
+const OWN = ['ops-center.js', 'ops-kit.js', 'ops-core.js', 'ops-drag.js', 'ops-potato.js', 'ops-feedback.js'];
 const TYPES = { '.js': 'text/javascript', '.json': 'application/json', '.html': 'text/html' };
 
 let server, base, browser;
@@ -48,6 +48,12 @@ async function open(viewport, before, o, arg) {
     const r = rt.request();
     usage.push({ url: r.url(), method: r.method(), type: r.headers()['content-type'], body: r.postData() });
     if (o && o.workerDown) return rt.abort();
+    if (o && o.worker) {                                     // a test's own answers: (path, request) -> {status, body} | 'down' | null
+      if (r.method() === 'OPTIONS') return rt.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'Content-Type, Authorization', 'access-control-allow-methods': 'POST' } });
+      const a = o.worker(new URL(r.url()).pathname, r);
+      if (a === 'down') return rt.abort();
+      if (a) return rt.fulfill({ status: a.status || 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(a.body || {}) });
+    }
     if (r.url() === WORKER + '/mapcollector/visible' && o && o.visible) {             // the registry check: 'yes', 'no' or 'down'
       if (o.visible === 'down') return rt.abort();
       return rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, show: o.visible === 'yes' }) });
@@ -61,6 +67,7 @@ async function open(viewport, before, o, arg) {
     rt.fulfill({ response: r, body: (await r.text()) + '\n' + o.blocked.map((k) => 'OpsCore.BLOCKED[' + JSON.stringify(k) + '] = OpsCore.REVOKED_MSG;').join('\n') });
   });
   if (o && o.potatoMissing) await ctx.route('**/ops-potato.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
+  if (o && o.feedbackMissing) await ctx.route('**/ops-feedback.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
   if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside || o.registered || o.group || o.beta)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
     j.tools.forEach((t) => {
@@ -1181,3 +1188,142 @@ test('POT-12 (Tex 2026-10-17): the label says what Potato means, so there is no 
   assert.equal(await page.$eval('.ops-body', (b) => [b.children[0].className, b.children[1].className].join(' ')), 'opsp-mini opsp-note', 'the reload note under the switch');
   await ctx.close();
 });
+
+// Feedback & requests (Tex 2026-10-17): "a clear feedback/requests type button pinned as the top row at half height so
+// people can find it easily", sending bug reports and feature requests the way the site's feedback form does.
+const fbWorker = (o) => {
+  const seen = [];
+  const fn = (p, r) => {
+    if (p === '/supplement/handshake') { seen.push({ p, body: JSON.parse(r.postData()) }); return o.hs === 'down' ? 'down' : o.hs === 403 ? { status: 403, body: { ok: false } } : { body: { ok: true, token: 'tok-1' } }; }
+    if (p === '/feedback/bug' || p === '/feedback/feature') {
+      seen.push({ p, body: JSON.parse(r.postData()), auth: r.headers().authorization || null });
+      if (o.fb === 'down') return 'down';
+      if (o.fb === 429) return { status: 429, body: { ok: false, error: 'rate_limited', message: 'Please wait 5 minutes between submissions.' } };
+      return { status: 201, body: p === '/feedback/bug' ? { ok: true, issueNumber: 412, url: 'https://github.com/x/412' } : { ok: true, id: 300 } };
+    }
+    return null;
+  };
+  return { fn, seen };
+};
+async function openFeedback(page) {
+  await page.waitForSelector('#opsf-btn');
+  await page.click('#opsf-btn');
+  await page.waitForSelector('#opsf-send');
+}
+
+test('FB-1 (Tex): the Feedback & requests row is pinned above the tiles, full width, half a tile tall; a search never hides it', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('.ops-tile');
+  const box = await page.evaluate(() => {
+    const b = document.getElementById('opsf-btn'), grid = document.querySelector('.ops-grid'), t = document.querySelector('.ops-tile');
+    const r = (e) => e.getBoundingClientRect();
+    return { text: b.textContent, h: r(b).height, tileH: r(t).height, w: r(b).width, gridW: r(grid).width, above: r(b).bottom <= r(grid).top + 1, vh: window.innerHeight, bottom: r(b).bottom };
+  });
+  assert.match(box.text, /Feedback & requests/);
+  assert.ok(Math.abs(box.h - box.tileH / 2) <= 8, 'half a tile tall: ' + box.h + ' vs ' + box.tileH);
+  assert.ok(Math.abs(box.w - box.gridW) <= 2, 'full width');
+  assert.ok(box.above, 'above the tiles');
+  assert.ok(box.bottom <= box.vh, 'visible without scrolling');
+  await page.fill('.ops-input', 'zzz');
+  assert.equal(await page.$$eval('#opsf-btn', (e) => e.length), 1, 'pinned through a search');
+  await ctx.close();
+});
+
+test('FB-2: a bug report: Bug report is picked, the tool list has the player\'s tools, Send waits for both boxes; it verifies the account and sends to the worker', async () => {
+  const w = fbWorker({});
+  const { ctx, page } = await open(PHONE, null, { worker: w.fn });
+  await page.waitForSelector('.ops-tile');
+  const seen = await tileNames(page);
+  await openFeedback(page);
+  assert.equal(await page.textContent('.ops-title'), 'Feedback & requests');
+  assert.equal(await page.getAttribute('#opsf-bug', 'aria-pressed'), 'true');
+  assert.equal(await page.getAttribute('#opsf-feature', 'aria-pressed'), 'false');
+  const tools = await page.$$eval('#opsf-tool option', (os) => os.map((o) => o.textContent));
+  assert.equal(tools[0], 'Ops Center (general)');
+  assert.deepEqual(tools.slice(1).sort(), seen.slice().sort(), 'exactly the tools this player sees');
+  assert.match(await page.textContent('.opsf-who'), /Sending as Tester/);
+  assert.equal(await page.$eval('#opsf-send', (b) => b.disabled), true);
+  await page.fill('#opsf-title', 'Card stuck');
+  assert.equal(await page.$eval('#opsf-send', (b) => b.disabled), true, 'details still empty');
+  await page.fill('#opsf-details', 'It froze after Stop.');
+  await page.selectOption('#opsf-tool', { label: 'Alpha Tool' });
+  await page.click('#opsf-send');
+  await page.waitForSelector('.opsf-done');
+  assert.match(await page.textContent('.opsf-done'), /Bug report sent \(#412\)/);
+  assert.deepEqual(w.seen.map((x) => x.p), ['/supplement/handshake', '/feedback/bug']);
+  assert.deepEqual(w.seen[0].body, { uid: await page.evaluate(() => window.__fake.uid) });
+  assert.equal(w.seen[1].auth, 'Bearer tok-1');
+  assert.deepEqual(w.seen[1].body, { title: 'Card stuck', description: 'It froze after Stop.\n\nTool: Alpha Tool\nFrom: Ops Center', submitter: 'Tester', source: 'ops' });
+  await ctx.close();
+});
+
+test('FB-3: a feature request goes to the feature list; Back returns to the menu', async () => {
+  const w = fbWorker({});
+  const { ctx, page } = await open(PHONE, null, { worker: w.fn });
+  await openFeedback(page);
+  await page.click('#opsf-feature');
+  assert.equal(await page.getAttribute('#opsf-feature', 'aria-pressed'), 'true');
+  await page.fill('#opsf-title', 'Auto rally');
+  await page.fill('#opsf-details', 'Please.');
+  await page.click('#opsf-send');
+  await page.waitForSelector('.opsf-done');
+  assert.match(await page.textContent('.opsf-done'), /Request sent/);
+  assert.equal(w.seen[w.seen.length - 1].p, '/feedback/feature');
+  await page.click('.ops-head .ops-icon-btn[aria-label="Back"]');
+  await page.waitForSelector('.ops-tile');
+  await ctx.close();
+});
+
+test('FB-4: the worker says wait, or can\'t be reached: the reason shows and what was typed stays', async () => {
+  let w = fbWorker({ fb: 429 });
+  let r = await open(PHONE, null, { worker: w.fn });
+  await openFeedback(r.page);
+  await r.page.fill('#opsf-title', 'A'); await r.page.fill('#opsf-details', 'B');
+  await r.page.click('#opsf-send');
+  await r.page.waitForSelector('.opsf-error');
+  assert.match(await r.page.textContent('.opsf-error'), /Please wait 5 minutes between submissions\./);
+  assert.equal(await r.page.inputValue('#opsf-title'), 'A');
+  assert.equal(await r.page.$eval('#opsf-send', (b) => b.disabled), false, 'can try again');
+  await r.ctx.close();
+  w = fbWorker({ fb: 'down' });
+  r = await open(PHONE, null, { worker: w.fn });
+  await openFeedback(r.page);
+  await r.page.fill('#opsf-title', 'A'); await r.page.fill('#opsf-details', 'B');
+  await r.page.click('#opsf-send');
+  await r.page.waitForSelector('.opsf-error');
+  assert.match(await r.page.textContent('.opsf-error'), /Couldn't send\. Check your connection and try again\./);
+  assert.equal(await r.page.inputValue('#opsf-details'), 'B');
+  await r.ctx.close();
+});
+
+test('FB-5: off the roster the account can\'t be verified: it still sends, without a token; a reserved name is never sent unverified', async () => {
+  let w = fbWorker({ hs: 403 });
+  let r = await open(PHONE, null, { worker: w.fn });
+  await openFeedback(r.page);
+  await r.page.fill('#opsf-title', 'A'); await r.page.fill('#opsf-details', 'B');
+  await r.page.click('#opsf-send');
+  await r.page.waitForSelector('.opsf-done');
+  assert.equal(w.seen[1].auth, null);
+  await r.ctx.close();
+  w = fbWorker({ hs: 403 });
+  r = await open(PHONE, () => { window.__fake.name = 'Tex'; }, { worker: w.fn });
+  await openFeedback(r.page);
+  await r.page.fill('#opsf-title', 'A'); await r.page.fill('#opsf-details', 'B');
+  await r.page.click('#opsf-send');
+  await r.page.waitForSelector('.opsf-error');
+  assert.match(await r.page.textContent('.opsf-error'), /Couldn't verify your account/);
+  assert.ok(!w.seen.some((x) => x.p.startsWith('/feedback/')), 'nothing sent under a reserved name without a verified account');
+  await r.ctx.close();
+});
+
+test('FB-6: no row for players turned away, and the menu works without the feedback helper', async () => {
+  let r = await open(PHONE, () => { window.__fake.server = 619; });
+  await assertRestricted(r.page);
+  assert.equal(await r.page.$$eval('#opsf-btn', (e) => e.length), 0);
+  await r.ctx.close();
+  r = await open(PHONE, null, { feedbackMissing: true });
+  await r.page.waitForSelector('.ops-tile');
+  assert.equal(await r.page.$$eval('#opsf-btn', (e) => e.length), 0);
+  await r.ctx.close();
+});
+

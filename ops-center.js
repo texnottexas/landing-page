@@ -272,10 +272,18 @@
     search.value = S.query;
     search.addEventListener('input', function () { S.query = search.value; renderGrid(); });
     b.appendChild(search);
+    if (window.OpsFeedback) { try { b.appendChild(window.OpsFeedback.row(openFeedback)); } catch (e) {} }   // pinned above the tiles, never filtered (Tex 2026-10-17)
     S.grid = K().el('div', 'ops-grid'); b.appendChild(S.grid);
     renderGrid();
     if (window.OpsPotato) { try { window.OpsPotato.mount(S.modal.card.querySelector('.ops-head'), b); } catch (e) {} }   // Potato mode switch, in the header (Tex 2026-10-17)
     S.timer = setInterval(updateTiles, 1000);
+  }
+  // Feedback & requests (Tex 2026-10-17): bug reports and feature requests from the game, as on the site.
+  function openFeedback() {
+    var b = openCard('Feedback & requests', subText(), openMenu);
+    S.view = 'feedback'; S.toolId = null;
+    var tools = C().visibleTools(S.list.tools, S.siteKey, S.reg).map(function (t) { return t.title; });
+    window.OpsFeedback.page(b, { worker: WORKER, uid: uid(), name: playerName() || (S.member && S.member.name) || '', tools: tools, onDone: openMenu });
   }
   function addTile(grid) {
     return function (t) {
@@ -602,6 +610,7 @@
   if (!window.OpsDrag) deps.push(loadScript(BASE + 'ops-drag.js?_=' + Date.now()).catch(function () {}));   // cards drag by the title (Tex); optional: never blocks the Ops Center
   if (!window.OpsCore) deps.push(loadScript(BASE + 'ops-core.js?_=' + Date.now()));
   if (!window.OpsPotato) deps.push(loadScript(BASE + 'ops-potato.js?_=' + Date.now()).catch(function () {}));   // Potato mode (Tex 2026-10-17); optional: never blocks the Ops Center
+  if (!window.OpsFeedback) deps.push(loadScript(BASE + 'ops-feedback.js?_=' + Date.now()).catch(function () {}));   // Feedback & requests (Tex 2026-10-17); optional
   Promise.all(deps).then(start, function () {
     window.OpsCenter = null;
     alert('Ops Center failed to load. Check your connection and try again.');
