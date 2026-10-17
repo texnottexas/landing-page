@@ -195,6 +195,27 @@ test('ODIN-9: a refused info or march stops the run with the game\'s words; a ma
   await c.ctx.close();
 });
 
+test('ODIN-SLOW-1 (Tex 2026-10-17): "Too fast! Please try again." pauses 20 s and sends that march again; the run goes on', async () => {
+  const { ctx, page } = await open([T1, T2], { odin: { slowLeft: 1 } });
+  await page.evaluate(() => { window.__ODIN_SLOW_MS = 400; });
+  await launch(page);
+  await waitText(page, '#odin-root .odin-foot', /the game asked to slow down/);
+  await page.waitForFunction(() => __fake.odin.sent.length >= 3, null, { timeout: 8000 });
+  const tiles = (await marches(page)).map((m) => m.p.x + ',' + m.p.y);
+  assert.equal(tiles[0], tiles[1], 'the refused march is sent again');
+  assert.equal(await page.evaluate(() => window.__ODIN.running), true, 'still running');
+  await ctx.close();
+});
+
+test('ODIN-SLOW-2: a third "Too fast!" in a row stops the run with the game\'s words', async () => {
+  const { ctx, page } = await open([T1], { odin: { slowLeft: 5 } });
+  await page.evaluate(() => { window.__ODIN_SLOW_MS = 200; });
+  await launch(page);
+  await waitText(page, '#odin-root .odin-msg', /stopped: Too fast! Please try again\./, 8000);
+  assert.equal((await marches(page)).length, 3);
+  await ctx.close();
+});
+
 test('ODIN-10: caps: no more than 10 marches a minute (a 7-march player sends all 7 at once, Tex); the card says when it goes on', async () => {
   const list = Array.from({ length: 12 }, (_, i) => ({ x: 400 + i, y: 690, id: 'F' + i }));
   const { ctx, page } = await open(list, { max: 12 });

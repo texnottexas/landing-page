@@ -150,9 +150,13 @@
     return { ok: true };
   }
 
+  // The server's march time control ("Too fast! Please try again.", live on Tex 2026-10-17, the 7th march about 2 s
+  // after the 6th): not a refusal. Tex: wait about 20 s and try that march again; a third in a row still stops.
+  var SLOW_KEY = 'march_time_control_info001', SLOW_MS = 20000, SLOW_MAX = 3;
   function classify(a) {
     if (!a || a.timeout) return 'silent';
-    return a.s === 0 ? 'ok' : 'refused';
+    if (a.s === 0) return 'ok';
+    return a.d === SLOW_KEY ? 'slow' : 'refused';
   }
 
   // The owned skin with the biggest gathering bonus, when it beats the one worn. owned: [{id, pct}].
@@ -168,7 +172,7 @@
   var OdinGatherCore = {
     BID: BID, DURATION: DURATION, LOG_TYPE: LOG_TYPE, SLOT_POS: SLOT_POS, MAX_OVER: MAX_OVER, CAPS: CAPS,
     logFacilities: logFacilities, towersInView: towersInView, timeLeft: timeLeft, speedOf: speedOf, predict: predict,
-    planTroops: planTroops, pickHeroes: pickHeroes, rank: rank, gate: gate, classify: classify, bestSkin: bestSkin, gameDay: gameDay
+    planTroops: planTroops, pickHeroes: pickHeroes, rank: rank, gate: gate, classify: classify, SLOW_KEY: SLOW_KEY, SLOW_MS: SLOW_MS, SLOW_MAX: SLOW_MAX, bestSkin: bestSkin, gameDay: gameDay
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = OdinGatherCore;
   else root.OdinGatherCore = OdinGatherCore;

@@ -165,3 +165,10 @@ test('gate: skin changes 6 an hour (review C2)', () => {
   assert.equal(O.gate(Array.from({ length: 5 }, (_, i) => ({ t: now - i * 60000, kind: 'skin' })), now, 'skin').ok, true);
   assert.match(O.gate(Array.from({ length: 6 }, (_, i) => ({ t: now - i * 60000, kind: 'skin' })), now, 'skin').reason, /6 skin changes an hour/);
 });
+
+test('classify: the game\'s "Too fast! Please try again." (march_time_control_info001) is a slow-down, not a refusal (Tex 2026-10-17)', () => {
+  assert.equal(O.classify({ s: 3, d: 'march_time_control_info001' }), 'slow');
+  assert.equal(O.classify({ s: 3, d: 'tower_full' }), 'refused');
+  assert.equal(O.SLOW_MS, 20000, 'Tex: wait like 20 seconds');
+  assert.equal(O.SLOW_MAX, 3, 'a third one in a row still stops the run');
+});

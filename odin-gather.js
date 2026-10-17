@@ -11,7 +11,7 @@
   var C = window.OdinGatherCore;
   if (!C) { try { alert('Odinium Gatherer did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.5';
+  var VERSION = '2026-10-17';
   var WORKER = window.__ODIN_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = !!window.__ODIN_FAST, TIMEOUT_MS = window.__ODIN_TIMEOUT_MS || 10000;
   var WAIT_MS = window.__ODIN_WAIT_MS || 30000;            // no free march, or nothing to send to: look again after this
@@ -415,7 +415,15 @@
         heroList: p.heroes, trapList: [], break: 0, formation: 0, formationV2: 0, extraArmy: {} }, TARGET, cb); });
       var k = C.classify(r);
       if (k === 'silent') { stop("the game didn't answer a march"); return sent; }
+      if (k === 'slow') {                                          // the server's "Too fast!": wait and try that march again (Tex)
+        S.slow = (S.slow || 0) + 1;
+        if (S.slow >= C.SLOW_MAX) { stop(answerText(r)); return sent; }
+        delete S.sent[fac.tile]; lsSet(LS_SENT + S.siteKey, JSON.stringify(S.sent));   // it didn't go: the facility is free again
+        S.paused = { until: Date.now() + (window.__ODIN_SLOW_MS || C.SLOW_MS), reason: 'the game asked to slow down' };
+        break;
+      }
       if (k === 'refused') { stop(answerText(r)); return sent; }
+      S.slow = 0;
       var md = parseD(r) || {}, mi = md.marchInfo || {};
       sent++; S.sentRun++; bump();
       S.recent.push({ tile: fac.tile, at: Date.now() });
