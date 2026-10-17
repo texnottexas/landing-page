@@ -22,9 +22,11 @@
   // The game window: this page, or in Unattended mode the game running in a frame under the card, which
   // can be reloaded to log back in while this script keeps running (a full page reload would end it).
   var GW = window, frame = null;
-  // Ops Center Unattended mode on this tab (Tex 2026-10-16): its frame is the game, and its reconnect is the only one.
-  var shared = !!(window.__OPSU && window.__OPSU.running && window.__OPSU.frame && window.__OPSU.frame.isConnected);
-  if (shared) { frame = window.__OPSU.frame; GW = frame.contentWindow; }
+  // Ops Center Unattended mode on this tab (Tex 2026-10-16): a game frame already up is the game, also after Unattended
+  // mode was turned off (it leaves the frame up); while Unattended mode runs, its reconnect is the only one (review I6).
+  var ownFrame = false, adopted = document.getElementById('mapc-frame');
+  if (adopted && adopted.isConnected && adopted.contentWindow) { frame = adopted; GW = frame.contentWindow; }
+  function sharedNow() { return !!(frame && !ownFrame && window.__OPSU && window.__OPSU.running && window.__OPSU.frame === frame); }
   function req(n) { return GW.__require(n); }
   var TARGET = {};                                         // NET.send wants a target; a plain object is always valid
 
@@ -312,7 +314,7 @@
     var now0 = Date.now();
     // Unattended mode: 65 minutes after the game went down (another login, a lost connection, a failed
     // reconnect), reload the frame by itself, exactly as the dashboard's Reconnect does; again 65 min later.
-    if (frame && !shared) {
+    if (frame && !sharedNow()) {
       if (!S.attached || !connected()) {
         if (!S.downSince) S.downSince = now0;
         var ar = C.autoReconnect(S.downSince, S.autoTryAt, now0, AUTO_MS);
@@ -442,7 +444,7 @@
     S.attached = false; window.__MAPC.attached = ''; unsubscribe();
     try { window.cc.game.pause(); } catch (e) {}
     try { window.__require('NetMgr').NET.dispose(true); } catch (e) {}
-    frame = document.createElement('iframe');
+    frame = document.createElement('iframe'); ownFrame = true;
     frame.id = 'mapc-frame';
     frame.src = location.href;
     frame.setAttribute('allow', 'autoplay; fullscreen; clipboard-read; clipboard-write');
@@ -464,7 +466,7 @@
     S.reconnecting = Date.now(); S.attached = false; window.__MAPC.attached = ''; unsubscribe();
     S.autoTryAt = S.reconnecting;                          // any reconnect restarts the 65-minute auto-reconnect clock
     note('Reconnecting...', ATTACH_LIMIT_MS);
-    if (shared && window.__OPSU && window.__OPSU.running) window.__OPSU.reconnect();
+    if (sharedNow()) window.__OPSU.reconnect();
     else try { frame.contentWindow.location.reload(); } catch (e) {}
     setTimeout(function () {
       waitForGame(ATTACH_LIMIT_MS).then(function (ok) {
@@ -492,7 +494,7 @@
     if (reason !== 'superseded' && reason !== 'not registered' && S.siteKey) report(reason);
     lsSet(LS_STATE, JSON.stringify({ siteKey: S.siteKey, maps: C.prune(S.maps, Date.now(), S.acked), seen: S.seenOrder.slice(-SEEN_SAVE) }));
     window.__MAPC.running = false;
-    if (reason === 'stopped by you') { removeRoot(); if (frame && frame.parentNode) frame.parentNode.removeChild(frame); return; }
+    if (reason === 'stopped by you') { removeRoot(); if (frame && ownFrame && frame.parentNode) frame.parentNode.removeChild(frame); return; }   // only a frame it made (review C1)
     showMessage(STOP_TEXT[reason] || 'Map Collector stopped.', true);
     if (reason === 'out of claims' || reason === 'event ended' || reason === 'superseded') setTimeout(removeRoot, 10000);
   }
@@ -573,7 +575,7 @@
       ub.appendChild(button('mapc-unattended', 'Unattended mode', confirmUnattended));
       body.appendChild(ub);
     }
-    if (shared) body.appendChild(el('div', 'mapc-msg', 'Unattended mode is on for this tab'));
+    if (sharedNow()) body.appendChild(el('div', 'mapc-msg', 'Unattended mode is on for this tab'));
     paint();
   }
   // Mask Mystery Boxes in this same tab, for players running both: it gets its own card (top left) and the

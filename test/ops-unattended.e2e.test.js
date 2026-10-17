@@ -21,7 +21,7 @@ const OTHER = 'c3c6f3200a4ec1fb';
 const PW = 'amber falcon river';
 let server, base, browser, W, KEY;
 
-const freshWorker = () => ({ mode: 'ok', offset: 0, queue: [], syncs: [], acks: [], enabled: [], off: 0, mapc: [], mapcCommand: '' });
+const freshWorker = () => ({ mode: 'ok', offset: 0, queue: [], syncs: [], acks: [], enabled: [], off: 0, mapc: [], mapcCommand: '', current: '', strict: false, resumed: 0, failRegistry: 0 });
 function json(res, code, body) { res.writeHead(code, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' }); res.end(JSON.stringify(body)); }
 test.before(async () => {
   KEY = await U.deriveKey(PW, SK);
@@ -34,11 +34,19 @@ test.before(async () => {
       if (name === 'opsremote/enable') {
         W.enabled.push({ pw: req.headers['x-map-collector-password'], body: j });
         if (req.headers['x-map-collector-password'] !== PW) return json(res, 401, { ok: false, error: 'unauthorized' });
-        return json(res, 200, { ok: true, pass: 'ou1.' + SK + '.' + wnow + '.' + (wnow + 2592e6) + '.' + 'd'.repeat(64), exp: wnow + 2592e6, now: wnow });
+        W.current = 'ou1.' + SK + '.' + wnow + '.' + (wnow + 2592e6) + '.' + 'd'.repeat(64);
+        return json(res, 200, { ok: true, pass: W.current, exp: wnow + 2592e6, now: wnow });
+      }
+      if (name === 'opsremote/resume') {              // a launch claims the account: the pass is swapped (review I4)
+        if (W.strict && req.headers.authorization !== 'Bearer ' + W.current) return json(res, 409, { ok: false, error: 'superseded' });
+        W.resumed++;
+        W.current = 'ou1.' + SK + '.' + (wnow + W.resumed) + '.' + (wnow + 2592e6) + '.' + 'd'.repeat(64);
+        return json(res, 200, { ok: true, pass: W.current, exp: wnow + 2592e6, now: wnow });
       }
       if (name === 'opsremote/sync') {
         if (W.mode === '401' || W.mode === '403') return json(res, Number(W.mode), { ok: false, error: 'x' });
         if (W.mode === '409' || W.mode === 'off') return json(res, 409, { ok: false, error: W.mode === 'off' ? 'off' : 'superseded' });
+        if (W.strict && req.headers.authorization !== 'Bearer ' + W.current) return json(res, 409, { ok: false, error: 'superseded' });
         W.syncs.push({ auth: req.headers.authorization, status: j && j.status }); (j && j.acks || []).forEach((a) => W.acks.push(a));
         return json(res, 200, { ok: true, now: wnow, commands: W.queue.splice(0) });
       }
@@ -46,6 +54,7 @@ test.before(async () => {
       if (name === 'maskintel') return json(res, 200, { ok: true, fetchedAt: Date.now(), boxes: [], spots: [] });
       if (name === 'ops/usage' || name.startsWith('maskshare/')) return json(res, 200, { ok: true });
       if (name === 'mapcollector/report') { W.mapc.push(j); const c = W.mapcCommand; W.mapcCommand = ''; return json(res, 200, Object.assign({ ok: true, now: Date.now() }, c ? { command: c } : {})); }
+      if (name === 'ops-tools.json' && /[?&]_=/.test(req.url) && W.failRegistry > 0) { W.failRegistry--; res.writeHead(500); res.end(); return; }   // the card's own fetch
       if (name.includes('..')) { res.writeHead(400); res.end(); return; }
       const file = OWN.includes(name) ? path.join(ROOT, name) : path.join(FIX, name);
       fs.readFile(file, (err, buf) => {
@@ -273,6 +282,7 @@ test('OPSU-13: a remembered pass and key skip the password', async () => {
   await p2.addScriptTag({ url: base + 'ops-unattended.js' });
   await p2.waitForFunction(() => /Connected/.test((document.getElementById('opsu-stat') || {}).textContent || ''), null, { timeout: 15000 });
   assert.equal(W.enabled.length, 0);
+  assert.equal(W.resumed, 1, 'the launch claimed the account with its remembered pass (review I4)');
   await c2.close();
 });
 
@@ -322,3 +332,83 @@ test('MCSF-3: Map Collector stopped with a message is marked stopped; the tab re
   await page.waitForFunction(() => window.__OPSU.state().tools['map-collector'].state === 'stopped', null, { timeout: 5000 });
   await ctx.close();
 });
+
+// Final review fixes (2026-10-16).
+test('OPSU-15 (C2): HT Gift Boxes stopped remotely starts again remotely', async () => {
+  const { ctx, page } = await open();
+  await page.evaluate((h) => localStorage.setItem('htg_pw_v1', h), crypto.createHash('sha256').update('bananas').digest('hex'));
+  await turnOn(page);
+  assert.equal(await ack((await send('start', 'ht-gifts')).nonce), 'Started');
+  assert.match(await ack((await send('stop', 'ht-gifts')).nonce), /^Stopped/);
+  assert.equal(await ack((await send('start', 'ht-gifts')).nonce), 'Started');
+  assert.equal(await page.evaluate(() => window.__HTG.state().running), true);
+  await ctx.close();
+});
+
+test('OPSU-16 (I3): Stop while commands wait (a tool slow to stop): none of them runs after "Unattended mode is off"', async () => {
+  const { ctx, page } = await open();
+  await turnOn(page);
+  await page.evaluate((h) => localStorage.setItem('htg_pw_v1', h), crypto.createHash('sha256').update('bananas').digest('hex'));
+  assert.equal(await ack((await send('start', 'mask-boxes')).nonce), 'Started');
+  await page.evaluate(() => { const real = window.__MBX.stop; window.__MBX.stop = function () { setTimeout(real, 3000); }; });   // stands in for the Gatherer's skin switch-back
+  await send('reconnect', ''); await send('start', 'ht-gifts');
+  await page.waitForFunction(() => /Reconnecting/.test((document.getElementById('opsu-stat') || {}).textContent || ''), null, { timeout: 8000 });
+  await page.click('#opsu-stop');
+  await page.waitForFunction(() => /Unattended mode is off/.test(document.getElementById('opsu-root').textContent), null, { timeout: 20000 });
+  await page.waitForTimeout(3000);
+  assert.equal(await count(page, '#htg-root'), 0, 'the queued Start never ran');
+  assert.equal(await page.evaluate(() => !!(window.__HTG && window.__HTG.state && window.__HTG.state().running)), false);
+  await ctx.close();
+});
+
+test('OPSU-17 (I4): a second tab launched with the remembered pass takes over; the first says so and stops', async () => {
+  W.strict = true;
+  const a = await open();
+  await turnOn(a.page);
+  const b = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const p2 = await b.newPage();
+  await p2.goto(base);
+  await p2.evaluate(([bs, sk, key, pass]) => {
+    const w = bs.replace(/\/$/, '');
+    window.__OPSU_WORKER = w; window.__OPSU_BASE = bs; window.__OPSU_SYNC_MS = 300; window.__OPSU_READY_MS = 8000;
+    localStorage.setItem('opsu_v1_' + sk, JSON.stringify({ pass, exp: Date.now() + 2592e6, key }));
+  }, [base, SK, KEY, W.current]);
+  await p2.addScriptTag({ url: base + 'ops-unattended-core.js' });
+  await p2.addScriptTag({ url: base + 'ops-unattended.js' });
+  await p2.waitForFunction(() => /Connected/.test((document.getElementById('opsu-stat') || {}).textContent || ''), null, { timeout: 15000 });
+  await a.page.waitForFunction(() => /Another tab took over/.test(document.getElementById('opsu-root').textContent), null, { timeout: 8000 });
+  assert.equal(await a.page.evaluate(() => window.__OPSU.running), false);
+  await a.ctx.close(); await b.close();
+});
+
+test('OPSU-18 (I5): the tool list failing at turn-on is fetched again; a Start then works', async () => {
+  W.failRegistry = 1;
+  const { ctx, page } = await open();
+  await turnOn(page);
+  assert.equal(await ack((await send('start', 'mask-boxes')).nonce), 'Started');
+  await ctx.close();
+});
+
+test('MCSF-4 (C1): stopping Map Collector leaves the shared game frame up; the other tools carry on', async () => {
+  const { ctx, page } = await open();
+  await turnOn(page);
+  await startMapc(page);
+  assert.match(await ack((await send('stop', 'map-collector')).nonce), /^Stopped/);
+  assert.equal(await page.$$eval('iframe#mapc-frame', (f) => f.filter((x) => x.isConnected).length), 1);
+  assert.equal(await ack((await send('start', 'mask-boxes')).nonce), 'Started');
+  await ctx.close();
+});
+
+test('MCSF-5 (I6): Map Collector launched after Unattended mode was turned off uses the frame still up', async () => {
+  const { ctx, page } = await open();
+  await turnOn(page);
+  await page.click('#opsu-stop');
+  await page.waitForFunction(() => /Unattended mode is off/.test(document.getElementById('opsu-root').textContent), null, { timeout: 8000 });
+  await page.evaluate(() => localStorage.setItem('mapc_pw_v1', 'good pass'));
+  await page.addScriptTag({ url: base + 'map-collector-core.js' });
+  await page.addScriptTag({ url: base + 'map-collector.js' });
+  await page.waitForFunction(() => window.__MAPC && window.__MAPC.attached === 'frame', null, { timeout: 15000 });
+  assert.equal(await count(page, 'iframe'), 1);
+  await ctx.close();
+});
+

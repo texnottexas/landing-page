@@ -53,7 +53,7 @@
   function waitReady(ms) {
     var t0 = Date.now();
     return new Promise(function (resolve) {
-      (function poll() { if (!S.running) return resolve(false); if (ready()) return resolve(true); if (Date.now() - t0 > ms) return resolve(false); setTimeout(poll, 500); })();
+      (function poll() { if (!S.running || S.ending) return resolve(false); if (ready()) return resolve(true); if (Date.now() - t0 > ms) return resolve(false); setTimeout(poll, 500); })();
     });
   }
 
@@ -77,6 +77,16 @@
     if (r.hasAttribute('data-ops-stopped')) { var m = r.querySelector('[class$="-msg"]'); return { state: 'stopped', why: m ? m.textContent.trim().slice(0, 160) : '' }; }
     return { state: 'running', why: '' };
   }
+  // A tool's card goes the way its own Close button takes it, so the tool clears what guards a relaunch
+  // (HT Gift Boxes keeps __HTG.open until then: review C2).
+  function closeCard(id) {
+    var r = toolRoot(id);
+    if (!r) return;
+    var b = r.querySelector('button[id$="-close"]');
+    if (b) { try { b.click(); } catch (e) {} }
+    r = toolRoot(id);
+    if (r && r.parentNode) r.parentNode.removeChild(r);
+  }
   function toolsNow() { var o = {}; C.ORDER.forEach(function (id) { o[id] = toolState(id); }); return o; }
   function api(id) { return window[C.TOOLS[id]]; }
   function isRunning(id) {
@@ -99,8 +109,7 @@
     var need = C.NEEDS_PW[id];
     if (need && !lsGet(need)) return Promise.resolve('needs its password on that computer');
     if (!ready()) return Promise.resolve('the game is down: reconnect first');
-    var old = toolRoot(id);
-    if (old && old.parentNode) old.parentNode.removeChild(old);     // its last stop message
+    closeCard(id);                                                   // its last stop message
     var chain = Promise.resolve();
     t.scripts.forEach(function (f) {
       chain = chain.then(function () {
@@ -109,6 +118,7 @@
       });
     });
     return chain.then(function () {
+      if (S.ending) return stopTool(id).then(function () { return 'refused: stopping'; });   // Stop came while it loaded (review I3)
       var t0 = Date.now();
       return new Promise(function (resolve) {
         (function poll() {
@@ -128,8 +138,8 @@
     return new Promise(function (resolve) {
       (function poll() {
         if (!isRunning(id) || Date.now() - t0 > STOP_MS) {         // the Gatherer may first put a base skin back
-          var why = toolState(id).why, r = toolRoot(id);
-          if (r && r.parentNode) r.parentNode.removeChild(r);
+          var why = toolState(id).why;
+          closeCard(id);
           return resolve('Stopped' + (why && !/^Stopped/.test(why) ? ': ' + why : ''));
         }
         setTimeout(poll, 200);
@@ -159,7 +169,8 @@
   // ---------------------------------------------------------------- commands
   function runCommand(c) {
     var cmd = c && c.cmd;
-    return C.check(S.key, cmd, c && c.sig, { siteKey: S.siteKey, now: wnow(), seen: S.seen, tools: Object.keys(REG) }).then(function (r) {
+    var listed = Object.keys(REG).length ? Promise.resolve() : loadRegistry().catch(function () {});   // a failed fetch at turn-on (review I5)
+    return listed.then(function () { return C.check(S.key, cmd, c && c.sig, { siteKey: S.siteKey, now: wnow(), seen: S.seen, tools: Object.keys(REG) }).then(function (r) {
       var nonce = cmd && typeof cmd.nonce === 'string' && /^[0-9a-f]{32}$/.test(cmd.nonce) ? cmd.nonce : null;
       if (!r.ok) {
         S.badSigs = r.badSig ? S.badSigs + 1 : 0;
@@ -176,11 +187,11 @@
         S.last = { kind: cmd.kind, tool: cmd.tool, result: result, at: wnow() };
         paint();
       });
-    });
+    }); });
   }
   // One command at a time; check-ins go on meanwhile (a reconnect can take minutes).
   function drain() {
-    if (S.draining || !S.queue.length || !S.running || S.halted) return;
+    if (S.draining || !S.queue.length || !S.running || S.halted || S.ending) return;
     S.draining = true;
     var c = S.queue.shift();
     runCommand(c).catch(function () {}).then(function () {
@@ -201,6 +212,7 @@
   function sync() {
     if (!S.running || S.ending || S.halted || S.syncing) return Promise.resolve();
     S.syncing = true; S.lastSyncAt = Date.now();
+    if (!Object.keys(REG).length) loadRegistry().catch(function () {});
     var acks = S.acks.splice(0, 20);
     return fetch(WORKER + '/opsremote/sync', { method: 'POST', headers: { 'Content-Type': 'text/plain', 'Authorization': 'Bearer ' + S.pass }, cache: 'no-store',
       body: JSON.stringify({ status: status(), acks: acks }) })
@@ -222,6 +234,12 @@
         paint();
       });
   }
+  // Stopping: what waits is refused, the command in progress ends first (a reconnect ends at once), then stop all.
+  function wind() {
+    S.queue.splice(0).forEach(function (c) { var n = c && c.cmd && c.cmd.nonce; if (typeof n === 'string' && /^[0-9a-f]{32}$/.test(n)) S.acks.push({ nonce: n, result: 'refused: stopping' }); });
+    var t0 = Date.now();
+    return new Promise(function (resolve) { (function poll() { if (!S.draining || Date.now() - t0 > 15000) return resolve(); setTimeout(poll, 100); })(); }).then(stopAll);
+  }
   function forgetPass() {
     var saved = lsJSON(LS_KEY + S.siteKey) || {};
     lsSet(LS_KEY + S.siteKey, saved.key ? JSON.stringify({ key: saved.key }) : null);
@@ -231,7 +249,7 @@
     if (S.ending) return;
     S.ending = true;
     clearInterval(S.timer); S.timer = null;
-    stopAll().then(function () {
+    wind().then(function () {
       S.running = false; window.__OPSU.running = false; clearInterval(S.ticker);
       showMessage(reason + ' Everything it started here has stopped.', true);
     });
@@ -247,7 +265,7 @@
     S.ending = true;
     clearInterval(S.timer); S.timer = null;
     S.note = 'Stopping...'; paint();
-    stopAll().then(function () {
+    wind().then(function () {
       return fetch(WORKER + '/opsremote/off', { method: 'POST', headers: { 'Content-Type': 'text/plain', 'Authorization': 'Bearer ' + S.pass }, cache: 'no-store', body: '{}' })
         .catch(function () {});
     }).then(function () {
@@ -276,6 +294,26 @@
           lsSet(LS_KEY + S.siteKey, JSON.stringify({ pass: S.pass, exp: r.j.exp, key: k }));
           begin();
         });
+      });
+  }
+  // A launch with a remembered pass claims the account: the worker swaps the pass, so another tab holding the old one
+  // stops at its next check-in (review I4). No answer: go on with the old pass (check-ins will say so).
+  function resume(saved) {
+    showMessage('Checking...');
+    fetch(WORKER + '/opsremote/resume', { method: 'POST', headers: { 'Content-Type': 'text/plain', 'Authorization': 'Bearer ' + saved.pass }, cache: 'no-store', body: '{}' })
+      .then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j || {} }; }, function () { return { code: r.status, j: {} }; }); },
+        function () { return { code: 0, j: {} }; })
+      .then(function (r) {
+        S.key = saved.key;
+        if (r.code === 200 && typeof r.j.pass === 'string') {
+          S.pass = r.j.pass;
+          if (typeof r.j.now === 'number') S.skew = r.j.now - Date.now();
+          lsSet(LS_KEY + S.siteKey, JSON.stringify({ pass: S.pass, exp: r.j.exp, key: saved.key }));
+          return begin();
+        }
+        if (r.code === 0 || r.code >= 500 || r.code === 429) { S.pass = saved.pass; return begin(); }
+        forgetPass();
+        askPassword(r.code === 409 && r.j.error !== 'off' ? 'Another tab took over Unattended mode. Turn it on again here to take it back.' : 'Unattended mode was turned off. Turn it on again with your password.');
       });
   }
   function begin() {
@@ -394,7 +432,7 @@
     S.siteKey = h.slice(0, 16);
     S.seen = C.pruneSeen(lsJSON(LS_SEEN + S.siteKey) || {}, Date.now());
     var saved = lsJSON(LS_KEY + S.siteKey);
-    if (saved && typeof saved.pass === 'string' && saved.exp > Date.now() + 86400000 && /^[0-9a-f]{64}$/.test(saved.key || '')) { S.pass = saved.pass; S.key = saved.key; begin(); }
+    if (saved && typeof saved.pass === 'string' && saved.exp > Date.now() + 86400000 && /^[0-9a-f]{64}$/.test(saved.key || '')) resume(saved);
     else askPassword('');
   }, function () { showMessage('This browser cannot run Unattended mode.', true); window.__OPSU.running = false; });
 })();
