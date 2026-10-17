@@ -9,11 +9,14 @@
   var C = window.OpsUnattendedCore;
   if (!C) { try { alert('Unattended mode did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16.2';
+  var VERSION = '2026-10-17';
   var WORKER = window.__OPSU_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var BASE = window.__OPSU_BASE || 'https://2864tw.com/';
   var SYNC_MS = window.__OPSU_SYNC_MS || 15000, READY_MS = window.__OPSU_READY_MS || 180000, CARD_MS = window.__OPSU_CARD_MS || 20000, STOP_MS = 60000;
   var LS_KEY = 'opsu_v1_', LS_SEEN = 'opsu_seen_v1_', LS_MIN = 'opsu_min_v1';
+  // Map Collector's saved password (read only, never written or cleared here) and the hash of one the server refused,
+  // so a stale saved password costs one lockout strike, not one per launch (Tex 2026-10-17).
+  var LS_MAPC_PW = 'mapc_pw_v1', LS_BADPW = 'opsu_badpw_v1_';
 
   function lsGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
@@ -276,13 +279,17 @@
   }
 
   // ---------------------------------------------------------------- turning on
-  function enable(pw) {
-    showMessage('Checking...');
+  function enable(pw, fromSaved) {
+    showMessage(fromSaved ? 'Checking your saved Map Collector password...' : 'Checking...');
     fetch(WORKER + '/opsremote/enable', { method: 'POST', headers: { 'Content-Type': 'text/plain', 'X-Map-Collector-Password': pw }, cache: 'no-store',
       body: JSON.stringify({ siteKey: S.siteKey }) })
       .then(function (r) { return r.json().then(function (j) { return { code: r.status, j: j || {} }; }, function () { return { code: r.status, j: {} }; }); },
         function () { return { code: 0, j: {} }; })
       .then(function (r) {
+        if (r.code === 401 && fromSaved) {
+          return sha256Hex(pw).then(function (h) { lsSet(LS_BADPW + S.siteKey, h.slice(0, 16)); },
+            function () {}).then(function () { askPassword("Your saved Map Collector password didn't work here. Enter it below."); });
+        }
         if (r.code === 401) return askPassword("That password didn't work.");
         if (r.code === 403) { window.__OPSU.running = false; return showMessage('Unattended mode is not available for this account.', true); }
         if (r.code === 429) return askPassword('Too many tries. Wait 15 minutes and try again.');
@@ -292,6 +299,7 @@
         return C.deriveKey(pw, S.siteKey).then(function (k) {
           S.key = k;
           lsSet(LS_KEY + S.siteKey, JSON.stringify({ pass: S.pass, exp: r.j.exp, key: k }));
+          lsSet(LS_BADPW + S.siteKey, null);
           begin();
         });
       });
@@ -376,6 +384,15 @@
     body.appendChild(el('div', 'opsu-msg', text));
     if (withClose) { var b = el('div', 'opsu-btns'); b.appendChild(button('opsu-close', 'Close', function () { window.__OPSU.running = false; removeRoot(); })); body.appendChild(b); }
   }
+  // No remembered pass: turn on with the password Map Collector saved in this browser, unless the server refused that
+  // same password before; otherwise ask.
+  function useSavedPassword() {
+    var pw = lsGet(LS_MAPC_PW);
+    if (!pw) return askPassword('');
+    sha256Hex(pw).then(function (h) {
+      if (h.slice(0, 16) === lsGet(LS_BADPW + S.siteKey)) askPassword(''); else enable(pw, true);
+    }, function () { askPassword(''); });
+  }
   function askPassword(msg) {
     ensureRoot(); body.textContent = ''; S.view = 'password'; card.className = 'opsu-card';
     body.appendChild(el('div', 'opsu-msg', 'Enter your Map Collector password. Your dashboard can then start and stop collectors here and reconnect this game. Leave this tab open.'));
@@ -433,6 +450,6 @@
     S.seen = C.pruneSeen(lsJSON(LS_SEEN + S.siteKey) || {}, Date.now());
     var saved = lsJSON(LS_KEY + S.siteKey);
     if (saved && typeof saved.pass === 'string' && saved.exp > Date.now() + 86400000 && /^[0-9a-f]{64}$/.test(saved.key || '')) resume(saved);
-    else askPassword('');
+    else useSavedPassword();
   }, function () { showMessage('This browser cannot run Unattended mode.', true); window.__OPSU.running = false; });
 })();

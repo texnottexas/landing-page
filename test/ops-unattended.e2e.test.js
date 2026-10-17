@@ -409,3 +409,46 @@ test('MCSF-5 (I6): Map Collector launched after Unattended mode was turned off u
   await ctx.close();
 });
 
+
+test('OPSU-19 (Tex 2026-10-17): the Map Collector password saved in this browser turns it on with no password box, also after Stop', async () => {
+  const { ctx, page } = await open(new Function("localStorage.setItem('mapc_pw_v1', " + JSON.stringify(PW) + ");"));
+  await page.waitForFunction(() => /Connected/.test((document.getElementById('opsu-stat') || {}).textContent || ''), null, { timeout: 15000 });
+  assert.equal(W.enabled.length, 1); assert.equal(W.enabled[0].pw, PW);
+  assert.equal(await page.evaluate(() => window.__OPSU.state().view), 'run', 'never asked');
+  await page.click('#opsu-stop');
+  await page.waitForFunction(() => /Unattended mode is off/.test((document.getElementById('opsu-root') || {}).textContent || ''), null, { timeout: 15000 });
+  await page.addScriptTag({ url: base + 'ops-unattended.js' });
+  await page.waitForFunction(() => /Connected/.test((document.getElementById('opsu-stat') || {}).textContent || ''), null, { timeout: 15000 });
+  assert.equal(W.enabled.length, 2, 'turned on again with the saved password');
+  assert.equal(await count(page, '#opsu-pw'), 0);
+  await ctx.close();
+});
+
+test('OPSU-20: a saved Map Collector password that does not work is tried once, then the box asks; the saved one is left as it is', async () => {
+  const { ctx, page } = await open(() => { localStorage.setItem('mapc_pw_v1', 'not the password'); });
+  await page.waitForSelector('#opsu-pw');
+  assert.match(await page.$eval('#opsu-root', (e) => e.textContent), /saved Map Collector password didn't work/);
+  assert.equal(W.enabled.length, 1, 'one try, no loop');
+  assert.equal(await page.evaluate(() => localStorage.getItem('mapc_pw_v1')), 'not the password', 'another tool\'s setting is not touched');
+  await page.fill('#opsu-pw', PW); await page.click('#opsu-go');
+  await page.waitForFunction(() => /Connected/.test((document.getElementById('opsu-stat') || {}).textContent || ''), null, { timeout: 15000 });
+  await ctx.close();
+});
+
+test('OPSU-21: a saved Map Collector password refused once is not tried again at the next launch (no lockout strikes), but a changed one is', async () => {
+  const { ctx, page } = await open(() => { localStorage.setItem('mapc_pw_v1', 'not the password'); });
+  await page.waitForSelector('#opsu-pw');
+  assert.equal(W.enabled.length, 1);
+  await page.click('#opsu-close');
+  await page.addScriptTag({ url: base + 'ops-unattended.js' });
+  await page.waitForSelector('#opsu-pw');
+  assert.equal(W.enabled.length, 1, 'the refused password is not sent again');
+  assert.doesNotMatch(await page.$eval('#opsu-root', (e) => e.textContent), /didn't work/);
+  assert.equal(await page.evaluate(() => Object.keys(localStorage).some((k) => localStorage.getItem(k).includes('not the password') && k !== 'mapc_pw_v1')), false, 'never copied');
+  await page.click('#opsu-close');
+  await page.evaluate((pw) => localStorage.setItem('mapc_pw_v1', pw), PW);
+  await page.addScriptTag({ url: base + 'ops-unattended.js' });
+  await page.waitForFunction(() => /Connected/.test((document.getElementById('opsu-stat') || {}).textContent || ''), null, { timeout: 15000 });
+  assert.equal(W.enabled.length, 2);
+  await ctx.close();
+});
