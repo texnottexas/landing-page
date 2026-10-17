@@ -276,9 +276,215 @@
     return out;
   }
 
+  // The copies that will count once merged, per group: {level, from, ref, id}. Unwanted groups aren't raised.
+  function finalTargets(snap, settings) {
+    var entries = pool(snap), ex = exclusive(snap, entries), up = {}, out = {};
+    (snap.upgrades || []).forEach(function (u) { up[u.group] = 1; });
+    Object.keys(snap.levels).forEach(function (gk) {
+      var g = Number(gk), lv = snap.levels[gk], ids = Object.keys(lv).map(function (k) { return Number(lv[k]); }).filter(function (id) { return snap.rows[id]; });
+      if (!ids.length || (ex[g] && ex[g].exclusived)) return;
+      var r0 = snap.rows[ids[0]];
+      if (!(r0.cap > 0) || !r0.buffs.length) return;
+      var copies = groupCopies(snap, g, entries);
+      if (!copies.length) return;
+      var wanted = copyInfo(snap, ids[0], settings).tier < 3;
+      var maxLevel = Math.min(r0.maxLevel, Math.max.apply(null, Object.keys(lv).map(Number)));
+      var f = evenFill(copies, r0.cap, wanted ? maxLevel : 0, wanted ? (r0.cap === 1 && up[g] ? snap.openLevel : Infinity) : 0);
+      out[g] = f.targets.map(function (t) { return { level: t.level, from: t.from, ref: t.ref, id: Number(lv[t.level]) }; });
+    });
+    return out;
+  }
+
+  // ---------------------------------------------------------------- homes: showcase, south land, far-corner water, floors
+  // A decor's cells on the base map run diagonally (the game's getMapPosList).
+  function footprint(x, y, w, h) {
+    var out = [];
+    for (var r = 0; r < h; r++) for (var s = 0; s < w; s++) out.push([x - r + s, y + r + s]);
+    return out;
+  }
+  function size(snap, id) { var r = snap.rows[id]; return r ? [r.w, r.h] : [1, 1]; }
+  // Each unlocked showcase tab's 5x5 cells (index 5x + y), true = free. A decor covers w x h from (x, y), not rotated.
+  function showcaseFree(snap) {
+    var out = {};
+    snap.showcase.forEach(function (l) {
+      var f = []; for (var i = 0; i < 25; i++) f.push(true);
+      l.items.forEach(function (e) { mark5(f, e.x, e.y, size(snap, e.id)[0], size(snap, e.id)[1], false); });
+      out[l.labelId] = f;
+    });
+    return out;
+  }
+  function mark5(f, x, y, w, h, v) { for (var n = 0; n < w; n++) for (var s = 0; s < h; s++) if (x + n < 5 && y + s < 5) f[5 * (x + n) + y + s] = v; }
+  function fits5(f, x, y, w, h) {
+    if (x + w > 5 || y + h > 5) return false;
+    for (var n = 0; n < w; n++) for (var s = 0; s < h; s++) if (!f[5 * (x + n) + y + s]) return false;
+    return true;
+  }
+  // The game's own scan (getFreePosForBuildId): x 0..4 outside, y 0..4 inside; tabs in order.
+  function packShowcase(free, w, h) {
+    var tabs = Object.keys(free).map(Number).sort(function (a, b) { return a - b; });
+    for (var t = 0; t < tabs.length; t++) for (var x = 0; x < 5; x++) for (var y = 0; y < 5; y++) {
+      if (fits5(free[tabs[t]], x, y, w, h)) return { labelId: tabs[t], x: x, y: y };
+    }
+    return null;
+  }
+  function centroid(snap) {
+    var b = snap.buildings || [];
+    if (!b.length) return [snap.grid.w / 2, snap.grid.h / 2];
+    var x = 0, y = 0;
+    b.forEach(function (p) { x += p.x; y += p.y; });
+    return [x / b.length, y / b.length];
+  }
+  // Screen distance from the buildings' centre: a staggered grid draws a row half as tall as a column is wide.
+  function byDistance(snap, keep) {
+    var c = centroid(snap);
+    return snap.grid.cells.filter(keep).map(function (k) { return [k[0], k[1], Math.sqrt(Math.pow(k[0] - c[0], 2) + Math.pow((k[1] - c[1]) / 2, 2))]; })
+      .sort(function (a, b) { return b[2] - a[2] || b[1] - a[1] || a[0] - b[0]; });
+  }
+  function seaCells(snap) { return byDistance(snap, function (k) { return k[2] === 1 && !k[3]; }); }
+  function landCells(snap) { return byDistance(snap, function (k) { return k[2] === 1 && k[3] === 1; }); }
+  // The base as the plan sees it: cells by position, what's occupied and where floor tiles are.
+  function model(snap) {
+    var m = { cell: {}, occ: {}, floor: {} };
+    snap.grid.cells.forEach(function (k) { var p = k[0] * 1000 + k[1]; m.cell[p] = k; if (k[5]) m.occ[p] = 1; if (k[6]) m.floor[p] = 1; });
+    return m;
+  }
+  function cellsAt(fp) { return fp.map(function (c) { return c[0] * 1000 + c[1]; }); }
+  function fitsDecor(m, x, y, w, h, pt) {
+    return cellsAt(footprint(x, y, w, h)).every(function (p) { var k = m.cell[p]; return k && k[2] === 1 && k[3] === (pt === 1 ? 1 : 0) && k[4] && !m.occ[p]; });
+  }
+  function fitsFloor(m, x, y, w, h) {
+    return cellsAt(footprint(x, y, w, h)).every(function (p) { var k = m.cell[p]; return k && (k[2] === 0 || k[2] === 1) && k[3] === 1 && k[4] && !m.floor[p]; });
+  }
+  function setCells(m, key, x, y, w, h, v) { cellsAt(footprint(x, y, w, h)).forEach(function (p) { if (v) m[key][p] = 1; else delete m[key][p]; }); }
+  function rankCmp(a, b) { return a.info.tier - b.info.tier || a.info.cells - b.info.cells || b.info.points - a.info.points || b.level - a.level; }
+  function whyNot(snap, id) { return snap.rows[id].buffs.some(function (b) { return GOLD.indexOf(b[0]) >= 0; }) ? 'gold' : 'off'; }
+  // Where each wanted bag piece goes: land decor to the showcase first, then the south land; sea decor to the far
+  // corners; floor tiles under decor, then under units. A placed piece nobody wants (then a Green Apple Tree) gives way
+  // only to a piece ranked above it.
+  function placePlan(snap, settings, final) {
+    var sets = {}, cands = [], left = [], seen = {};
+    (snap.sets || []).forEach(function (g) { sets[g] = 1; });
+    function leave(id, why) { if (!seen[id + why]) { seen[id + why] = 1; left.push({ id: id, why: why }); } }
+    Object.keys(final).forEach(function (g) {
+      if (sets[g]) return;
+      final[g].forEach(function (t) {
+        if (t.from !== 'bag') return;
+        var info = copyInfo(snap, t.id, settings);
+        if (info.tier >= 3) { leave(t.id, whyNot(snap, t.id)); return; }
+        cands.push({ id: t.id, level: t.level, info: info, row: snap.rows[t.id] });
+      });
+    });
+    cands.sort(rankCmp);
+    var m = model(snap), free = showcaseFree(snap), sea = seaCells(snap), land = landCells(snap);
+    var floorOrder = byDistance(snap, function (k) { return k[3] === 1 && (k[2] === 1 || k[2] === 0); })
+      .sort(function (a, b) { var ka = m.cell[a[0] * 1000 + a[1]], kb = m.cell[b[0] * 1000 + b[1]]; return (kb[2] - ka[2]) || (kb[5] - ka[5]) || b[2] - a[2]; });
+    var evictable = [], at = {};
+    snap.placed.forEach(function (p) { at[p.uuid] = p; });
+    pool(snap).forEach(function (e) {
+      if (e.where !== 'base' && e.where !== 'showcase') return;
+      var r = snap.rows[e.id];
+      if (r.type !== 4 || r.pt !== 1 || !r.buffs.length) return;
+      var info = copyInfo(snap, e.id, settings), p = e.where === 'base' ? at[e.ref] : e.ref;
+      if (info.tier >= 2) evictable.push({ e: e, info: info, r: r, x: p.x, y: p.y });
+    });
+    evictable.sort(function (a, b) { return b.info.tier - a.info.tier || a.info.points - b.info.points; });
+    var place = [], evict = [];
+    function landSpot(w, h) {
+      var s = packShowcase(free, w, h);
+      if (s) return s;
+      for (var i = 0; i < land.length; i++) if (fitsDecor(m, land[i][0], land[i][1], w, h, 1)) return { x: land[i][0], y: land[i][1] };
+      return null;
+    }
+    function free1(v, on) {                                 // put back or clear an evictable piece's space
+      var e = v.e;
+      if (e.where === 'showcase') mark5(free[e.ref.labelId], v.x, v.y, v.r.w, v.r.h, on);
+      else setCells(m, 'occ', v.x, v.y, v.r.w, v.r.h, !on);
+    }
+    cands.forEach(function (c) {
+      var w = c.row.w, h = c.row.h, spot = null;
+      if (c.row.type === 5) {
+        for (var i = 0; i < floorOrder.length && !spot; i++) if (fitsFloor(m, floorOrder[i][0], floorOrder[i][1], w, h)) spot = { x: floorOrder[i][0], y: floorOrder[i][1] };
+        if (spot) setCells(m, 'floor', spot.x, spot.y, w, h, true);
+      } else if (c.row.pt === 0) {
+        for (var j = 0; j < sea.length && !spot; j++) if (fitsDecor(m, sea[j][0], sea[j][1], w, h, 0)) spot = { x: sea[j][0], y: sea[j][1] };
+        if (spot) setCells(m, 'occ', spot.x, spot.y, w, h, true);
+      } else {
+        spot = landSpot(w, h);
+        if (!spot) {                                        // make room: lowest-ranked pieces first, only below this one
+          var tried = [];
+          for (var k = 0; k < evictable.length && !spot; k++) {
+            var v = evictable[k];
+            if (v.used || v.info.tier <= c.info.tier) continue;
+            v.used = true; tried.push(v); free1(v, true);
+            spot = landSpot(w, h);
+          }
+          tried.forEach(function (v) {                      // keep only the evictions under the new spot
+            var need = spot && (spot.labelId != null
+              ? v.e.where === 'showcase' && v.e.ref.labelId === spot.labelId && overlap5(v.x, v.y, v.r.w, v.r.h, spot.x, spot.y, w, h)
+              : v.e.where === 'base' && overlapMap(v.x, v.y, v.r.w, v.r.h, spot.x, spot.y, w, h));
+            if (need) evict.push(v.e); else { v.used = false; free1(v, false); }
+          });
+        }
+        if (spot) { if (spot.labelId != null) mark5(free[spot.labelId], spot.x, spot.y, w, h, false); else setCells(m, 'occ', spot.x, spot.y, w, h, true); }
+      }
+      if (spot) place.push({ id: c.id, to: spot }); else leave(c.id, 'no room');
+    });
+    return { place: place, evict: evict, left: left };
+  }
+  function overlap5(ax, ay, aw, ah, bx, by, bw, bh) { return ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah; }
+  function overlapMap(ax, ay, aw, ah, bx, by, bw, bh) {
+    var a = {}; cellsAt(footprint(ax, ay, aw, ah)).forEach(function (p) { a[p] = 1; });
+    return cellsAt(footprint(bx, by, bw, bh)).some(function (p) { return a[p]; });
+  }
+  // Sea decor to the far corners (Tex: all of it, not only new pieces). Pack every sea piece farthest first: the d of
+  // the last spot used is the line; a piece in the south water at or beyond it stays, the rest move out to the farthest
+  // free spots. Land decor in the troop area moves to the showcase or the south land when there's room.
+  function tidyPlan(snap) {
+    var c = centroid(snap), sea = seaCells(snap), out = [];
+    function dist(x, y) { return Math.sqrt(Math.pow(x - c[0], 2) + Math.pow((y - c[1]) / 2, 2)); }
+    var m = model(snap), zone = function (x, y) { var k = m.cell[x * 1000 + y]; return k ? k[2] : -1; };
+    var pieces = snap.placed.filter(function (p) { var r = snap.rows[p.id]; return r && r.type === 4 && r.pt === 0; })
+      .map(function (p) { var r = snap.rows[p.id]; return { p: p, w: r.w, h: r.h, d: dist(p.x, p.y) }; })
+      .sort(function (a, b) { return b.w * b.h - a.w * a.h; });
+    var m2 = model(snap), line = Infinity;
+    pieces.forEach(function (q) { setCells(m2, 'occ', q.p.x, q.p.y, q.w, q.h, false); });
+    pieces.forEach(function (q) {
+      for (var i = 0; i < sea.length; i++) if (fitsDecor(m2, sea[i][0], sea[i][1], q.w, q.h, 0)) { setCells(m2, 'occ', sea[i][0], sea[i][1], q.w, q.h, true); line = Math.min(line, sea[i][2]); return; }
+    });
+    pieces.forEach(function (q) {
+      var z = zone(q.p.x, q.p.y);
+      if (z === 1 && q.d >= line - 1e-9) return;
+      for (var i = 0; i < sea.length; i++) {
+        if (z === 1 && sea[i][2] <= q.d) break;
+        if (fitsDecor(m, sea[i][0], sea[i][1], q.w, q.h, 0)) {
+          setCells(m, 'occ', sea[i][0], sea[i][1], q.w, q.h, true);
+          setCells(m, 'occ', q.p.x, q.p.y, q.w, q.h, false);
+          out.push({ uuid: q.p.uuid, to: [sea[i][0], sea[i][1]] });
+          return;
+        }
+      }
+    });
+    var free = showcaseFree(snap), land = landCells(snap);
+    snap.placed.forEach(function (p) {
+      var r = snap.rows[p.id];
+      if (!r || r.type !== 4 || r.pt !== 1 || zone(p.x, p.y) !== 0) return;
+      var s = packShowcase(free, r.w, r.h);
+      if (s) { mark5(free[s.labelId], s.x, s.y, r.w, r.h, false); out.push({ uuid: p.uuid, to: s }); return; }
+      for (var i = 0; i < land.length; i++) if (fitsDecor(m, land[i][0], land[i][1], r.w, r.h, 1)) {
+        setCells(m, 'occ', land[i][0], land[i][1], r.w, r.h, true);
+        setCells(m, 'occ', p.x, p.y, r.w, r.h, false);
+        out.push({ uuid: p.uuid, to: [land[i][0], land[i][1]] });
+        return;
+      }
+    });
+    return out;
+  }
+
   var api = { GOLD: GOLD, REPAIR: REPAIR, MARCH: MARCH, WEIGHTS: WEIGHTS, SCOPE: SCOPE, CLASS: CLASS,
     copyInfo: copyInfo, pool: pool, counted: counted, makeCopies: makeCopies, evenFill: evenFill, mergePlan: mergePlan,
-    upgradeSteps: upgradeSteps, collabPlan: collabPlan, targets: targets, pickupPlan: pickupPlan };
+    upgradeSteps: upgradeSteps, collabPlan: collabPlan, targets: targets, pickupPlan: pickupPlan, finalTargets: finalTargets,
+    footprint: footprint, showcaseFree: showcaseFree, packShowcase: packShowcase, centroid: centroid, seaCells: seaCells,
+    landCells: landCells, placePlan: placePlan, tidyPlan: tidyPlan };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else window.DecorCore = api;
 })();

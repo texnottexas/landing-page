@@ -6,6 +6,8 @@
   'use strict';
   var BUFF_IN_BAG = 406;                                    // BuffType.DecorationActiveInBag (a set whose bag copies count)
   var UNIT = { 101: 1, 201: 2, 301: 3 };                    // effect_buff ArmyType -> 1 Army, 2 Navy, 3 Air Force
+  // A stat tied to one unit's buildings: Barracks / Shipyard / Air Base groups, Garage / Dock / Hangar types.
+  var UNIT_GROUP = { 1040: 1, 1100: 2, 1050: 3 }, UNIT_BTYPE = { 16: 1, 17: 2, 18: 3 };
   var HOME_BUTTON = 'UICanvas/WorldMapUIWrapper/NWorldMapUI/bottomNode/btn_Home';
 
   function req(n) { return window.__require(n); }
@@ -52,7 +54,12 @@
   }
   function statInfo(e) {
     var unit = 0;
-    [1, 2, 3, 4].forEach(function (i) { if (e['paraType' + i] === 'ArmyType') unit = UNIT[Number(e['para' + i])] || 0; });
+    [1, 2, 3, 4].forEach(function (i) {
+      var k = e['paraType' + i], v = Number(e['para' + i]);
+      if (k === 'ArmyType') unit = UNIT[v] || unit;
+      else if (k === 'BuildingGroup') unit = UNIT_GROUP[v] || unit;
+      else if (k === 'BuildingType') unit = UNIT_BTYPE[v] || unit;
+    });
     return { unit: unit, battle: Number(e.battle_type) || 0, vt: Number(e.value_type) || 1, name: text(e.string) };
   }
   function bagType() { try { var v = req('GameDefine').BuffType.DecorationActiveInBag; return v != null ? v : BUFF_IN_BAG; } catch (e) { return BUFF_IN_BAG; } }

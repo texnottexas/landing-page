@@ -235,3 +235,93 @@ test('a plain-bag higher copy makes the placed lower one a pick-up', () => {
   const ups = C.pickupPlan(s, ALL, C.targets(s, ALL)).map((e) => e.ref).sort();
   assert.deepEqual(ups, ['lo1', 'lo2']);
 });
+
+// ---------------------------------------------------------------- Task 6: homes, far corners, ranking
+// grid cells [x, y, zone, ground, free, occ, floor]
+const cellsOf = (list, zone, ground, occ) => list.map(([x, y]) => [x, y, zone, ground, 1, occ ? 1 : 0, 0]);
+const rect = (labelId, items) => ({ labelId, items });
+
+test('footprint is diagonal, as the game\'s getMapPosList', () => {
+  assert.deepEqual(C.footprint(10, 20, 2, 2), [[10, 20], [11, 21], [9, 21], [10, 22]]);
+});
+
+test('packShowcase fills in the game\'s order (x, then y) and never overlaps (Review Focus 4)', () => {
+  const s = snap({ rows: [[1, 10, 1, 1, [[960012, 2]]], [2, 11, 1, 1, [[930000, 200]]]] });
+  s.rows[1].w = 4; s.rows[1].h = 4;
+  s.showcase = [rect(1, [{ uuid: 'a', id: 1, x: 0, y: 0 }]), rect(12, []), rect(13, [])];
+  let free = C.showcaseFree(s);
+  assert.deepEqual(C.packShowcase(free, 1, 1), { labelId: 1, x: 0, y: 4 });
+  s.showcase[0].items = Array.from({ length: 25 }, (_, i) => ({ uuid: 'f' + i, id: 2, x: Math.floor(i / 5), y: i % 5 }));
+  free = C.showcaseFree(s);
+  assert.deepEqual(C.packShowcase(free, 4, 4), { labelId: 12, x: 0, y: 0 });
+  s.showcase = [rect(1, [{ uuid: 'c', id: 2, x: 2, y: 2 }]), rect(2, [{ uuid: 'd', id: 2, x: 1, y: 1 }, { uuid: 'e', id: 2, x: 3, y: 3 }])];
+  free = C.showcaseFree(s);
+  assert.equal(C.packShowcase(free, 4, 4), null);
+});
+
+test('far corners on Rеx are at the bottom of the map', () => {
+  const sea = C.seaCells(REX);
+  assert.ok(sea[0][1] >= 95 && sea[0][2] > 35, JSON.stringify(sea[0]));
+  for (let i = 1; i < sea.length; i++) assert.ok(sea[i - 1][2] >= sea[i][2]);
+});
+
+test('the land ranking: March Size first, other stats next, Green Apple Trees last; a lower piece may use space a bigger one could not', () => {
+  const rows = [[1, 10, 1, 1, [[960012, 2]]], [2, 11, 1, 1, [[930000, 200]]], [3, 12, 1, 1, [[921002, 100]]]];
+  const s = snap({ rows, bag: [{ id: 3, n: 1 }, { id: 2, n: 1 }, { id: 1, n: 1 }] });
+  s.grid.cells = cellsOf([[2, 2], [6, 6]], 1, 1);
+  const p = C.placePlan(s, ALL, C.finalTargets(s, ALL));
+  assert.deepEqual(p.place.map((x) => x.id).sort(), [1, 2]);
+  assert.deepEqual(p.left, [{ id: 3, why: 'no room' }]);
+  const rows2 = [[1, 10, 1, 1, [[960012, 2]]], [4, 13, 1, 1, [[930100, 600]], { w: 2, h: 2 }], [3, 12, 1, 1, [[921002, 100]]]];
+  const s2 = snap({ rows: rows2, bag: [{ id: 1, n: 1 }, { id: 4, n: 1 }, { id: 3, n: 1 }] });
+  s2.grid.cells = cellsOf(C.footprint(4, 4, 2, 2), 1, 1);
+  const p2 = C.placePlan(s2, ALL, C.finalTargets(s2, ALL));
+  assert.deepEqual(p2.place.map((x) => x.id).sort(), [1, 3], 'the 2x2 no longer fits once March Size took a cell');
+  assert.deepEqual(p2.left, [{ id: 4, why: 'no room' }]);
+});
+
+test('placements on Rеx never put decor in the troop area or the Enigma zone', () => {
+  const p = C.placePlan(REX, AIR, C.finalTargets(REX, AIR));
+  const zone = {}; REX.grid.cells.forEach((c) => { zone[c[0] * 1000 + c[1]] = c[2]; });
+  p.place.forEach((x) => {
+    if (x.to.labelId) return;
+    const r = REX.rows[x.id];
+    C.footprint(x.to.x, x.to.y, r.w, r.h).forEach(([cx, cy]) => {
+      if (r.type === 5) assert.ok(zone[cx * 1000 + cy] === 0 || zone[cx * 1000 + cy] === 1);
+      else assert.equal(zone[cx * 1000 + cy], 1, r.name + ' at ' + cx + ',' + cy);
+    });
+  });
+  assert.ok(p.left.some((l) => l.why === 'off'), 'Army and Navy decor left in the bag');
+  assert.ok(p.left.some((l) => l.why === 'gold'), 'gold decor left in the bag');
+});
+
+test('eviction only upward: a placed gold piece gives way to a wanted one, never a wanted one to its equal', () => {
+  const rows = [[40700, 4070, 3, 5, [[920900, 140]], { w: 2, h: 2 }], [7, 20, 1, 1, [[930000, 300]], { w: 2, h: 2 }], [8, 21, 1, 1, [[930000, 200]], { w: 2, h: 2 }]];
+  const fp = C.footprint(4, 4, 2, 2);
+  const s = snap({ rows, placed: [{ uuid: 'lf', id: 40700, x: 4, y: 4 }], bag: [{ id: 7, n: 1 }] });
+  s.grid.cells = cellsOf(fp, 1, 1, true);
+  const p = C.placePlan(s, ALL, C.finalTargets(s, ALL));
+  assert.deepEqual(p.evict.map((e) => e.ref), ['lf']);
+  assert.deepEqual(p.place, [{ id: 7, to: { x: 4, y: 4 } }]);
+  const s2 = snap({ rows, placed: [{ uuid: 'hp', id: 8, x: 4, y: 4 }], bag: [{ id: 7, n: 1 }] });
+  s2.grid.cells = cellsOf(fp, 1, 1, true);
+  const p2 = C.placePlan(s2, ALL, C.finalTargets(s2, ALL));
+  assert.deepEqual(p2.evict, []);
+  assert.deepEqual(p2.left, [{ id: 7, why: 'no room' }]);
+});
+
+test('tidy on Rеx: the two pieces already at the bottom stay; the sea decor in the troop area\'s water moves to the far south water', () => {
+  const t = C.tidyPlan(REX);
+  const byId = {}; REX.placed.forEach((p) => { byId[p.uuid] = p; });
+  const at = (x, y) => REX.placed.find((p) => p.x === x && p.y === y);
+  assert.ok(!t.some((m) => m.uuid === at(53, 97).uuid), 'Rematch stays');
+  assert.ok(!t.some((m) => m.uuid === at(55, 99).uuid), 'Blazing Feather stays');
+  const zone = {}; REX.grid.cells.forEach((c) => { zone[c[0] * 1000 + c[1]] = c[2]; });
+  const sea0 = REX.placed.filter((p) => REX.rows[p.id].type === 4 && REX.rows[p.id].pt === 0 && zone[p.x * 1000 + p.y] === 0);
+  assert.equal(sea0.length, 3);
+  sea0.forEach((p) => {
+    const m = t.find((x) => x.uuid === p.uuid);
+    assert.ok(m, REX.rows[p.id].name + ' moves');
+    assert.equal(zone[m.to[0] * 1000 + m.to[1]], 1);
+  });
+});
