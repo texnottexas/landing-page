@@ -405,6 +405,7 @@ test('a group session: a group tool whose card shows its stop message says Stopp
 test('the remote icon and the opsremote registry are known (Unattended mode, Tex 2026-10-16)', () => {
   assert.ok(OC.ICONS.includes('remote'));
   assert.ok(OC.ICONS.includes('radar'), 'Looter Locator (2026-10-16)');
+  assert.ok(OC.ICONS.includes('decor'), 'Decor Optimizer (2026-10-17)');
   assert.ok(OC.REGISTRIES.includes('opsremote'));
   const t = OC.validateTools({ tools: [{ id: 'u', title: 'U', icon: 'remote', gate: 'member', ready: ['game'], scripts: ['u.js'], version: '1', overlay: '#u', registered: 'opsremote', desc: 'd', keywords: '' }] });
   assert.equal(t.tools[0].registered, 'opsremote');

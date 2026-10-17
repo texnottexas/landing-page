@@ -5,7 +5,7 @@
   'use strict';
   var EVENT_NAMES = ['lootquest'];                     // events named in ops-tools.json that have no activity type
 
-  var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid', 'map', 'gift', 'smile', 'disco', 'target', 'tent', 'chest', 'gem', 'ore', 'remote', 'radar'];
+  var ICONS = ['list', 'x', 'clock', 'shield', 'refresh', 'users', 'grid', 'map', 'gift', 'smile', 'disco', 'target', 'tent', 'chest', 'gem', 'ore', 'remote', 'radar', 'decor'];
   var READY_IDS = ['game', 'base', 'defender', 'r4'];
   var GATES = ['member', 'code'];
   // registries a tool can be limited to: the worker answers whether a siteKey is in it (Tex 2026-10-14: Map Collector)

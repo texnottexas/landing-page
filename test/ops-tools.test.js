@@ -15,7 +15,7 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Odinium Gatherer', 'Looter Locator', 'Unattended mode', 'Rickroll'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Decor Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Odinium Gatherer', 'Looter Locator', 'Unattended mode', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
@@ -104,9 +104,9 @@ test('tools carry the names players know, on their own screens and on rickroll.h
   assert.match(read('merge-bookmarklet.js'), /'Treasure Guard Merge'/);
 });
 
-test('only Troop Optimizer handles the base itself', () => {
+test('only Troop Optimizer and Decor Optimizer (2026-10-17) handle the base themselves', () => {
   const auto = list.tools.filter((t) => t.auto.length).map((t) => t.id + ':' + t.auto.join(','));
-  assert.deepEqual(auto, ['troop:base']);
+  assert.deepEqual(auto, ['troop:base', 'decor-optimizer:base']);
 });
 
 test('rickroll.html shows only the Ops Center; the other tools are kept but hidden (Tex, 2026-10-08)', () => {
@@ -333,4 +333,22 @@ test('Potato mode (Tex 2026-10-17): its helper deploys and its rules are in the 
   assert.ok(/cp [^\n]*\bops-potato\.js\b/.test(yml), 'deployed');
   assert.ok(/node --test [^\n]*test\/ops-potato\.test\.js/.test(yml), 'gated');
   assert.match(read('ops-center.js'), /ops-potato\.js\?_=/, 'loaded fresh at every Ops Center load (no version to bump)');
+});
+
+test('Decor Optimizer tile (Tex 2026-10-17): members, game + base ready (it goes home itself), its own overlay, decor icon, runs alone; deployed and gated', () => {
+  const t = list.tools.find((x) => x.id === 'decor-optimizer');
+  assert.ok(t, 'listed');
+  assert.equal(t.title, 'Decor Optimizer');
+  assert.equal(t.gate, 'member'); assert.deepEqual(t.ready, ['game', 'base']); assert.deepEqual(t.auto, ['base']);
+  assert.equal(t.overlay, '#dpo-root'); assert.equal(t.icon, 'decor');
+  assert.ok(!t.together, 'runs alone');
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'decor-core.js', 'decor-game.js', 'decor-optimizer.js']);
+  assert.match(t.desc, /Shows you the plan before it changes anything\./);
+  assert.ok(!/—/.test(t.desc + t.title), 'no em dash');
+  const ver = (read('decor-optimizer.js').match(/var VERSION = '([^']+)'/) || [])[1];
+  assert.equal(t.version, ver, 'registry version = script version');
+  const yml = read('.github/workflows/pages.yml');
+  ['decor-core.js', 'decor-game.js', 'decor-optimizer.js'].forEach((f) => assert.ok(new RegExp('cp [^\\n]*\\b' + f.replace('.', '\\.') + '\\b').test(yml), f + ' deployed'));
+  assert.ok(/node --test [^\n]*test\/decor-core\.test\.js/.test(yml) && /node --test [^\n]*test\/decor-game\.test\.js/.test(yml), 'gated');
+  assert.match(read('pages/map-collector.html'), /'decor-optimizer': \['move', 'moves'\]/, 'its count reads "N moves" in the Tool usage panel');
 });
