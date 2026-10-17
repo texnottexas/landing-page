@@ -15,7 +15,7 @@ const cpLine = read('.github/workflows/pages.yml').split('\n').find((l) => l.inc
 test('every tool in ops-tools.json passes validation', () => {
   assert.equal(list.tools.length, raw.tools.length);
   assert.deepEqual(list.tools.map((t) => t.title), [
-    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Odinium Gatherer', 'Rickroll'
+    'Snapshot', 'Skill Dismantle', 'Treasure Guard Merge', 'Alliance Defense Skipper', 'Class Talent Reset (EL)', 'TC Squad Sync', 'Troop Optimizer', 'Map Collector', 'Mask Mystery Boxes', 'Emoji Sender', 'Angel Attacks', 'Refugee Camps', 'HT Gift Boxes', 'Enigma Veins', 'Odinium Gatherer', 'Unattended mode', 'Rickroll'
   ]);
   const ads = list.tools.find((t) => t.id === 'alliance-defense');
   assert.deepEqual(ads.ready, ['game'], 'no defender panel needed: it reads the event state itself');
@@ -38,7 +38,7 @@ test('every tool in ops-tools.json passes validation', () => {
   assert.equal(mc.registered, 'mapcollector');
   assert.deepEqual(OC.visibleTools([mc], 'd847a198622a518d').map((t) => t.id), [], 'hidden until the worker says yes');
   assert.deepEqual(OC.visibleTools([mc], 'd847a198622a518d', { mapcollector: true }).map((t) => t.id), ['map-collector']);
-  assert.equal(list.tools.filter((t) => t.registered != null).map((t) => t.id).join(), 'map-collector', 'no other tool is limited to a registry');
+  assert.equal(list.tools.filter((t) => t.registered != null).map((t) => t.id).join(), 'map-collector,ops-unattended', 'only these two are limited to a registry');
   assert.equal(mc.overlay, '#mapc-root');
 });
 
@@ -282,4 +282,21 @@ test('Odinium Gatherer tile (Tex 2026-10-16): for members, game ready, its own o
   assert.ok(/cp [^\n]*\bodin-gather-core\.js\b/.test(yml) && /cp [^\n]*\bodin-gather\.js\b/.test(yml), 'deployed');
   assert.ok(/node --test [^\n]*test\/odin-gather-core\.test\.js/.test(yml), 'gated');
   assert.match(read('pages/map-collector.html'), /'odin-gather': \['march', 'marches'\]/, 'its count reads "N marches" in the Tool usage panel');
+});
+
+test('Unattended mode tile (Tex 2026-10-16): only allowed accounts (worker /opsremote/visible), its own overlay and remote icon; deployed and gated', () => {
+  const list = JSON.parse(read('ops-tools.json'));
+  const t = list.tools.find((x) => x.id === 'ops-unattended');
+  assert.ok(t, 'listed');
+  assert.equal(t.title, 'Unattended mode'); assert.equal(t.icon, 'remote'); assert.equal(t.gate, 'member');
+  assert.deepEqual(t.ready, ['game']); assert.equal(t.overlay, '#opsu-root'); assert.equal(t.registered, 'opsremote');
+  assert.deepEqual(t.scripts, ['ops-drag.js', 'ops-unattended-core.js', 'ops-unattended.js']);
+  assert.ok(!t.together && !t.alongside && !t.owners, 'runs alone; no published owner list');
+  const ver = (read('ops-unattended.js').match(/var VERSION = '([^']+)'/) || [])[1];
+  assert.equal(t.version, ver, 'registry version = the script\'s');
+  assert.ok(!/—/.test(t.desc + t.title), 'no em dash');
+  const yml = read('.github/workflows/pages.yml');
+  assert.ok(/cp [^\n]*\bops-unattended-core\.js\b/.test(yml) && /cp [^\n]*\bops-unattended\.js\b/.test(yml), 'deployed');
+  assert.ok(/node --test [^\n]*test\/ops-unattended-core\.test\.js/.test(yml), 'gated');
+  assert.ok(!/d847a198622a518d|c3c6f3200a4ec1fb/.test(read('ops-tools.json') + read('ops-unattended.js') + read('ops-unattended-core.js')), 'no account published');
 });

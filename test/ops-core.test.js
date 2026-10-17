@@ -292,7 +292,7 @@ test('registered: kept only for a known registry; anything else hides the tool f
   assert.equal(by.other.registered, '');
   assert.equal(by.path.registered, '');
   assert.equal(by.yes.registered, '');
-  assert.deepEqual(OC.REGISTRIES, ['mapcollector']);
+  assert.deepEqual(OC.REGISTRIES, ['mapcollector', 'opsremote']);
   const sk = 'd847a198622a518d';
   assert.deepEqual(OC.visibleTools(r, sk).map((t) => t.id), ['pub'], 'no answers yet: hidden');
   assert.deepEqual(OC.visibleTools(r, sk, {}).map((t) => t.id), ['pub']);
@@ -383,4 +383,11 @@ test('a group session: a group tool whose card shows its stop message says Stopp
   const base = { member: true, unlocked: false, checks: { game: true } };
   assert.deepEqual(OC.tileStatus(g, Object.assign({}, base, { group: true, groupOn: true, stopped: true })), { state: 'stopped', launch: null });
   assert.deepEqual(OC.tileStatus(g, Object.assign({}, base, { group: true, groupOn: true })), { state: 'running', launch: null });
+});
+
+test('the remote icon and the opsremote registry are known (Unattended mode, Tex 2026-10-16)', () => {
+  assert.ok(OC.ICONS.includes('remote'));
+  assert.ok(OC.REGISTRIES.includes('opsremote'));
+  const t = OC.validateTools({ tools: [{ id: 'u', title: 'U', icon: 'remote', gate: 'member', ready: ['game'], scripts: ['u.js'], version: '1', overlay: '#u', registered: 'opsremote', desc: 'd', keywords: '' }] });
+  assert.equal(t.tools[0].registered, 'opsremote');
 });
