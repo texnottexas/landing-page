@@ -116,3 +116,51 @@ test('a completed set counts its bag copies', () => {
   assert.equal(r.byGroup[10][0].where, 'setbag'); assert.equal(r.byGroup[10][0].n, 3);
   assert.equal(r.buffs[930000], 300);
 });
+
+// ---------------------------------------------------------------- Task 3: even merges
+const copiesOf = (spec) => spec.flatMap(([level, where, n, ref]) => Array.from({ length: n || 1 }, (_, i) => ({ level, where, ref: ref ? ref + (n > 1 ? i : '') : null })));
+
+test('makeCopies uses higher spares first', () => {
+  assert.deepEqual(C.makeCopies({ 3: 1, 1: 9 }, 3, 2), { ok: true, use: { 3: 1, 1: 9 }, merges: { 1: 3, 2: 1 } });
+});
+
+test('makeCopies fails short', () => {
+  assert.equal(C.makeCopies({ 1: 5 }, 3, 1).ok, false);
+});
+
+test('Bench evens out at Lv5 (Tex: 5 Lv4 beat 1 Lv5 + 2 Lv4)', () => {
+  const copies = copiesOf([[5, 'base', 1, 'b1'], [5, 'base', 1, 'b2'], [4, 'base', 1, 'b3'], [4, 'showcase', 1, 's1'], [5, 'showcase', 1, 's2'],
+    [1, 'bag', 128], [2, 'bag', 4], [3, 'bag', 1], [4, 'bag', 2]]);
+  const r = C.evenFill(copies, 5, 15, Infinity);
+  assert.deepEqual(r.targets.map((t) => t.level), [5, 5, 5, 5, 5]);
+  assert.deepEqual(r.merges, { 1: 11, 2: 5, 3: 2, 4: 2 });
+  assert.deepEqual(r.raised.map((x) => x.ref).sort(), ['b3', 's1']);
+  assert.ok(r.raised.every((x) => x.fromLevel === 4 && x.toLevel === 5));
+});
+
+test('even beats tall: the copies spread over the cap within one level', () => {
+  const r = C.evenFill(copiesOf([[1, 'bag', 81]]), 5, 15, Infinity);
+  const lv = r.targets.map((t) => t.level);
+  assert.equal(lv.length, 5);
+  assert.ok(Math.max(...lv) - Math.min(...lv) <= 1, lv.join(','));
+  assert.deepEqual(lv.slice().sort(), [3, 3, 3, 4, 4]);
+});
+
+test('a single-copy group in the upgrade list stops at the open level', () => {
+  const r = C.evenFill(copiesOf([[3, 'showcase', 1, 's'], [1, 'bag', 60]]), 1, 15, 4);
+  assert.deepEqual(r.targets.map((t) => t.level), [4]);
+  assert.deepEqual(r.merges, { 1: 6, 2: 2, 3: 1 });
+});
+
+test('mergePlan on Rеx: gold never merges; Bench pulls its Lv4s and puts Lv5s back in the same spots', () => {
+  const plan = C.mergePlan(REX, AIR);
+  const groups = plan.map((p) => p.group);
+  assert.ok(!groups.includes(4070) && !groups.includes(4040) && !groups.includes(4000) && !groups.includes(4030), 'no gold group');
+  const bench = plan.find((p) => p.group === 4080);
+  assert.ok(bench, 'Bench merges');
+  assert.deepEqual(bench.merges.map((m) => REX.rows[m.id].level), [1, 2, 3, 4], 'ascending levels');
+  bench.pulls.forEach((p) => assert.ok(p.where !== 'bag' && p.where !== 'setbag'));
+  assert.equal(bench.putBacks.length, bench.pulls.length);
+  bench.putBacks.forEach((b, i) => { assert.deepEqual(b.ref, bench.pulls[i].ref); assert.equal(REX.rows[b.id].level, 5); });
+  plan.forEach((p) => p.merges.forEach((m) => assert.ok(m.num > 0 && REX.rows[m.id].group === p.group)));
+});

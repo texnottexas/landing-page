@@ -112,8 +112,87 @@
     return { byGroup: byGroup, waste: waste, buffs: buffs };
   }
 
+  // ---------------------------------------------------------------- even merges (copies only, never shards: Tex)
+  // k copies of a level from spare copies {lv: n}: spares of that level first, the rest made from 3 each of the level
+  // below, recursively. merges {lv: n} = merges done at lv (3 x lv -> 1 x lv+1). Nothing changes when it can't.
+  function makeCopies(spare, level, k) {
+    var use = {}, merges = {}, need = k;
+    for (var lv = level; lv >= 1; lv--) {
+      var take = Math.min(spare[lv] || 0, need);
+      if (take) use[lv] = take;
+      need -= take;
+      if (!need) return { ok: true, use: use, merges: merges };
+      if (lv === 1) break;
+      merges[lv - 1] = need;
+      need *= 3;
+    }
+    return { ok: false, use: {}, merges: {} };
+  }
+  var WHERE_RANK = { base: 0, showcase: 1, collab: 2, bag: 3, setbag: 3 };
+  // The top `cap` copies, raised evenly: while spare copies can pay, the lowest target goes up one level
+  // (it plus 2 copies of its level). stopAt: the level where Advanced Upgrade takes over.
+  function evenFill(copies, cap, maxLevel, stopAt) {
+    var sorted = copies.slice().sort(function (a, b) { return b.level - a.level || WHERE_RANK[a.where] - WHERE_RANK[b.where]; });
+    var targets = sorted.slice(0, cap).map(function (c) { return { level: c.level, from: c.where, ref: c.ref, start: c.level }; });
+    var spare = {}, merges = {}, top = Math.min(maxLevel, stopAt);
+    sorted.slice(cap).forEach(function (c) { spare[c.level] = (spare[c.level] || 0) + 1; });
+    for (;;) {
+      var t = null;
+      targets.forEach(function (x) {                        // the lowest; a bag one first (it needs no pull)
+        if (!t || x.level < t.level || (x.level === t.level && WHERE_RANK[x.from] > WHERE_RANK[t.from])) t = x;
+      });
+      if (!t || t.level >= top) break;
+      var r = makeCopies(spare, t.level, 2);
+      if (!r.ok) break;
+      Object.keys(r.use).forEach(function (lv) { spare[lv] -= r.use[lv]; });
+      Object.keys(r.merges).forEach(function (lv) { merges[lv] = (merges[lv] || 0) + r.merges[lv]; });
+      merges[t.level] = (merges[t.level] || 0) + 1;
+      t.level++;
+    }
+    var raised = targets.filter(function (x) { return x.level > x.start; }).map(function (x) { return { ref: x.ref, from: x.from, fromLevel: x.start, toLevel: x.level }; });
+    return { targets: targets.map(function (x) { return { level: x.level, from: x.from, ref: x.ref }; }), merges: merges, raised: raised, spare: spare };
+  }
+  function sameRef(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+  // Per group with wanted stats (not a losing mutually exclusive variant): what to pull into the bag, the bag merges
+  // (ascending levels) and where each raised piece goes back. useLv1: the Lv1 bag copies these merges consume.
+  function mergePlan(snap, settings) {
+    var entries = pool(snap), ex = exclusive(snap, entries), up = {}, out = [];
+    (snap.upgrades || []).forEach(function (u) { up[u.group] = 1; });
+    Object.keys(snap.levels).forEach(function (gk) {
+      var g = Number(gk), lv = snap.levels[gk], ids = Object.keys(lv).map(function (k) { return Number(lv[k]); }).filter(function (id) { return snap.rows[id]; });
+      if (!ids.length || (ex[g] && ex[g].exclusived)) return;
+      var r0 = snap.rows[ids[0]];
+      if (!(r0.cap > 0) || copyInfo(snap, ids[0], settings).tier >= 3) return;
+      var copies = [];
+      entries.forEach(function (e) {
+        if (e.group !== g) return;
+        if (e.where === 'setbag') { for (var i = 0; i < e.n; i++) copies.push({ level: e.level, where: 'bag', ref: null, id: e.id }); }
+        else copies.push({ level: e.level, where: e.where, ref: e.ref, id: e.id });
+      });
+      var sets = (snap.sets || []).indexOf(g) >= 0;
+      if (!sets) snap.bag.forEach(function (b) { var r = snap.rows[b.id]; if (r && r.group === g) for (var i = 0; i < b.n; i++) copies.push({ level: r.level, where: 'bag', ref: null, id: b.id }); });
+      if (!copies.length) return;
+      var maxLevel = Math.min(r0.maxLevel, Math.max.apply(null, Object.keys(lv).map(Number)));
+      var f = evenFill(copies, r0.cap, maxLevel, r0.cap === 1 && up[g] ? snap.openLevel : Infinity);
+      var levels = Object.keys(f.merges).map(Number).sort(function (a, b) { return a - b; });
+      if (!levels.length) return;
+      var pulls = [], putBacks = [], pulledL1 = 0;
+      f.raised.forEach(function (x) {
+        if (x.from === 'bag') return;
+        var e = entries.filter(function (en) { return en.group === g && en.where === x.from && sameRef(en.ref, x.ref); })[0];
+        if (!e) return;
+        pulls.push(e);
+        putBacks.push({ ref: x.ref, where: x.from, id: Number(lv[x.toLevel]) });
+        if (x.fromLevel === 1) pulledL1++;
+      });
+      out.push({ group: g, pulls: pulls, merges: levels.map(function (l) { return { id: Number(lv[l]), num: f.merges[l] }; }), putBacks: putBacks,
+        useLv1: Math.max(0, (f.merges[1] || 0) * 3 - pulledL1), targets: f.targets });
+    });
+    return out;
+  }
+
   var api = { GOLD: GOLD, REPAIR: REPAIR, MARCH: MARCH, WEIGHTS: WEIGHTS, SCOPE: SCOPE, CLASS: CLASS,
-    copyInfo: copyInfo, pool: pool, counted: counted };
+    copyInfo: copyInfo, pool: pool, counted: counted, makeCopies: makeCopies, evenFill: evenFill, mergePlan: mergePlan };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else window.DecorCore = api;
 })();
