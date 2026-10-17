@@ -517,3 +517,26 @@ test('UNATT-5: 375 px: the panel fits, no sideways scroll', async () => {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
   await ctx.close();
 });
+
+// Tex 2026-10-16: a long maps list scrolls inside its own box, so what's below it stays a short scroll away.
+test('MAPS-SCROLL: 120 maps: the list scrolls on its own; the page is shorter than the list, on desktop and on a phone', async () => {
+  state.maps = Array.from({ length: 120 }, (_, i) => ({ id: 'm' + i, noticed_at: NOW - 60000 - i * 1000, spawner: 'S' + i, x: i, y: i, state: 'collected', reward: 'Blessing Key ×1', reason: '', arrive_at: 0 }));
+  for (const viewport of [{ width: 1280, height: 800 }, { width: 375, height: 740 }]) {
+    const ctx = await browser.newContext({ viewport });
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => { throw e; });
+    await page.goto(base);
+    await page.evaluate(() => localStorage.setItem('mapc_dash_pw_v1', 'good pass'));
+    await page.reload();
+    await page.waitForSelector('li.map');
+    const m = await page.evaluate(() => {
+      const ul = document.getElementById('dash-maps'), r = ul.getBoundingClientRect();
+      return { overflow: getComputedStyle(ul).overflowY, own: ul.scrollHeight - ul.clientHeight, height: r.height, view: innerHeight, page: document.documentElement.scrollHeight, list: ul.scrollHeight };
+    });
+    assert.equal(m.overflow, 'auto', JSON.stringify(viewport));
+    assert.ok(m.own > 100, 'the list scrolls inside its box ' + JSON.stringify(m));
+    assert.ok(m.height <= m.view * 0.8, 'the box fits on screen ' + JSON.stringify(m));
+    assert.ok(m.page < m.list, 'the page is shorter than the list ' + JSON.stringify(m));
+    await ctx.close();
+  }
+});
