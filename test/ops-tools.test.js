@@ -260,7 +260,7 @@ test('together (Tex 2026-10-16): exactly the six collectors run together (Looter
     const i = t.scripts.indexOf('ops-stack.js');
     assert.ok(i > 0, t.id);
     assert.ok(t.scripts.slice(0, i).every((f) => /^ops-(drag|jam)\.js$/.test(f)), t.id + ': helpers first');
-    assert.match(t.version, /^2026-10-16/, t.id);
+    assert.ok(t.version >= '2026-10-16', t.id + ' ' + t.version);
   });
   const yml = read('.github/workflows/pages.yml');
   assert.ok(/cp [^\n]*\bops-stack\.js\b/.test(yml), 'deployed');

@@ -224,12 +224,12 @@ test('LOOT-10: its own unanswered view doesn\'t hold it up, but two in a row pau
   await ctx.close();
 });
 
-test('LOOT-11: Loot Quest isn\'t running: it waits with no requests and says when the next one starts', async () => {
-  const { ctx, page } = await open({ list: [AAKASH], points: [P1], setup: () => { const n = Date.now(); __fake.loot.cs.timeInfo.openTime = [{ beginMill: String(n + 3600000), endMill: String(n + 10800000) }]; } });
+test('LOOT-11: Loot Quest isn\'t running and nobody is left on the map: one look at the list, then it waits and says when the next one starts', async () => {
+  const { ctx, page } = await open({ list: [], points: [P1], listMs: 300, setup: () => { const n = Date.now(); __fake.loot.cs.timeInfo.openTime = [{ beginMill: String(n + 3600000), endMill: String(n + 10800000) }]; } });
   await launch(page);
   await waitText(page, /Loot Quest isn't running now\. Next one in 1:00:00|Loot Quest isn't running now\. Next one in 59:5\d/);
-  await page.waitForTimeout(500);
-  assert.equal(await lists(page), 0);
+  await page.waitForTimeout(1500);
+  assert.equal(await lists(page), 1, 'one look, no more');
   assert.equal((await views(page)).length, 0);
   await ctx.close();
 });
@@ -367,11 +367,11 @@ test('LOOT-22 (review): after a pass that couldn\'t find someone (held 5 minutes
 });
 
 test('LOOT-23 (review): Loot Quest windows follow the game server\'s clock, not the device\'s', async () => {
-  const { ctx, page } = await open({ list: [AAKASH], points: [P1], setup: () => { __fake.timeShift = -7200; } });   // server 2 h behind: the window hasn't opened there
+  const { ctx, page } = await open({ list: [], points: [P1], setup: () => { __fake.timeShift = -7200; } });   // server 2 h behind: the window hasn't opened there
   await launch(page);
-  await waitText(page, /Loot Quest isn't running now\./);
+  await waitText(page, /Loot Quest isn't running now\./);               // by the device's clock it would say "No looters on the map. Watching."
   await page.waitForTimeout(600);
-  assert.equal(await lists(page), 0);
+  assert.ok((await lists(page)) <= 1);
   assert.equal((await views(page)).length, 0);
   await ctx.close();
 });
@@ -391,4 +391,41 @@ test('LOOT-25 (Tex): the pace is about 1.5 s between its own lookups (1.5-1.8 s)
   const src = fs.readFileSync(path.join(ROOT, 'looter-locator.js'), 'utf8');
   assert.match(src, /GAP_MS = window\.__LOOT_GAP_MS \|\| 1500/);
   assert.match(src, /Math\.random\(\) \* 300/);
+});
+
+// Tex 2026-10-17: looters who came in before Loot Quest ended stay on the map; keep at it until the list is empty.
+test('LOOT-26 (Tex): when Loot Quest ends with looters still on the map, it keeps checking and posting until the list is empty, then stops asking', async () => {
+  const { ctx, page } = await open({ list: [AAKASH], points: [Object.assign({}, P1)], recheckMs: 300, listMs: 500, setup: () => { const n = Date.now(); __fake.loot.cs.timeInfo.openTime = [{ beginMill: String(n - 600000), endMill: String(n + 3000) }]; } });
+  await launch(page);
+  await page.waitForFunction(() => __fake.shares.length === 1, null, { timeout: 10000 });
+  await waitText(page, /Loot Quest ended\. Watching the looters still on the map\./, 8000);
+  const v1 = (await views(page)).length;
+  await page.evaluate(() => { __fake.loot.points[0].x = 500; __fake.loot.points[0].y = 790; });   // moved after the window closed
+  await page.waitForFunction(() => __fake.shares.length === 2, null, { timeout: 5000 });
+  assert.ok((await views(page)).length > v1, 'still checking after the window closed');
+  await page.evaluate(() => { __fake.loot.list = []; __fake.loot.points = []; });
+  await waitText(page, /Loot Quest isn't running now\./, 5000);
+  const v2 = (await views(page)).length, l2 = await lists(page);
+  await page.waitForTimeout(1500);
+  assert.equal((await views(page)).length, v2, 'no more lookups');
+  assert.equal(await lists(page), l2, 'no more list reads');
+  await ctx.close();
+});
+
+test('LOOT-27 (Tex): opened after Loot Quest ended with a looter still listed: it finds and posts them', async () => {
+  const { ctx, page } = await open({ list: [AAKASH], points: [P1], setup: () => { const n = Date.now(); __fake.loot.cs.timeInfo.openTime = [{ beginMill: String(n - 7800000), endMill: String(n - 600000) }, { beginMill: String(n + 21000000), endMill: String(n + 28200000) }]; } });
+  await launch(page);
+  await page.waitForFunction(() => __fake.shares.length === 1, null, { timeout: 10000 });
+  assert.deepEqual((await shares(page))[0].p, { x: 480, y: 804, z: 2864 });
+  await ctx.close();
+});
+
+test('LOOT-28: outside Loot Quest, a refused looter list ends it there (never a retry loop)', async () => {
+  const { ctx, page } = await open({ list: [AAKASH], points: [P1], listMs: 300, setup: () => { const n = Date.now(); __fake.loot.listMode = 'refuse'; __fake.loot.cs.timeInfo.openTime = [{ beginMill: String(n - 7800000), endMill: String(n - 600000) }]; } });
+  await launch(page);
+  await waitText(page, /Loot Quest isn't running now\./);
+  await page.waitForTimeout(1500);
+  assert.equal(await lists(page), 1);
+  assert.equal((await views(page)).length, 0);
+  await ctx.close();
 });

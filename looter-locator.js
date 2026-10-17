@@ -12,7 +12,7 @@
   var C = window.LooterCore;
   if (!C) { try { alert('Looter Locator did not load fully. Try again.'); } catch (e) {} return; }
 
-  var VERSION = '2026-10-16';
+  var VERSION = '2026-10-17';
   var WORKER = window.__LOOT_WORKER || 'https://push-worker.27tb8s6fct.workers.dev';
   var FAST = window.__LOOT_GAP_MS != null, GAP_MS = window.__LOOT_GAP_MS || 1500;   // Tex: every 1.5 s is fine
   var LIST_MS = window.__LOOT_LIST_MS || C.LIST_MS, RECHECK_MS = window.__LOOT_RECHECK_MS || C.RECHECK_MS, PUSH_MS = window.__LOOT_PUSH_MS || C.PUSH_DELAY_MS;
@@ -73,7 +73,7 @@
   function lsJSON(k) { try { return JSON.parse(lsGet(k)); } catch (e) { return null; } }
   var S = { running: false, stopped: false, view: '', siteKey: '', name: '', share: lsGet(LS_SHARE) !== '0', min: lsGet(LS_MIN) === '1',
     list: [], listAt: 0, wantList: true, pushAt: 0, tracked: {}, holds: {}, log: [], fails: 0, pausedUntil: 0, pauseWhy: '', busySince: 0,
-    passOn: false, passAt: 0, lastShareAt: 0, lastAllyAt: 0, world: false, worldHolder: '', infoAsked: {}, leaseOkAt: 0, renewAt: 0, count: null, foot: 'Starting...', tone: 'ok', bus: null };
+    passOn: false, passAt: 0, late: false, lateChecked: false, lastShareAt: 0, lastAllyAt: 0, world: false, worldHolder: '', infoAsked: {}, leaseOkAt: 0, renewAt: 0, count: null, foot: 'Starting...', tone: 'ok', bus: null };
   function today() { return C.gameDay(Date.now()); }
   function todayCount() { return S.count && S.count.day === today() ? S.count.n || 0 : 0; }
   function bump() { S.count = { day: today(), n: todayCount() + 1 }; lsSet(LS_COUNT + S.siteKey, JSON.stringify(S.count)); }
@@ -131,7 +131,7 @@
       })();
     });
   }
-  async function turn() { await pace(); return S.running && ready() && live(); }
+  async function turn() { await pace(); return S.running && ready() && (live() || S.late); }   // late: Loot Quest ended, looters still listed
   function live() { return C.lootQuestLive(hunt(), serverMs()); }   // the game server's clock (review)
   function paused() { return Date.now() < S.pausedUntil; }
   function pause(why, ms) { S.pausedUntil = Date.now() + ms; S.pauseWhy = why; }
@@ -168,6 +168,7 @@
     if (typeof N.checkRequestIdNoRes === 'function' && N.checkRequestIdNoRes(I.list)) return;   // the last one is still out
     var r = await call(function (cb) { return N.sendPB(I.list, { header: {} }, TARGET, cb); });
     var list = C.crossIn(r && r.pbAck);
+    if (!list && !live()) list = [];                      // outside Loot Quest a refusal ends it there: never a retry loop
     if (!list) { setFoot("Couldn't read the looter list. Trying again in a minute.", 'warn'); return; }
     S.list = list;
     var listed = {}; list.forEach(function (l) { listed[l.sid] = 1; });
@@ -332,18 +333,25 @@
       if (!ready()) { setFoot('Game disconnected. Waiting...', 'bad'); await delay(FAST ? 100 : 1000); continue; }
       listen();
       var cs = hunt(), now = serverMs();
-      if (!C.lootQuestLive(cs, now)) {
-        var nx = C.nextWindow(cs, now);
-        setFoot("Loot Quest isn't running now." + (nx ? ' Next one in ' + hms(nx - now) + '.' : ''), 'warn');
-        S.wantList = true; S.passOn = false; S.passAt = 0;
-        await delay(FAST ? 200 : 1000); continue;
+      if (C.lootQuestLive(cs, now)) { S.late = false; S.lateChecked = false; }
+      else {
+        // Loot Quest ended (or the tool opened after it): looters who came in before stay on the map, so it carries on
+        // while the list has anyone (Tex 2026-10-17). One look at the list first; an empty list means it waits.
+        if (!S.lateChecked) { S.lateChecked = true; S.wantList = true; S.late = true; }
+        else S.late = S.list.length > 0 || values().length > 0;
+        if (!S.late) {
+          var nx = C.nextWindow(cs, now);
+          setFoot("Loot Quest isn't running now." + (nx ? ' Next one in ' + hms(nx - now) + '.' : ''), 'warn');
+          S.passOn = false; S.passAt = 0;
+          await delay(FAST ? 200 : 1000); continue;
+        }
       }
       if (S.pushAt && Date.now() >= S.pushAt) { S.pushAt = 0; S.wantList = true; }
       if (S.wantList || Date.now() - S.listAt >= LIST_MS) await readList();
       var worked = !paused() && S.running ? await mapStep() : false;
       if (S.running) await shareDue();                    // sends no map views, so it runs during a cap pause too (review)
       if (paused()) setFoot('Paused: ' + S.pauseWhy + '. Back in ' + C.clock(S.pausedUntil - Date.now()) + '.', 'warn');
-      else if (!S.passOn && !S.busySince) { var n = values().length; setFoot(S.list.length ? 'Watching ' + n + ' of ' + S.list.length + ' looter' + (S.list.length === 1 ? '' : 's') + '.' : 'No looters on the map. Watching.', 'ok'); }
+      else if (!S.passOn && !S.busySince) { var n = values().length; setFoot(S.late ? 'Loot Quest ended. Watching the looters still on the map.' : S.list.length ? 'Watching ' + n + ' of ' + S.list.length + ' looter' + (S.list.length === 1 ? '' : 's') + '.' : 'No looters on the map. Watching.', 'ok'); }
       await delay(worked ? (FAST ? 10 : 50) : (FAST ? 50 : 1000));
     }
   }
