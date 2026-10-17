@@ -55,6 +55,11 @@ async function open(viewport, before, o, arg) {
     rt.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"ok":true}' });
   });
   if (o && o.dragMissing) await ctx.route('**/ops-drag.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
+  // accounts Tex revoked: a test can add a siteKey to the block list the way ops-core.js holds it
+  if (o && o.blocked) await ctx.route('**/ops-core.js*', async (rt) => {
+    const r = await rt.fetch();
+    rt.fulfill({ response: r, body: (await r.text()) + '\n' + o.blocked.map((k) => 'OpsCore.BLOCKED[' + JSON.stringify(k) + '] = OpsCore.REVOKED_MSG;').join('\n') });
+  });
   if (o && o.potatoMissing) await ctx.route('**/ops-potato.js*', (rt) => rt.fulfill({ status: 404, body: '' }));
   if (o && (o.dragFirst || o.jamFirst || o.events || o.tucked || o.alongside || o.registered || o.group || o.beta)) await ctx.route('**/ops-tools.json*', async (rt) => {
     const r = await rt.fetch(); const j = await r.json();
@@ -789,6 +794,63 @@ test('OPS-OUT-6: home server unknown and not on the roster: logged without a ser
   await waitReports(page, usage, 1);
   assert.deepEqual(usageReports(usage), [{ siteKey: '2f9bc8619956f5da', name: 'Tester', tool: 'not-on-roster', version: '1', open: true }]);
   assert.equal(await rrCount(page), 0);
+  await ctx.close();
+});
+
+// Tex 2026-10-17: accounts whose access Tex revoked get his message instead of the menu. The block is checked before
+// anything else (a cached membership, the roster, the home server), starts no Rickroll, and each launch is logged as
+// tool 'blocked' with the home server (siteKey from the UID, never the UID).
+const REVOKED = 'Shared connection detected attempting multiple non-2864 accounts in 24H period, access has been revoked, please contact Tatie for access to be restored';
+async function assertBlocked(page) {
+  await page.waitForSelector('.ops-note:has-text("access has been revoked")');
+  assert.equal(await page.$$eval('.ops-tile', (e) => e.length), 0);
+  assert.deepEqual(await page.$$eval('.ops-note', (n) => n.filter((e) => e.textContent.includes('revoked')).map((e) => e.textContent)), [REVOKED]);
+  assert.equal(await page.$$eval('.ops-note', (n) => n.filter((e) => e.textContent.includes('influx')).length), 0, 'no transfer message');
+  assert.ok(!(await page.$$eval('.ops-sub', (e) => e.map((x) => x.textContent).join(''))).includes('S2864'), 'not shown as a member');
+}
+
+test('OPS-BLOCK-1: a revoked 2864 roster member, even with a remembered membership: the message, no tiles, no Rickroll, one blocked log per launch', async () => {
+  const { ctx, page, usage } = await open(PHONE, () => {
+    localStorage.setItem('ops_member_v1', JSON.stringify({ sk: '03c2cd3196b2f243', at: Date.now(), row: { name: 'Tester', rank: 5 } }));
+  }, { alongside: true, blocked: [SK] });
+  await assertBlocked(page);
+  await waitReports(page, usage, 1);
+  await page.waitForTimeout(400);
+  assert.equal(await rrCount(page), 0);
+  assert.deepEqual(usageReports(usage), [{ siteKey: SK, name: 'Tester', tool: 'blocked', version: '1', open: true, server: 2864 }]);
+  assert.ok(usage.every((u) => !String(u.body || '').includes('1000000000001')), 'no UID');
+  await page.evaluate(() => window.OpsCenter.toggle());                // close
+  await page.evaluate(() => window.OpsCenter.toggle());                // open again: still blocked
+  await assertBlocked(page);
+  await page.waitForTimeout(300);
+  assert.equal(usageReports(usage).length, 1, 'one log per launch');
+  await ctx.close();
+});
+
+test('OPS-BLOCK-2: a revoked account on another server: the revoked message instead of the transfer message, and no Rickroll', async () => {
+  const { ctx, page, usage } = await open(PHONE, () => { window.__fake.server = 619; }, { alongside: true, blocked: [SK] });
+  await assertBlocked(page);
+  await waitReports(page, usage, 1);
+  await page.waitForTimeout(400);
+  assert.equal(await rrCount(page), 0);
+  assert.deepEqual(usageReports(usage), [{ siteKey: SK, name: 'Tester', tool: 'blocked', version: '1', open: true, server: 619 }]);
+  await ctx.close();
+});
+
+test('OPS-BLOCK-3: a revoked account whose home server is unknown: the message, logged without a server', async () => {
+  const { ctx, page, usage } = await open(PHONE, () => { window.__fake.server = 0; }, { blocked: [SK] });
+  await assertBlocked(page);
+  await waitReports(page, usage, 1);
+  assert.deepEqual(usageReports(usage), [{ siteKey: SK, name: 'Tester', tool: 'blocked', version: '1', open: true }]);
+  await ctx.close();
+});
+
+test('OPS-BLOCK-4: someone else on the block list changes nothing for a member', async () => {
+  const { ctx, page, usage } = await open(PHONE, null, { blocked: ['ffffffffffffffff'] });
+  await page.waitForSelector('.ops-tile');
+  assert.equal(await page.textContent('.ops-sub'), 'Tester · S2864 ✓');
+  await page.waitForTimeout(400);
+  assert.equal(usageReports(usage).length, 0);
   await ctx.close();
 });
 

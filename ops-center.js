@@ -17,7 +17,8 @@
     timer: null, waitTimer: null, tracker: null, tool: null, observer: null, tick: null, fab: null, fabHidden: false, keyHandler: null,
     tuck: null, tuckOpen: false, offKey: '',        // the folded "Not running now" row
     reg: {}, regAsked: null,                         // registries the worker says this player is in ({mapcollector: true}); who was asked
-    visitor: null, visitorLogged: null, rolling: false  // a player turned away: {sk, server, away}; logged this launch; Rickroll loading
+    visitor: null, visitorLogged: null, rolling: false,  // a player turned away: {sk, server, away, blocked}; logged this launch; Rickroll loading
+    blocked: null                                     // Tex's message for an account whose access he revoked
   };
 
   // ---------------------------------------------------------------- small helpers
@@ -94,10 +95,12 @@
     var home = homeServer();
     if (home && home !== HOME_SERVER) {                 // not on 2864, roster or not
       S.member = null; S.memberErr = 'not'; S.siteKey = null;
-      return sha256Hex(id).then(function (h) { S.visitor = { sk: h.slice(0, 16), server: home, away: true }; }, function () {});
+      return sha256Hex(id).then(function (h) { var sk = h.slice(0, 16); if (!blockIf(sk, home)) S.visitor = { sk: sk, server: home, away: true }; }, function () {});
     }
     return sha256Hex(id).then(function (h) {
-      var sk = h.slice(0, 16), cached = lsGet(LS.member, null);
+      var sk = h.slice(0, 16);
+      if (blockIf(sk, home)) return;                    // before the cache and the roster: a revoked member stays out
+      var cached = lsGet(LS.member, null);
       S.siteKey = sk;                                   // owner-only tiles are matched on this
       var fresh = cached && cached.sk === sk && Date.now() - cached.at < MEMBER_TTL && cached.row;
       var load = fetch(BASE + 'player-data.json?_=' + Date.now(), { cache: 'no-store' })
@@ -125,6 +128,15 @@
         throw e;
       });
     }).catch(function () { S.member = null; S.memberErr = 'net'; });
+  }
+  // An account whose access Tex revoked (2026-10-17; the list is in ops-core.js): his message instead of the menu, on
+  // any server, no Rickroll; logged once per launch as tool 'blocked'.
+  function blockIf(sk, home) {
+    var why = typeof C().blockedReason === 'function' ? C().blockedReason(sk) : null;
+    if (!why) return false;
+    S.member = null; S.memberErr = 'blocked'; S.siteKey = null; S.blocked = why;
+    S.visitor = { sk: sk, server: home, away: !!home && home !== HOME_SERVER, blocked: true };
+    return true;
   }
   // A 2864 player who isn't on the roster: name and alliance rank from the game (the roster's rank wins for those on it).
   function gameMember() {
@@ -183,7 +195,7 @@
     var v = S.visitor;
     if (!v || S.visitorLogged === v.sk) return;
     S.visitorLogged = v.sk;
-    var body = { siteKey: v.sk, name: String(playerName() || 'Unknown').slice(0, 40), tool: v.away ? 'outsider' : 'not-on-roster', version: '1', open: true };
+    var body = { siteKey: v.sk, name: String(playerName() || 'Unknown').slice(0, 40), tool: v.blocked ? 'blocked' : v.away ? 'outsider' : 'not-on-roster', version: '1', open: true };
     if (v.server >= 1 && v.server <= 99999 && v.server % 1 === 0) body.server = v.server;
     try {
       fetch(WORKER + '/ops/usage', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, cache: 'no-store', keepalive: true, body: JSON.stringify(body) }).catch(function () {});
@@ -192,7 +204,7 @@
   // ...and those from another server get Rickroll, loaded the way Jam loads it, while the restricted message stays up.
   // Nothing new loads while it plays; a failed load says nothing.
   function rollVisitor() {
-    var t = S.visitor && S.visitor.away ? alongsideTool() : null;
+    var t = S.visitor && S.visitor.away && !S.visitor.blocked ? alongsideTool() : null;
     if (!t || S.rolling || alongsideOn(t)) return;
     S.rolling = true;
     function done() { S.rolling = false; }
@@ -242,7 +254,7 @@
   function subText() {
     if (S.member) return (playerName() || S.member.name) + ' · S2864 ✓';
     if (S.memberErr === 'wait') return 'Waiting for the game...';
-    if (S.memberErr === 'net' || S.memberErr === 'not') return '';
+    if (S.memberErr === 'net' || S.memberErr === 'not' || S.memberErr === 'blocked') return '';
     return 'Checking...';
   }
 
@@ -253,6 +265,7 @@
     if (S.listErr) { K().toast(b, 'Couldn\'t load the tool list. Check your connection.', 'Retry', function () { start(); }); return; }
     if (!S.list) { K().note(b, 'Loading tools...'); return; }
     if (S.memberErr === 'net') { K().toast(b, 'Couldn\'t check your membership right now.', 'Retry', function () { refreshMember(); }); return; }
+    if (S.memberErr === 'blocked') { K().note(b, S.blocked); return; }
     if (S.memberErr === 'not') { restrictedNote(b); rollVisitor(); return; }
     if (S.memberErr === 'wait') { K().note(b, 'Waiting for the game to finish loading...'); waitForGame(); return; }
     var search = K().input({ placeholder: 'Search tools', label: 'Search tools' });
@@ -568,7 +581,7 @@
     regFromStore();
     if (S.view === 'menu') openMenu();
     askRegistered();
-    if (S.memberErr === 'not') reportVisitor();
+    if (S.memberErr === 'not' || S.memberErr === 'blocked') reportVisitor();
   }
   function toggle() {
     if (!S.started) return;                             // still loading: the first tap opens the menu

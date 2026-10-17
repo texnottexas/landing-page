@@ -417,3 +417,16 @@ test('beta (Tex 2026-10-17): a tool can be marked beta; only a real true counts'
   assert.equal(one({}).beta, false);
   assert.equal(one({ beta: 'yes' }).beta, false);
 });
+
+// Tex 2026-10-17: accounts whose Ops Center access Tex revoked (one player's S2864 and S3355 accounts). The block has no expiry:
+// it stays until Tex lifts it, which is a deliberate change here and in ops-core.js.
+const REVOKED = 'Shared connection detected attempting multiple non-2864 accounts in 24H period, access has been revoked, please contact Tatie for access to be restored';
+test('OPS-BLOCK: the revoked accounts get Tex\'s message word for word; nobody else is blocked', () => {
+  assert.deepEqual(Object.keys(OC.BLOCKED).sort(), ['a644ca20dbe0b270', 'e281c1b401b9e2a6']);
+  assert.equal(OC.REVOKED_MSG, REVOKED);
+  assert.equal(OC.blockedReason('e281c1b401b9e2a6'), REVOKED);
+  assert.equal(OC.blockedReason('a644ca20dbe0b270'), REVOKED);
+  assert.equal(OC.blockedReason('03c2cd3196b2f243'), null);
+  for (const v of [null, undefined, '', 'toString', '__proto__', 'constructor', 'hasOwnProperty', 42, {}]) assert.equal(OC.blockedReason(v), null, String(v));
+  assert.ok(!/—/.test(REVOKED), 'no em dash');
+});

@@ -21,6 +21,20 @@
   function isAutoFor(tool, id) { return !!(tool.auto && tool.auto.indexOf(id) >= 0); }
   var WAIT_MS = 10000, GRACE_MS = 1000, WATCH_MS = 120000, JOIN_MS = 30000, RECENT_MAX = 3, MAX_TOOLS = 50;
 
+  // Accounts whose Ops Center access Tex revoked (2026-10-17: tools shared to accounts on other servers), by siteKey
+  // (first 16 hex of sha256(UID), as on the public roster). They see this message instead of the menu. No expiry: a
+  // block stays until Tex lifts it (delete the line). The worker's /ops/session keeps the same list once tool code is
+  // served from there.
+  var REVOKED_MSG = 'Shared connection detected attempting multiple non-2864 accounts in 24H period, access has been revoked, please contact Tatie for access to be restored';
+  var BLOCKED = {
+    e281c1b401b9e2a6: REVOKED_MSG,                    // an S2864 (MSS) account
+    a644ca20dbe0b270: REVOKED_MSG                     // the same player's S3355 account
+  };
+  function blockedReason(siteKey) {
+    if (typeof siteKey !== 'string' || !own(BLOCKED, siteKey)) return null;
+    return isStr(BLOCKED[siteKey]) ? BLOCKED[siteKey] : null;
+  }
+
   function own(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
   function plainObj(v) { return !!v && typeof v === 'object' && !Array.isArray(v); }
   function warn(why, t) { try { console.warn('Ops Center: skipped a tool' + (t && t.id ? ' (' + String(t.id).slice(0, 40) + ')' : '') + ': ' + why); } catch (e) {} }
@@ -212,7 +226,8 @@
     validateTools: validateTools, visibleTools: visibleTools, filterTools: filterTools, orderTools: orderTools, pushRecent: pushRecent,
     initSeen: initSeen, badgeFor: badgeFor, tileStatus: tileStatus, isToolNode: isToolNode, isAutoFor: isAutoFor, AUTO_TEXT: AUTO_TEXT,
     eventLive: eventLive, lootQuestActs: lootQuestActs, EVENT_NAMES: EVENT_NAMES, EVENT_TEXT: EVENT_TEXT, REGISTRIES: REGISTRIES,
-    trackerInit: trackerInit, trackerReduce: trackerReduce, trackerWatching: trackerWatching
+    trackerInit: trackerInit, trackerReduce: trackerReduce, trackerWatching: trackerWatching,
+    BLOCKED: BLOCKED, REVOKED_MSG: REVOKED_MSG, blockedReason: blockedReason
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = OpsCore;
   else root.OpsCore = OpsCore;
