@@ -16,7 +16,8 @@ const FILES = {
   'guide-videos.js': path.join(ROOT, 'guide-videos.js'),
   'player-data.json': path.join(ROOT, 'player-data.json'),
 };
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json' };
+for (const f of ['account-button', 'connect-buttons', 'wire-cut', 'settings-button', 'login-button', 'login-choice']) FILES['assets/ops-guide/' + f + '.jpg'] = path.join(ROOT, 'assets', 'ops-guide', f + '.jpg');
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.jpg': 'image/jpeg' };
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/140.0 Mobile/15E148 Safari/605.1.15';
 const ANDROID = 'Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36';
 const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:143.0) Gecko/20100101 Firefox/143.0';
@@ -153,4 +154,47 @@ test('the Ops page still works if the video card throws', async () => {
   const gate = await page.waitForSelector('#g-pass:not(.hidden)', { timeout: 3000 }).then(() => true, () => false);
   await ctx.close();
   assert.ok(gate, 'the access-code gate shows');
+});
+
+test('sign-in guide: under the Ops Center card, screenshots load, step 7 film, Copy address', async () => {
+  const sk = JSON.parse(fs.readFileSync(FILES['player-data.json'], 'utf8')).find((p) => p.siteKey).siteKey;
+  const ctx = await browser.newContext({ userAgent: IPHONE, viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true });
+  await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base.slice(0, -1) });
+  await ctx.route(/^https?:\/\/(?!127\.0\.0\.1)/, (route) => route.request().url().startsWith('https://www.youtube-nocookie.com/')
+    ? route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>stub</title>' })
+    : route.abort());
+  await ctx.addInitScript((sk) => { localStorage.setItem('rr_unlocked_v2', '1'); localStorage.setItem('rr_id_v1', JSON.stringify({ siteKey: sk, name: 'x' })); }, sk);
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await page.goto(base + 'rickroll.html');
+  await page.waitForSelector('#g-tools:not(.hidden) #signin-guide');
+  const lay = await page.evaluate(async () => {
+    const imgs = [...document.querySelectorAll('#signin-guide img')];
+    await Promise.all(imgs.map((i) => { i.loading = 'eager'; return i.decode().catch(() => {}); }));
+    const cards = document.getElementById('cards');
+    return {
+      afterCards: !!(cards.compareDocumentPosition(document.getElementById('signin-guide')) & Node.DOCUMENT_POSITION_FOLLOWING),
+      steps: document.querySelectorAll('#signin-guide .sg-step').length,
+      loaded: imgs.map((i) => i.naturalWidth > 0),
+      overflow: document.documentElement.scrollWidth - innerWidth,
+      stores: [...document.querySelectorAll('#signin-guide .sg-store')].map((a) => a.target + ' ' + a.rel),
+    };
+  });
+  assert.deepEqual(lay, { afterCards: true, steps: 7, loaded: [true, true, true, true, true, true], overflow: 0, stores: ['_blank noopener', '_blank noopener'] });
+  assert.equal(await page.$$eval('#sgVideo .guide-videos iframe', (n) => n.length), 0, 'no YouTube until opened');
+  await page.click('#sgVideo details.guide-videos summary');
+  await page.waitForSelector('#sgVideo .guide-videos iframe');
+  assert.match(await page.$eval('#sgVideo .guide-videos iframe', (f) => f.src), new RegExp(G.FILMS.opsSafari.id));
+  await page.click('#sgCopy');
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), 'https://h5.topwargame.com/h5game');
+  assert.equal(await page.textContent('#sgCopy'), 'Copied');
+  // Translation flag like the other pages; the bookmarklet, the copy buttons, the game address and the name stay untranslated.
+  await page.click('#langBtn');
+  assert.equal(await page.$$eval('#langModal.active .lang-option', (n) => n.length), 18);
+  const nt = await page.evaluate(() => ['#cards textarea', '#cards .copy', '#cards h3', '#sgUrl', '#sgCopy', '#whoami .notranslate', '#langBtn']
+    .map((sel) => { const el = document.querySelector(sel); return sel + ':' + !!(el && el.closest('.notranslate')); }));
+  assert.deepEqual(nt.filter((x) => x.endsWith(':false')), []);
+  await ctx.close();
+  assert.deepEqual(errors, []);
 });
