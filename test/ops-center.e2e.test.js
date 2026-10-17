@@ -1093,3 +1093,16 @@ test('POT-11: the Potato switch is only in the members\' menu: a tool page heade
   assert.equal(await page.$$eval('#opsp-switch', (e) => e.length), 0);
   await ctx.close();
 });
+
+test('POT-12 (Tex): a one-line hint under the header says what Potato means, visible on a phone without scrolling', async () => {
+  const { ctx, page } = await open(PHONE);
+  await page.waitForSelector('#opsp-switch');
+  assert.equal(await page.textContent('.opsp-hint'), 'Potato mode: cooler phone, fewer tab restarts.');
+  const r = await page.$eval('.opsp-hint', (e) => { const b = e.getBoundingClientRect(), lh = parseFloat(getComputedStyle(e).lineHeight) || 16; return { top: b.top, bottom: b.bottom, h: b.height, lh, vh: window.innerHeight, head: document.querySelector('.ops-head').getBoundingClientRect().bottom, first: e.parentNode.firstElementChild === e }; });
+  assert.ok(r.h < r.lh * 1.6, 'one line');
+  assert.ok(r.bottom <= r.vh, 'visible without scrolling');
+  assert.ok(r.top >= r.head - 1 && r.first, 'right under the header, first in the menu');
+  await page.click('#opsp-switch');                                  // the reload note goes under the hint, not above it
+  assert.equal(await page.$eval('.ops-body', (b) => [b.children[0].className, b.children[1].className].join(' ')), 'opsp-hint opsp-note');
+  await ctx.close();
+});

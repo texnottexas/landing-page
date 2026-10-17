@@ -123,6 +123,7 @@
     '.opsp-mini button.opsp-switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#8b949e;transition:transform .2s}',
     '.opsp-mini button.opsp-switch[aria-checked="true"]{background:#238636;border-color:#2ea043}',
     '.opsp-mini button.opsp-switch[aria-checked="true"]::after{transform:translateX(16px);background:#e6edf3}',
+    '.opsp-hint{margin:-4px 0 10px;color:#8b949e;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
     '.opsp-note{display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;border:1px solid #30363d;border-radius:8px;color:#d29922;font-size:12px}.opsp-note span{flex:1}',
     '.opsp-note button#opsp-reload{flex:none;min-height:36px;padding:0 12px;border:1px solid #30363d;border-radius:8px;background:#1c2128;color:#e6edf3;font:inherit;cursor:pointer}'
   ].join('\n');
@@ -140,6 +141,8 @@
     var sw = el('button', 'opsp-switch'); sw.id = 'opsp-switch'; sw.type = 'button'; sw.setAttribute('role', 'switch');
     sw.setAttribute('aria-label', HINT); sw.title = HINT;
     mini.appendChild(sw); title.appendChild(mini);
+    var hint = el('div', 'opsp-hint', 'Potato mode: cooler phone, fewer tab restarts.');   // what "Potato" means, one line (Tex)
+    body.insertBefore(hint, body.firstChild);
     var note = null;
     function paint(reload) {
       sw.setAttribute('aria-checked', String(isOn()));
@@ -152,7 +155,7 @@
         b.addEventListener('click', function () { try { location.reload(); } catch (e) {} });
         note.appendChild(b);
       }
-      body.insertBefore(note, body.firstChild);
+      body.insertBefore(note, hint.nextSibling);           // under the hint
     }
     sw.addEventListener('click', function (e) { e.stopPropagation(); paint(set(!isOn())); });
     paint(needsReload());
