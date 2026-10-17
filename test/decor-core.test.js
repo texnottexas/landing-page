@@ -325,3 +325,50 @@ test('tidy on Rеx: the two pieces already at the bottom stay; the sea decor in 
     assert.equal(zone[m.to[0] * 1000 + m.to[1]], 1);
   });
 });
+
+// ---------------------------------------------------------------- Task 7: the whole plan and the preview
+const KINDS = ['collabIn', 'toBag', 'merge', 'putBack', 'open', 'feed', 'split', 'level', 'showcaseIn', 'place', 'move'];
+
+test('plan on Rеx is complete and safe', () => {
+  const p = C.plan(REX, AIR);
+  assert.deepEqual(Object.keys(p.phases), C.phaseOrder);
+  assert.deepEqual(C.phaseOrder, ['collab', 'pickup', 'merge', 'upgrade', 'place', 'tidy']);
+  const uuids = new Set(REX.placed.map((x) => x.uuid));
+  const zone = {}; REX.grid.cells.forEach((c) => { zone[c[0] * 1000 + c[1]] = c[2]; });
+  C.phaseOrder.forEach((ph) => p.phases[ph].forEach((a) => {
+    assert.ok(KINDS.includes(a.kind), a.kind);
+    if (a.kind === 'move') assert.ok(uuids.has(a.uuid), 'moves only placed decor');
+    if (a.kind === 'toBag' && a.where === 'base') assert.ok(uuids.has(a.ref), 'picks up only placed decor');
+    if (a.kind === 'merge') assert.ok(![4000, 4030, 4040, 4070].includes(REX.rows[a.id].group), 'no gold merges');
+    if (a.kind === 'place' || a.kind === 'move') {
+      const id = a.kind === 'place' ? a.id : REX.placed.find((x) => x.uuid === a.uuid).id, r = REX.rows[id];
+      if (r.type === 4) C.footprint(a.x, a.y, r.w, r.h).forEach(([x, y]) => assert.equal(zone[x * 1000 + y], 1, r.name));
+    }
+  }));
+  assert.ok(p.summary.counts.toBag >= 5 && p.summary.counts.merges > 0 && p.summary.counts.tidied > 0, JSON.stringify(p.summary.counts));
+  assert.ok(p.summary.gains.length > 0);
+});
+
+test('nothing to do is empty', () => {
+  const s = snap({ rows: [[1, 10, 2, 1, [[930000, 200]]]], placed: [{ uuid: 'a', id: 1, x: 2, y: 2 }] });
+  s.grid.cells = [[2, 2, 1, 1, 1, 1, 0], [4, 4, 1, 1, 1, 0, 0]];
+  const p = C.plan(s, ALL);
+  C.phaseOrder.forEach((ph) => assert.deepEqual(p.phases[ph], [], ph));
+  assert.deepEqual(p.summary.counts, { collab: 0, toBag: 0, merges: 0, upgrades: 0, placed: 0, tidied: 0 });
+  assert.deepEqual(p.summary.gains, []);
+});
+
+test('gains are the counting difference', () => {
+  const s = snap({ rows: [[1, 10, 2, 1, [[930000, 200]]]], bag: [{ id: 1, n: 1 }] });
+  s.grid.cells = [[4, 4, 1, 1, 1, 0, 0]];
+  const p = C.plan(s, ALL);
+  assert.deepEqual(p.phases.place, [{ kind: 'place', id: 1, x: 4, y: 4 }]);
+  assert.deepEqual(p.summary.gains.map((g) => ({ buffId: g.buffId, text: g.text })), [{ buffId: 930000, text: '+2.00%' }]);
+  assert.equal(p.summary.gains[0].name, 'All Units HP');
+});
+
+test('the preview never mentions gold as a gain', () => {
+  const p = C.plan(REX, ALL);
+  p.summary.gains.forEach((g) => assert.ok(!C.GOLD.includes(g.buffId), g.name));
+  assert.ok(p.summary.left.some((l) => l.why === 'gold'));
+});

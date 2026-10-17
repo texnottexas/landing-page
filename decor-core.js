@@ -480,7 +480,115 @@
     return out;
   }
 
-  var api = { GOLD: GOLD, REPAIR: REPAIR, MARCH: MARCH, WEIGHTS: WEIGHTS, SCOPE: SCOPE, CLASS: CLASS,
+  // ---------------------------------------------------------------- the whole plan
+  // Each phase is planned on a copy of the snapshot that already has the earlier phases done, so the preview's gains
+  // are the game's own counting rule before and after. The run re-reads the game before each phase and plans again.
+  var phaseOrder = ['collab', 'pickup', 'merge', 'upgrade', 'place', 'tidy'];
+  function sim(snap) {
+    var s = JSON.parse(JSON.stringify(snap)), idx = {}, seq = 0;
+    s.grid.cells.forEach(function (k) { idx[k[0] * 1000 + k[1]] = k; });
+    function mark(id, x, y, on) {
+      var r = s.rows[id];
+      footprint(x, y, r.w, r.h).forEach(function (c) { var k = idx[c[0] * 1000 + c[1]]; if (k) k[r.type === 5 ? 6 : 5] = on ? 1 : 0; });
+    }
+    function bag(id, n) {
+      var b = s.bag.filter(function (x) { return x.id === id; })[0];
+      if (b) b.n += n; else s.bag.push({ id: id, n: n });
+      s.bag = s.bag.filter(function (x) { return x.n > 0; });
+    }
+    return {
+      s: s, bag: bag,
+      spot: function (where, ref) {                        // where a piece is, to put a raised one back there
+        if (where === 'base') { var p = s.placed.filter(function (q) { return q.uuid === ref; })[0]; return { x: p.x, y: p.y }; }
+        if (where === 'showcase') return { labelId: ref.labelId, x: ref.x, y: ref.y };
+        return { slot: ref };
+      },
+      take: function (where, ref, id) {                    // a piece to the bag
+        if (where === 'base') {
+          var i = s.placed.map(function (q) { return q.uuid; }).indexOf(ref), p = s.placed[i];
+          mark(p.id, p.x, p.y, false); s.placed.splice(i, 1);
+        } else if (where === 'showcase') {
+          var l = s.showcase.filter(function (t) { return t.labelId === ref.labelId; })[0];
+          l.items = l.items.filter(function (e) { return e.uuid !== ref.uuid; });
+        } else if (where === 'collab') {
+          s.collab.filter(function (c) { return c.slot === ref; })[0].id = null;
+        }
+        bag(id, 1);
+      },
+      put: function (where, to, id) {                      // a bag piece to the base, a showcase tab or a collab slot
+        bag(id, -1);
+        if (where === 'base') { s.placed.push({ uuid: 'new' + (++seq), id: id, x: to.x, y: to.y }); mark(id, to.x, to.y, true); }
+        else if (where === 'showcase') s.showcase.filter(function (t) { return t.labelId === to.labelId; })[0].items.push({ uuid: 'new' + (++seq), id: id, x: to.x, y: to.y });
+        else { var c = s.collab.filter(function (k) { return k.slot === to.slot; })[0]; if (c.id) bag(c.id, 1); c.id = id; }
+      }
+    };
+  }
+  function plan(snap, settings) {
+    var S = sim(snap), s = S.s, ph = {};
+    phaseOrder.forEach(function (p) { ph[p] = []; });
+    function toBag(list, where, ref, id) { list.push({ kind: 'toBag', where: where, ref: ref, id: id }); S.take(where, ref, id); }
+    collabPlan(s).forEach(function (c) {
+      var slot = s.collab.filter(function (k) { return k.slot === c.slot; })[0];
+      if (slot.id && c.from !== 'bag') { toBag(ph.collab, c.from, c.ref, c.id); c = { slot: c.slot, from: 'bag', id: c.id, ref: null }; }   // replace from the bag, as the game does
+      ph.collab.push({ kind: 'collabIn', slot: c.slot, from: c.from, id: c.id, ref: c.ref });
+      if (c.from !== 'bag') S.take(c.from, c.ref, c.id);
+      S.put('collab', { slot: c.slot }, c.id);
+    });
+    pickupPlan(s, settings, targets(s, settings)).forEach(function (e) { toBag(ph.pickup, e.where, e.ref, e.id); });
+    mergePlan(s, settings).forEach(function (g) {
+      var spots = g.pulls.map(function (e) { var to = S.spot(e.where, e.ref); toBag(ph.merge, e.where, e.ref, e.id); return to; });
+      g.merges.forEach(function (m) {
+        var r = s.rows[m.id];
+        ph.merge.push({ kind: 'merge', id: m.id, num: m.num });
+        S.bag(m.id, -3 * m.num); S.bag(Number(s.levels[r.group][r.level + 1]), m.num);
+      });
+      g.putBacks.forEach(function (b, i) { ph.merge.push({ kind: 'putBack', id: b.id, where: b.where, to: spots[i] }); S.put(b.where, spots[i], b.id); });
+    });
+    upgradeSteps(s, {}).forEach(function (u) {
+      ph.upgrade.push(u.num != null ? { kind: u.kind, group: u.group, num: u.num } : { kind: u.kind, group: u.group });
+      if (u.kind === 'feed') {
+        var up = s.upgrades.filter(function (x) { return x.group === u.group; })[0];
+        S.bag(Number(s.levels[u.group][1]), -u.num * ((up && up.perNumber) || 1));
+      }
+    });
+    var pp = placePlan(s, settings, finalTargets(s, settings));
+    pp.evict.forEach(function (e) { toBag(ph.place, e.where, e.ref, e.id); });
+    pp.place.forEach(function (x) {
+      if (x.to.labelId != null) { ph.place.push({ kind: 'showcaseIn', id: x.id, labelId: x.to.labelId, x: x.to.x, y: x.to.y }); S.put('showcase', x.to, x.id); }
+      else { ph.place.push({ kind: 'place', id: x.id, x: x.to.x, y: x.to.y }); S.put('base', x.to, x.id); }
+    });
+    tidyPlan(s).forEach(function (m) {
+      if (/^new/.test(m.uuid)) return;                     // placed this run: the tidy phase re-plans with its real id
+      var p = s.placed.filter(function (q) { return q.uuid === m.uuid; })[0];
+      if (Array.isArray(m.to)) ph.tidy.push({ kind: 'move', uuid: m.uuid, x: m.to[0], y: m.to[1] });
+      else { ph.tidy.push({ kind: 'toBag', where: 'base', ref: m.uuid, id: p.id }); ph.tidy.push({ kind: 'showcaseIn', id: p.id, labelId: m.to.labelId, x: m.to.x, y: m.to.y }); }
+    });
+    return { phases: ph, summary: summary(snap, s, ph, pp.left) };
+  }
+  function statText(stat, delta) {
+    var a = Math.abs(delta);
+    return (delta > 0 ? '+' : '-') + (stat && stat.vt === 10000 ? (a / 100).toFixed(2) + '%' : String(a));
+  }
+  function summary(before, after, ph, left) {
+    var b = counted(before).buffs, a = counted(after).buffs, gains = [], seen = {}, out = [];
+    Object.keys(b).concat(Object.keys(a)).forEach(function (k) {
+      if (seen[k]) return; seen[k] = 1;
+      var d = (a[k] || 0) - (b[k] || 0), stat = before.stats[k];
+      if (!d || GOLD.indexOf(Number(k)) >= 0) return;
+      gains.push({ buffId: Number(k), name: stat ? stat.name : String(k), before: b[k] || 0, after: a[k] || 0, text: statText(stat, d) });
+    });
+    gains.sort(function (x, y) { return x.name < y.name ? -1 : x.name > y.name ? 1 : x.buffId - y.buffId; });
+    var names = {};
+    (left || []).forEach(function (l) { var n = before.rows[l.id].name, k = n + '|' + l.why; if (!names[k]) { names[k] = 1; out.push({ name: n, why: l.why }); } });
+    function count(list, kinds) { return list.filter(function (x) { return kinds.indexOf(x.kind) >= 0; }).length; }
+    return {
+      counts: { collab: count(ph.collab, ['collabIn']), toBag: count(ph.pickup, ['toBag']) + count(ph.place, ['toBag']), merges: count(ph.merge, ['merge']),
+        upgrades: ph.upgrade.length, placed: count(ph.place, ['place', 'showcaseIn']), tidied: count(ph.tidy, ['move', 'showcaseIn']) },
+      gains: gains, left: out
+    };
+  }
+
+  var api = { GOLD: GOLD, REPAIR: REPAIR, MARCH: MARCH, WEIGHTS: WEIGHTS, SCOPE: SCOPE, CLASS: CLASS, phaseOrder: phaseOrder, plan: plan,
     copyInfo: copyInfo, pool: pool, counted: counted, makeCopies: makeCopies, evenFill: evenFill, mergePlan: mergePlan,
     upgradeSteps: upgradeSteps, collabPlan: collabPlan, targets: targets, pickupPlan: pickupPlan, finalTargets: finalTargets,
     footprint: footprint, showcaseFree: showcaseFree, packShowcase: packShowcase, centroid: centroid, seaCells: seaCells,
